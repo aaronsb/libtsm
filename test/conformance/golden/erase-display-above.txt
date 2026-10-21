@@ -1,0 +1,9 @@
+size 20x6
+cursor 9,2
+flags AUTO_WRAP
+row 0 ||
+row 1 ||
+row 2 |          klmnopqrst|
+row 3 |abcdefghijklmnopqrst|
+row 4 |abcdefghijklmnopqrst|
+row 5 |abcdefghijklmnopqrst|

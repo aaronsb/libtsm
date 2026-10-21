@@ -1,0 +1,17 @@
+[?2004h[1;32muser@host[0m:[1;34m~[0m$ ls --color=always -l
+[?2004ltotal 12
+-rw-r--r-- 1 1000 1000 7318 Jan  1  2026 notes.txt
+-rwxr-xr-x 1 1000 1000   19 Jan  1  2026 [0m[01;32mrun.sh[0m
+drwxr-xr-x 1 1000 1000   12 Jan  1  2026 [01;34msrc[0m
+[?2004h[1;32muser@host[0m:[1;34m~[0m$ ls --color=always src
+[?2004lmain.c
+[?2004h[1;32muser@host[0m:[1;34m~[0m$ printf '\e[1mbold\e[0m \e[31mred\e[0m \e[4munder\e[0m\n'
+[?2004l[1mbold[0m [31mred[0m [4munder[0m
+[?2004h[1;32muser@host[0m:[1;34m~[0m$ seq 1 30 | paste -sd' '
+[?2004l1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30
+[?2004h[1;32muser@host[0m:[1;34m~[0m$ for i in 1 2 3; do echo "loop $i"; done
+[?2004lloop 1
+loop 2
+loop 3
+[?2004h[1;32muser@host[0m:[1;34m~[0m$ exit
+[?2004lexit

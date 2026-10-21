@@ -1,0 +1,29 @@
+# Conformance cases: <name> <cols> <rows>. Streams in cases/, goldens in golden/.
+# Synthetic streams, written by gen-synthetic.py:
+sgr-basic 80 24
+sgr-extended-color 80 24
+sgr-underline-extended 80 24
+cursor-motion 80 24
+erase 80 24
+erase-display-above 20 6
+insert-delete 80 24
+scroll-region 20 8
+origin-mode 20 8
+autowrap 10 4
+tabs 80 24
+wide-chars 12 4
+combining 80 24
+emoji 80 24
+alt-screen 20 4
+replies 80 24
+dec-graphics 80 24
+osc-sequences 80 24
+dcs-sixel 80 24
+apc-kitty-graphics 80 24
+scrollback 20 5
+reset 20 4
+# Real programs, recorded by record-programs.py (checkpoints in cases/<name>.cuts):
+prog-shell 80 24
+prog-less 80 24
+prog-vim 80 24
+prog-tmux 80 24

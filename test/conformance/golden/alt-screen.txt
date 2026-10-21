@@ -1,0 +1,7 @@
+size 20x4
+cursor 16,0
+flags AUTO_WRAP
+row 0 |main-screen-back|
+row 1 ||
+row 2 ||
+row 3 ||

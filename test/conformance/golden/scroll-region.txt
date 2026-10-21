@@ -1,0 +1,11 @@
+size 20x8
+cursor 11,7
+flags AUTO_WRAP
+row 0 |row2|
+row 1 ||
+row 2 |row6|
+row 3 ||
+row 4 ||
+row 5 |row7|
+row 6 |row8|
+row 7 |after-reset|

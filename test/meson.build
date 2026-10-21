@@ -37,3 +37,16 @@ test('valgrind', test_valgrind)
 test('vte_mouse', test_vte_mouse)
 test('vte', test_vte)
 
+
+# Conformance replay (ADR-301 tier 1 in the kmscon fork): every recorded
+# stream in conformance/ must reproduce its golden screen state.
+tsm_replay = executable(
+    'tsm-replay',
+    'conformance/tsm-replay.c',
+    dependencies: [libtsm_dep],
+)
+test(
+    'conformance',
+    find_program('python3'),
+    args: [files('conformance/check.py'), tsm_replay, meson.current_source_dir() / 'conformance'],
+)
