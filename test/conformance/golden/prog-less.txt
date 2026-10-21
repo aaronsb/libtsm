@@ -1,0 +1,346 @@
+checkpoint 1545
+size 80x24
+cursor 9,23
+flags AUTO_WRAP|ALTERNATE
+row 0 |  1  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 1 |  2  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 2 |  3  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 3 |  4  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 4 |  5  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 5 |  6  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 6 |  7  The quick brown fox jumps over the lazy dog. 漢字|
+row 7 |  8  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 8 |  9  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 9 | 10  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 10 | 11  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 11 | 12  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 12 | 13  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 13 | 14  The quick brown fox jumps over the lazy dog. 漢字|
+row 14 | 15  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 15 | 16  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 16 | 17  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 17 | 18  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 18 | 19  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 19 | 20  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 20 | 21  The quick brown fox jumps over the lazy dog. 漢字|
+row 21 | 22  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 22 | 23  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 23 |notes.txt|
+attr 23 0-8 inverse
+checkpoint 3049
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+row 0 | 24  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 1 | 25  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 2 | 26  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 3 | 27  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 4 | 28  The quick brown fox jumps over the lazy dog. 漢字|
+row 5 | 29  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 6 | 30  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 7 | 31  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 8 | 32  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 9 | 33  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 10 | 34  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 11 | 35  The quick brown fox jumps over the lazy dog. 漢字|
+row 12 | 36  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 13 | 37  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 14 | 38  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 15 | 39  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 16 | 40  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 17 | 41  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 18 | 42  The quick brown fox jumps over the lazy dog. 漢字|
+row 19 | 43  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 20 | 44  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 21 | 45  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 22 | 46  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 23 |:|
+checkpoint 4557
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+row 0 | 47  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 1 | 48  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 2 | 49  The quick brown fox jumps over the lazy dog. 漢字|
+row 3 | 50  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 4 | 51  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 5 | 52  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 6 | 53  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 7 | 54  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 8 | 55  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 9 | 56  The quick brown fox jumps over the lazy dog. 漢字|
+row 10 | 57  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 11 | 58  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 12 | 59  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 13 | 60  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 14 | 61  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 15 | 62  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 16 | 63  The quick brown fox jumps over the lazy dog. 漢字|
+row 17 | 64  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 18 | 65  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 19 | 66  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 20 | 67  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 21 | 68  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 22 | 69  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 23 |:|
+checkpoint 6187
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+row 0 | 24  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 1 | 25  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 2 | 26  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 3 | 27  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 4 | 28  The quick brown fox jumps over the lazy dog. 漢字|
+row 5 | 29  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 6 | 30  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 7 | 31  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 8 | 32  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 9 | 33  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 10 | 34  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 11 | 35  The quick brown fox jumps over the lazy dog. 漢字|
+row 12 | 36  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 13 | 37  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 14 | 38  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 15 | 39  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 16 | 40  The quick brown fox jumps over the lazy dog. 漢字 *****|
+row 17 | 41  The quick brown fox jumps over the lazy dog. 漢字 ******|
+row 18 | 42  The quick brown fox jumps over the lazy dog. 漢字|
+row 19 | 43  The quick brown fox jumps over the lazy dog. 漢字 *|
+row 20 | 44  The quick brown fox jumps over the lazy dog. 漢字 **|
+row 21 | 45  The quick brown fox jumps over the lazy dog. 漢字 ***|
+row 22 | 46  The quick brown fox jumps over the lazy dog. 漢字 ****|
+row 23 |:|
+checkpoint 9877
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+row 0 | 24  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 0 21-23 inverse
+row 1 | 25  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 1 21-23 inverse
+row 2 | 26  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 2 21-23 inverse
+row 3 | 27  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 3 21-23 inverse
+row 4 | 28  The quick brown fox jumps over the lazy dog. 漢字|
+attr 4 21-23 inverse
+row 5 | 29  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 5 21-23 inverse
+row 6 | 30  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 6 21-23 inverse
+row 7 | 31  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 7 21-23 inverse
+row 8 | 32  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 8 21-23 inverse
+row 9 | 33  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 9 21-23 inverse
+row 10 | 34  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 10 21-23 inverse
+row 11 | 35  The quick brown fox jumps over the lazy dog. 漢字|
+attr 11 21-23 inverse
+row 12 | 36  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 12 21-23 inverse
+row 13 | 37  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 13 21-23 inverse
+row 14 | 38  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 14 21-23 inverse
+row 15 | 39  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 15 21-23 inverse
+row 16 | 40  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 16 21-23 inverse
+row 17 | 41  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 17 21-23 inverse
+row 18 | 42  The quick brown fox jumps over the lazy dog. 漢字|
+attr 18 21-23 inverse
+row 19 | 43  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 19 21-23 inverse
+row 20 | 44  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 20 21-23 inverse
+row 21 | 45  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 21 21-23 inverse
+row 22 | 46  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 22 21-23 inverse
+row 23 |:|
+checkpoint 9966
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+row 0 | 25  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 0 21-23 inverse
+row 1 | 26  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 1 21-23 inverse
+row 2 | 27  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 2 21-23 inverse
+row 3 | 28  The quick brown fox jumps over the lazy dog. 漢字|
+attr 3 21-23 inverse
+row 4 | 29  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 4 21-23 inverse
+row 5 | 30  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 5 21-23 inverse
+row 6 | 31  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 6 21-23 inverse
+row 7 | 32  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 7 21-23 inverse
+row 8 | 33  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 8 21-23 inverse
+row 9 | 34  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 9 21-23 inverse
+row 10 | 35  The quick brown fox jumps over the lazy dog. 漢字|
+attr 10 21-23 inverse
+row 11 | 36  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 11 21-23 inverse
+row 12 | 37  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 12 21-23 inverse
+row 13 | 38  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 13 21-23 inverse
+row 14 | 39  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 14 21-23 inverse
+row 15 | 40  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 15 21-23 inverse
+row 16 | 41  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 16 21-23 inverse
+row 17 | 42  The quick brown fox jumps over the lazy dog. 漢字|
+attr 17 21-23 inverse
+row 18 | 43  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 18 21-23 inverse
+row 19 | 44  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 19 21-23 inverse
+row 20 | 45  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 20 21-23 inverse
+row 21 | 46  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 21 21-23 inverse
+row 22 | 47  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 22 21-23 inverse
+row 23 |:|
+checkpoint 11700
+size 80x24
+cursor 5,23
+flags AUTO_WRAP|ALTERNATE
+row 0 | 98  The quick brown fox jumps over the lazy dog. 漢字|
+attr 0 21-23 inverse
+row 1 | 99  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 1 21-23 inverse
+row 2 |100  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 2 21-23 inverse
+row 3 |101  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 3 21-23 inverse
+row 4 |102  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 4 21-23 inverse
+row 5 |103  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 5 21-23 inverse
+row 6 |104  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 6 21-23 inverse
+row 7 |105  The quick brown fox jumps over the lazy dog. 漢字|
+attr 7 21-23 inverse
+row 8 |106  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 8 21-23 inverse
+row 9 |107  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 9 21-23 inverse
+row 10 |108  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 10 21-23 inverse
+row 11 |109  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 11 21-23 inverse
+row 12 |110  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 12 21-23 inverse
+row 13 |111  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 13 21-23 inverse
+row 14 |112  The quick brown fox jumps over the lazy dog. 漢字|
+attr 14 21-23 inverse
+row 15 |113  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 15 21-23 inverse
+row 16 |114  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 16 21-23 inverse
+row 17 |115  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 17 21-23 inverse
+row 18 |116  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 18 21-23 inverse
+row 19 |117  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 19 21-23 inverse
+row 20 |118  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 20 21-23 inverse
+row 21 |119  The quick brown fox jumps over the lazy dog. 漢字|
+attr 21 21-23 inverse
+row 22 |120  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 22 21-23 inverse
+row 23 |(END)|
+attr 23 0-4 inverse
+checkpoint 13540
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+row 0 |  1  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 0 21-23 inverse
+row 1 |  2  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 1 21-23 inverse
+row 2 |  3  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 2 21-23 inverse
+row 3 |  4  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 3 21-23 inverse
+row 4 |  5  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 4 21-23 inverse
+row 5 |  6  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 5 21-23 inverse
+row 6 |  7  The quick brown fox jumps over the lazy dog. 漢字|
+attr 6 21-23 inverse
+row 7 |  8  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 7 21-23 inverse
+row 8 |  9  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 8 21-23 inverse
+row 9 | 10  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 9 21-23 inverse
+row 10 | 11  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 10 21-23 inverse
+row 11 | 12  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 11 21-23 inverse
+row 12 | 13  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 12 21-23 inverse
+row 13 | 14  The quick brown fox jumps over the lazy dog. 漢字|
+attr 13 21-23 inverse
+row 14 | 15  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 14 21-23 inverse
+row 15 | 16  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 15 21-23 inverse
+row 16 | 17  The quick brown fox jumps over the lazy dog. 漢字 ***|
+attr 16 21-23 inverse
+row 17 | 18  The quick brown fox jumps over the lazy dog. 漢字 ****|
+attr 17 21-23 inverse
+row 18 | 19  The quick brown fox jumps over the lazy dog. 漢字 *****|
+attr 18 21-23 inverse
+row 19 | 20  The quick brown fox jumps over the lazy dog. 漢字 ******|
+attr 19 21-23 inverse
+row 20 | 21  The quick brown fox jumps over the lazy dog. 漢字|
+attr 20 21-23 inverse
+row 21 | 22  The quick brown fox jumps over the lazy dog. 漢字 *|
+attr 21 21-23 inverse
+row 22 | 23  The quick brown fox jumps over the lazy dog. 漢字 **|
+attr 22 21-23 inverse
+row 23 |:|
+checkpoint 13572
+size 80x24
+cursor 0,0
+flags AUTO_WRAP
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 ||

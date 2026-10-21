@@ -1,0 +1,349 @@
+checkpoint 944
+size 80x24
+cursor 13,0
+flags AUTO_WRAP|ALTERNATE
+reply 1b5b3f36303b313b363b393b3135631b5b3e313b313b30631b5d31303b7267623a653565352f653565352f653565351b5c1b5d31313b7267623a303030302f303030302f303030301b5c1b5b383b32343b383074
+row 0 |user@host:~$|
+attr 0 0-8 fg=2 bold
+attr 0 10-10 fg=4 bold
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 |[0] 0:bash*                                       "f2d99ca42293" 04:00 21-Oct-26|
+attr 23 0-3 fg=0 bg=2
+attr 23 4-10 fg=0 bg=2 underline
+attr 23 11-79 fg=0 bg=2
+checkpoint 1014
+size 80x24
+cursor 13,2
+flags AUTO_WRAP|ALTERNATE
+row 0 |user@host:~$ echo left pane|
+attr 0 0-8 fg=2 bold
+attr 0 10-10 fg=4 bold
+row 1 |left pane|
+row 2 |user@host:~$|
+attr 2 0-8 fg=2 bold
+attr 2 10-10 fg=4 bold
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 |[0] 0:bash*                                       "f2d99ca42293" 04:00 21-Oct-26|
+attr 23 0-3 fg=0 bg=2
+attr 23 4-10 fg=0 bg=2 underline
+attr 23 11-79 fg=0 bg=2
+checkpoint 2475
+size 80x24
+cursor 54,0
+flags AUTO_WRAP|ALTERNATE
+row 0 |user@host:~$ echo left pane             │user@host:~$|
+attr 0 0-8 fg=2 bold
+attr 0 10-10 fg=4 bold
+attr 0 40-40 fg=7
+attr 0 41-49 fg=2 bold
+attr 0 51-51 fg=4 bold
+row 1 |left pane                               │|
+attr 1 40-40 fg=7
+row 2 |user@host:~$                            │|
+attr 2 0-8 fg=2 bold
+attr 2 10-10 fg=4 bold
+attr 2 40-40 fg=7
+row 3 |                                        │|
+attr 3 40-40 fg=7
+row 4 |                                        │|
+attr 4 40-40 fg=7
+row 5 |                                        │|
+attr 5 40-40 fg=7
+row 6 |                                        │|
+attr 6 40-40 fg=7
+row 7 |                                        │|
+attr 7 40-40 fg=7
+row 8 |                                        │|
+attr 8 40-40 fg=7
+row 9 |                                        │|
+attr 9 40-40 fg=7
+row 10 |                                        │|
+attr 10 40-40 fg=7
+row 11 |                                        │|
+attr 11 40-40 fg=7
+row 12 |                                        │|
+attr 12 40-40 fg=2
+row 13 |                                        │|
+attr 13 40-40 fg=2
+row 14 |                                        │|
+attr 14 40-40 fg=2
+row 15 |                                        │|
+attr 15 40-40 fg=2
+row 16 |                                        │|
+attr 16 40-40 fg=2
+row 17 |                                        │|
+attr 17 40-40 fg=2
+row 18 |                                        │|
+attr 18 40-40 fg=2
+row 19 |                                        │|
+attr 19 40-40 fg=2
+row 20 |                                        │|
+attr 20 40-40 fg=2
+row 21 |                                        │|
+attr 21 40-40 fg=2
+row 22 |                                        │|
+attr 22 40-40 fg=2
+row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
+attr 23 0-3 fg=0 bg=2
+attr 23 4-8 fg=0 bg=2 underline
+attr 23 9-79 fg=0 bg=2
+checkpoint 2557
+size 80x24
+cursor 54,2
+flags AUTO_WRAP|ALTERNATE
+row 0 |user@host:~$ echo left pane             │user@host:~$ echo right pane|
+attr 0 0-8 fg=2 bold
+attr 0 10-10 fg=4 bold
+attr 0 40-40 fg=7
+attr 0 41-49 fg=2 bold
+attr 0 51-51 fg=4 bold
+row 1 |left pane                               │right pane|
+attr 1 40-40 fg=7
+row 2 |user@host:~$                            │user@host:~$|
+attr 2 0-8 fg=2 bold
+attr 2 10-10 fg=4 bold
+attr 2 40-40 fg=7
+attr 2 41-49 fg=2 bold
+attr 2 51-51 fg=4 bold
+row 3 |                                        │|
+attr 3 40-40 fg=7
+row 4 |                                        │|
+attr 4 40-40 fg=7
+row 5 |                                        │|
+attr 5 40-40 fg=7
+row 6 |                                        │|
+attr 6 40-40 fg=7
+row 7 |                                        │|
+attr 7 40-40 fg=7
+row 8 |                                        │|
+attr 8 40-40 fg=7
+row 9 |                                        │|
+attr 9 40-40 fg=7
+row 10 |                                        │|
+attr 10 40-40 fg=7
+row 11 |                                        │|
+attr 11 40-40 fg=7
+row 12 |                                        │|
+attr 12 40-40 fg=2
+row 13 |                                        │|
+attr 13 40-40 fg=2
+row 14 |                                        │|
+attr 14 40-40 fg=2
+row 15 |                                        │|
+attr 15 40-40 fg=2
+row 16 |                                        │|
+attr 16 40-40 fg=2
+row 17 |                                        │|
+attr 17 40-40 fg=2
+row 18 |                                        │|
+attr 18 40-40 fg=2
+row 19 |                                        │|
+attr 19 40-40 fg=2
+row 20 |                                        │|
+attr 20 40-40 fg=2
+row 21 |                                        │|
+attr 21 40-40 fg=2
+row 22 |                                        │|
+attr 22 40-40 fg=2
+row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
+attr 23 0-3 fg=0 bg=2
+attr 23 4-8 fg=0 bg=2 underline
+attr 23 9-79 fg=0 bg=2
+checkpoint 3878
+size 80x24
+cursor 54,12
+flags AUTO_WRAP|ALTERNATE
+row 0 |user@host:~$ echo left pane             │user@host:~$ echo right pane|
+attr 0 0-8 fg=2 bold
+attr 0 10-10 fg=4 bold
+attr 0 40-40 fg=7
+attr 0 41-49 fg=2 bold
+attr 0 51-51 fg=4 bold
+row 1 |left pane                               │right pane|
+attr 1 40-40 fg=7
+row 2 |user@host:~$                            │user@host:~$|
+attr 2 0-8 fg=2 bold
+attr 2 10-10 fg=4 bold
+attr 2 40-40 fg=7
+attr 2 41-49 fg=2 bold
+attr 2 51-51 fg=4 bold
+row 3 |                                        │|
+attr 3 40-40 fg=7
+row 4 |                                        │|
+attr 4 40-40 fg=7
+row 5 |                                        │|
+attr 5 40-40 fg=7
+row 6 |                                        │|
+attr 6 40-40 fg=7
+row 7 |                                        │|
+attr 7 40-40 fg=7
+row 8 |                                        │|
+attr 8 40-40 fg=7
+row 9 |                                        │|
+attr 9 40-40 fg=7
+row 10 |                                        │|
+attr 10 40-40 fg=7
+row 11 |                                        ├───────────────────────────────────────|
+attr 11 40-79 fg=2
+row 12 |                                        │user@host:~$|
+attr 12 40-40 fg=2
+attr 12 41-49 fg=2 bold
+attr 12 51-51 fg=4 bold
+row 13 |                                        │|
+attr 13 40-40 fg=2
+row 14 |                                        │|
+attr 14 40-40 fg=2
+row 15 |                                        │|
+attr 15 40-40 fg=2
+row 16 |                                        │|
+attr 16 40-40 fg=2
+row 17 |                                        │|
+attr 17 40-40 fg=2
+row 18 |                                        │|
+attr 18 40-40 fg=2
+row 19 |                                        │|
+attr 19 40-40 fg=2
+row 20 |                                        │|
+attr 20 40-40 fg=2
+row 21 |                                        │|
+attr 21 40-40 fg=2
+row 22 |                                        │|
+attr 22 40-40 fg=2
+row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
+attr 23 0-3 fg=0 bg=2
+attr 23 4-8 fg=0 bg=2 underline
+attr 23 9-79 fg=0 bg=2
+checkpoint 3981
+size 80x24
+cursor 54,18
+flags AUTO_WRAP|ALTERNATE
+row 0 |user@host:~$ echo left pane             │user@host:~$ echo right pane|
+attr 0 0-8 fg=2 bold
+attr 0 10-10 fg=4 bold
+attr 0 40-40 fg=7
+attr 0 41-49 fg=2 bold
+attr 0 51-51 fg=4 bold
+row 1 |left pane                               │right pane|
+attr 1 40-40 fg=7
+row 2 |user@host:~$                            │user@host:~$|
+attr 2 0-8 fg=2 bold
+attr 2 10-10 fg=4 bold
+attr 2 40-40 fg=7
+attr 2 41-49 fg=2 bold
+attr 2 51-51 fg=4 bold
+row 3 |                                        │|
+attr 3 40-40 fg=7
+row 4 |                                        │|
+attr 4 40-40 fg=7
+row 5 |                                        │|
+attr 5 40-40 fg=7
+row 6 |                                        │|
+attr 6 40-40 fg=7
+row 7 |                                        │|
+attr 7 40-40 fg=7
+row 8 |                                        │|
+attr 8 40-40 fg=7
+row 9 |                                        │|
+attr 9 40-40 fg=7
+row 10 |                                        │|
+attr 10 40-40 fg=7
+row 11 |                                        ├───────────────────────────────────────|
+attr 11 40-79 fg=2
+row 12 |                                        │user@host:~$ seq 1 5|
+attr 12 40-40 fg=2
+attr 12 41-49 fg=2 bold
+attr 12 51-51 fg=4 bold
+row 13 |                                        │1|
+attr 13 40-40 fg=2
+row 14 |                                        │2|
+attr 14 40-40 fg=2
+row 15 |                                        │3|
+attr 15 40-40 fg=2
+row 16 |                                        │4|
+attr 16 40-40 fg=2
+row 17 |                                        │5|
+attr 17 40-40 fg=2
+row 18 |                                        │user@host:~$|
+attr 18 40-40 fg=2
+attr 18 41-49 fg=2 bold
+attr 18 51-51 fg=4 bold
+row 19 |                                        │|
+attr 19 40-40 fg=2
+row 20 |                                        │|
+attr 20 40-40 fg=2
+row 21 |                                        │|
+attr 21 40-40 fg=2
+row 22 |                                        │|
+attr 22 40-40 fg=2
+row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
+attr 23 0-3 fg=0 bg=2
+attr 23 4-8 fg=0 bg=2 underline
+attr 23 9-79 fg=0 bg=2
+checkpoint 4165
+size 80x24
+cursor 0,1
+flags AUTO_WRAP
+row 0 |[server exited]|
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 ||

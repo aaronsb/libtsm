@@ -1,0 +1,7 @@
+size 10x4
+cursor 1,3
+flags AUTO_WRAP
+row 0 |0123456789|
+row 1 |wrapped|
+row 2 |012345678e|
+row 3 |x|

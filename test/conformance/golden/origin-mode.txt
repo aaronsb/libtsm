@@ -1,0 +1,11 @@
+size 20x8
+cursor 8,0
+flags AUTO_WRAP
+row 0 |absolute|
+row 1 ||
+row 2 |origin|
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
