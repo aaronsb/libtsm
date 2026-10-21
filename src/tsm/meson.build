@@ -26,7 +26,7 @@ endif
 
 deps = [wcwidth_dep, shl_dep, xkbcommon_dep]
 
-libtsm = shared_library(
+libtsm = library(
     'tsm',
     libtsm_srcs,
     dependencies: deps,
