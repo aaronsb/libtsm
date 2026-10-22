@@ -10,6 +10,8 @@ sgr-underline-styles 80 24
 sgr-strike 80 24
 sgr-underline-color-reset 80 24
 sgr-subparam-unknown 80 24
+sgr-color-colon-out-of-range 80 24
+sgr-color-semicolon-subparams 80 24
 sgr-58-semicolon-no-blink 80 24
 sgr-subparam-overflow 80 24
 csi-subparam-non-sgr 80 24

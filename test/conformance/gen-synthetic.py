@@ -150,6 +150,25 @@ def _():
             CSI + "7:1;9m" + "strike" + sgr(0))
 
 
+@case("sgr-color-colon-out-of-range")
+def _():
+    # In the colon forms an index or component above 255 rejects the colour
+    # alone; 255 itself is accepted. (The semicolon forms keep upstream's
+    # handling of large values.)
+    return (CSI + "48:2:256:300:65535;1m" + "bold" + sgr(0) + " " +
+            CSI + "38:5:256;3m" + "italic" + sgr(0) + " " +
+            CSI + "4;58:2::0:0:256m" + "ul" + sgr(0) + " " +
+            CSI + "38:2:255:255:255;48:5:255m" + "max" + sgr(0))
+
+
+@case("sgr-color-semicolon-subparams")
+def _():
+    # A semicolon colour form whose arguments carry sub-parameters is not that
+    # form: nothing is consumed, and the arguments are read as SGR on their own.
+    return (CSI + "38;5:1;9m" + "strike" + sgr(0) + " " +     # 5:1 skipped, 9 strike
+            CSI + "48;2;1;2;3:4m" + "dimbold" + sgr(0))       # 2 dim, 1 bold, 3:4 skipped
+
+
 @case("sgr-58-semicolon-no-blink")
 def _():
     # 58 consumes its own 5 and index; a later 5 is still blink.
