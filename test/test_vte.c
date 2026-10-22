@@ -1761,6 +1761,64 @@ START_TEST(test_vte_wide_at_margin)
 }
 END_TEST
 
+/* a VS16 that widens a cell takes the cell after it, or in insert mode
+ * pushes the line right one cell; a wide character it cuts goes whole, also
+ * at the margin of a narrowed screen */
+START_TEST(test_vte_widen_at_margin)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char w[16];
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 4, 2);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* the heart pushes the wide character into the last column */
+	input_str(vte, "\e[1;2H\xe4\xb8\xad\e[1;1H\e[4h\xe2\x9d\xa4\xef\xb8\x8f\e[4l");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "2011");
+	ck_assert(tsm_frame_cell_at(f, 2, 0)->key == 0);
+	ck_assert(tsm_frame_cell_at(f, 3, 0)->key == 0);
+
+	/* narrowed from 6 with the wide character across the margin: the
+	 * push takes its lead, and its trailing half goes too */
+	r = tsm_screen_resize(screen, 6, 2);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[2J\e[1;1H\xe2\x9d\xa4" "bc\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 4, 2);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[1;2H\e[4h\xef\xb8\x8f\e[4l");
+	r = tsm_screen_resize(screen, 6, 2);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "201111");
+	ck_assert(tsm_frame_cell_at(f, 4, 0)->key == 0);
+
+	/* the same without insert mode: the heart takes the lead of the wide
+	 * character after it, whose trailing half lies past the margin */
+	input_str(vte, "\e[2J\e[1;4H\xe4\xb8\xad\e[1;3H\xe2\x9d\xa4");
+	r = tsm_screen_resize(screen, 4, 2);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[1;4H\xef\xb8\x8f");
+	r = tsm_screen_resize(screen, 6, 2);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "112011");
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 /* a wide character's halves are protected together, so an erase that skips
  * protected cells keeps or clears both */
 START_TEST(test_vte_protect_wide)
@@ -1939,6 +1997,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_frame_inverse_screen)
 	TEST(test_vte_repeat_last_printed)
 	TEST(test_vte_wide_at_margin)
+	TEST(test_vte_widen_at_margin)
 	TEST(test_vte_protect_wide)
 	TEST(test_vte_word_select_space)
 	TEST(test_vte_max_sb_while_viewed)
