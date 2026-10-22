@@ -1652,9 +1652,10 @@ START_TEST(test_vte_repeat_last_printed)
 }
 END_TEST
 
-/* REP repeats the codepoint that started the last printed cell, as Ghostty
- * does: after a base and a combining mark, the base. Each copy takes a cell
- * of its own, also where the break rules would join it to the cell before */
+/* REP repeats the codepoint that started the last printed cell, the one
+ * Ghostty keeps: after a base and a combining mark, the base. Unlike Ghostty,
+ * each copy takes a cell of its own, also where the break rules would join
+ * it to the cell before */
 START_TEST(test_vte_repeat_cluster)
 {
 	struct tsm_screen *screen;

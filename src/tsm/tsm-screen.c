@@ -1835,11 +1835,12 @@ void tsm_screen_insert_chars(struct tsm_screen *con, unsigned int num)
 /*
  * REP: prints the codepoint that started the last printed cell @num more
  * times, through the same path as printed text, so the copies wrap at the
- * margin and honour insert mode. Ghostty repeats the same codepoint
+ * margin and honour insert mode. The codepoint is the one Ghostty keeps
  * (src/terminal/Terminal.zig, printRepeat and previous_char; MIT-licensed):
- * after a base and a combining mark, REP repeats the base. Each copy starts
- * a cell of its own and joins neither the cluster before it nor the copy
- * before it. Nothing is repeated before the first print.
+ * after a base and a combining mark, REP repeats the base. Unlike Ghostty,
+ * which keeps its grapheme state across the copies, each copy starts a cell
+ * of its own and joins neither the cluster before it nor the copy before
+ * it. Nothing is repeated before the first print.
  */
 void tsm_screen_repeat_char(struct tsm_screen *con, unsigned int num,
 			    const struct cell_attr *attr)
