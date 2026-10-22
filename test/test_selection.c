@@ -923,6 +923,41 @@ START_TEST(test_screen_copy_after_narrowing)
 }
 END_TEST
 
+/* a word selection past the end of a scrollback line narrower than the
+ * screen selects nothing */
+START_TEST(test_screen_word_past_narrow_line)
+{
+	struct tsm_screen *screen;
+	char *str = NULL;
+	int r, i;
+
+	r = tsm_screen_new(&screen, NULL, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 4, 2);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_set_max_sb(screen, 10);
+
+	/* lines made while the screen is 4 wide scroll into the scrollback */
+	for (i = 0; i < 6; i++) {
+		write_string(screen, "abcd");
+		tsm_screen_newline(screen);
+	}
+
+	/* and stay 4 cells wide when the screen widens */
+	r = tsm_screen_resize(screen, 120, 2);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_sb_up(screen, 1);
+	ck_assert_ptr_ne(screen->sb.pos, NULL);
+	ck_assert_uint_eq(screen->sb.pos->size, 4);
+
+	tsm_screen_selection_word(screen, 80, 0);
+	r = tsm_screen_selection_copy(screen, &str);
+	ck_assert_int_eq(r, -ENOENT);
+
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_screen_copy_incomplete)
 	TEST(test_screen_copy_one_cell)
@@ -938,6 +973,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_screen_copy_lines_sb_scrolled_cut_off)
 	TEST(test_screen_robustness)
 	TEST(test_screen_copy_after_narrowing)
+	TEST(test_screen_word_past_narrow_line)
 TEST_END_CASE
 
 TEST_DEFINE(

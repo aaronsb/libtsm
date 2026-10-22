@@ -95,7 +95,9 @@ static void word_select(struct tsm_screen *con,
 
 	line = con->sel_start.line;
 
-	if (!line || line->cells[posx].ch == ' ')
+	/* posx is checked against the screen width only; a scrollback line made
+	 * while the screen was narrower has fewer cells */
+	if (!line || posx >= line->size || line->cells[posx].ch == ' ')
 		return;
 
 	for (start = posx; start >= 0; start--) {
