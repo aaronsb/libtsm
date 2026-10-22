@@ -1301,7 +1301,8 @@ END_TEST
 
 /* the age counter wraps: an age from before the wrap draws everything once,
  * however it compares with the ages after it, and an unchanged screen draws
- * nothing after that */
+ * nothing after that, whether the screen, the scrollback or the alternate
+ * screen is in view */
 START_TEST(test_vte_frame_since_wrap)
 {
 	struct tsm_screen *screen;
@@ -1318,26 +1319,31 @@ START_TEST(test_vte_frame_since_wrap)
 	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
 	ck_assert_int_eq(r, 0);
 
-	/* early's age is small; a line goes to the scrollback */
-	input_str(vte, "ab\n\n\n\nc");
+	/* early's age is small */
+	input_str(vte, "q");
 	tsm_screen_frame_since(screen, &early);
-	tsm_screen_frame_since(screen, &a);
 	tsm_screen_frame_since(screen, &idle);
 	tsm_screen_frame(screen);
 
-	/* the counter, after many changes, just short of wrapping: a sees
-	 * a change near the top of the range and takes an age there */
-	screen->age_cnt = (tsm_age_t)-4;
+	/* after many changes, the counter near the top of its range: a line
+	 * goes to the scrollback, the alternate screen is written, the screen
+	 * is erased and rewritten, and the screen's own age moves, all with
+	 * ages there */
+	screen->age_cnt = (tsm_age_t)-60;
+	input_str(vte, "ab\n\n\n\nc");
+	input_str(vte, "\e[?47h\e[1;1Halt\e[?47l");
+	tsm_screen_erase_screen(screen, false);
 	input_str(vte, "\e[2;6Hz");
 	f = tsm_screen_frame_since(screen, &a);
 	ck_assert(frame_changed(f, 5, 1));
-	ck_assert_uint_eq(frame_count_changed(f), 3);
 	ck_assert_uint_eq(screen->age_epoch, 0);
 
 	/* the counter wraps, and climbs past early's age */
-	input_str(vte, "\e[3;1Hdddddddddddddddddddd");
+	while (!screen->age_epoch)
+		input_str(vte, "\e[3;1Hd");
+	while (screen->age_cnt <= early.age)
+		input_str(vte, "\e[3;2He");
 	ck_assert_uint_eq(screen->age_epoch, 1);
-	ck_assert_uint_gt(screen->age_cnt, early.age);
 	ck_assert_uint_lt(screen->age_cnt, a.age);
 
 	/* every age from before the wrap draws everything, once */
@@ -1354,11 +1360,12 @@ START_TEST(test_vte_frame_since_wrap)
 	f = tsm_screen_frame(screen);
 	ck_assert_uint_eq(frame_count_changed(f), 0);
 
-	/* content from before the wrap, in the scrollback too, is older than
-	 * any frame after it */
+	/* the scrollback in view: a view move redraws everything, and after
+	 * it the line from before the wrap reads as unchanged */
 	tsm_screen_sb_up(screen, 1);
 	f = tsm_screen_frame_since(screen, &a);
 	ck_assert_uint_eq(frame_count_changed(f), 40);
+	ck_assert_uint_eq(tsm_frame_cell_at(f, 1, 0)->key, 'a');
 	f = tsm_screen_frame_since(screen, &a);
 	ck_assert_uint_eq(frame_count_changed(f), 0);
 	tsm_screen_sb_reset(screen);
@@ -1366,6 +1373,17 @@ START_TEST(test_vte_frame_since_wrap)
 	ck_assert_uint_eq(frame_count_changed(f), 40);
 	f = tsm_screen_frame_since(screen, &a);
 	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	/* the alternate screen in view, the same */
+	input_str(vte, "\e[?47h");
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	ck_assert_uint_eq(tsm_frame_cell_at(f, 0, 0)->key, 'a');
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+	input_str(vte, "\e[?47l");
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
 	f = tsm_screen_frame_since(screen, &early);
 	ck_assert_uint_eq(frame_count_changed(f), 40);
 
@@ -1383,6 +1401,68 @@ START_TEST(test_vte_frame_since_wrap)
 	ck_assert_uint_eq(frame_count_changed(f), 40);
 	f = tsm_screen_frame_since(screen, &idle);
 	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+struct draw_newer {
+	tsm_age_t prev;
+	unsigned int count;
+};
+
+/* counts the cells tsm_screen_draw asks to redraw against data's prev: age 0
+ * (redraw everything) or newer */
+static int newer_draw_cb(struct tsm_screen *con, uint64_t id, const uint32_t *ch,
+			 size_t len, unsigned int width, unsigned int posx,
+			 unsigned int posy, const struct tsm_screen_attr *attr,
+			 tsm_age_t age, void *data)
+{
+	struct draw_newer *n = data;
+
+	UNUSED(con);
+	UNUSED(id);
+	UNUSED(ch);
+	UNUSED(len);
+	UNUSED(width);
+	UNUSED(posx);
+	UNUSED(posy);
+	UNUSED(attr);
+	if (!age || age > n->prev)
+		n->count++;
+	return 0;
+}
+
+/* a frame leaves the age-reset flag to tsm_screen_draw: a draw user on the
+ * same screen still redraws everything after a wrap, whoever drew first */
+START_TEST(test_vte_frame_keeps_draw_reset)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct draw_newer n = { 0 };
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 4);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	screen->age_cnt = (tsm_age_t)-60;
+	input_str(vte, "ab");
+	n.prev = tsm_screen_draw(screen, newer_draw_cb, &n);
+	ck_assert_uint_ne(n.prev, 0);
+
+	while (!screen->age_epoch)
+		input_str(vte, "\e[2;1Hd");
+	tsm_screen_frame(screen);
+	input_str(vte, "\e[3;1Hx");
+
+	n.count = 0;
+	tsm_screen_draw(screen, newer_draw_cb, &n);
+	ck_assert_uint_eq(n.count, 40);
 
 	tsm_vte_unref(vte);
 	tsm_screen_unref(screen);
@@ -2485,6 +2565,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_frame_changed)
 	TEST(test_vte_frame_since_callers)
 	TEST(test_vte_frame_since_wrap)
+	TEST(test_vte_frame_keeps_draw_reset)
 	TEST(test_vte_frame_width)
 	TEST(test_vte_frame_colors)
 	TEST(test_vte_frame_resize)

@@ -581,13 +581,11 @@ static void frame_pair_row(struct tsm_frame_cell *row, unsigned int cols)
 
 /*
  * The frame, with TSM_FRAME_CHANGED relative to @since, which it advances.
- * The frame buffer is the screen's, whoever calls. Every caller learns of an
- * age wrap from the epoch. @own is tsm_screen_frame's call, which clears the
- * age-reset flag as it always has; tsm_screen_draw reads the same flag.
+ * The frame buffer is the screen's, whoever calls. A caller learns of an age
+ * wrap from the epoch; the age-reset flag is tsm_screen_draw's alone.
  */
 static const struct tsm_frame *screen_frame(struct tsm_screen *con,
-					    struct tsm_frame_age *since,
-					    bool own)
+					    struct tsm_frame_age *since)
 {
 	unsigned int i, j, k, n, cur_x, cur_y, cur_row;
 	struct line *line, *next_line;
@@ -707,8 +705,6 @@ static const struct tsm_frame *screen_frame(struct tsm_screen *con,
 	/* later changes take a newer age than this frame */
 	since->age = con->age_cnt;
 	since->epoch = con->age_epoch;
-	if (own)
-		con->age_reset = 0;
 	screen_inc_age(con);
 
 	return &con->frame;
@@ -720,7 +716,7 @@ const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
 	if (!con)
 		return NULL;
 
-	return screen_frame(con, &con->frame_age, true);
+	return screen_frame(con, &con->frame_age);
 }
 
 SHL_EXPORT
@@ -730,7 +726,7 @@ const struct tsm_frame *tsm_screen_frame_since(struct tsm_screen *con,
 	if (!con || !since)
 		return NULL;
 
-	return screen_frame(con, since, false);
+	return screen_frame(con, since);
 }
 
 SHL_EXPORT
