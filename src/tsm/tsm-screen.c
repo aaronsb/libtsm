@@ -906,10 +906,19 @@ void tsm_screen_set_max_sb(struct tsm_screen *con,
 		shl_dlist_unlink(&line->list);
 		--con->sb.count;
 
-		/* We treat fixed/unfixed position the same here because we
-		 * remove lines from the TOP of the scrollback buffer. */
-		if (con->sb.pos == line)
-			con->sb.pos = shl_dlist_first(&con->sb.list, struct line, list);
+		/* Lines go from the top, so a viewed position below them moves
+		 * up one; a viewed top line passes the view to the next one,
+		 * or to the screen when it was the last. */
+		if (con->sb.pos == line) {
+			con->sb.pos = con->sb.count ?
+				shl_dlist_first(&con->sb.list, struct line, list) :
+				NULL;
+			con->sb.pos_num = 0;
+		} else if (con->sb.pos) {
+			--con->sb.pos_num;
+		} else {
+			con->sb.pos_num = con->sb.count;
+		}
 
 		clear_selection_on_line(con, line);
 		line_free(con, line);

@@ -1785,6 +1785,54 @@ START_TEST(test_vte_word_select_space)
 }
 END_TEST
 
+/* lowering the scrollback limit while scrollback is viewed keeps the view on
+ * a line that still exists, or returns it to the screen */
+START_TEST(test_vte_max_sb_while_viewed)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 8, 4);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_set_max_sb(screen, 4);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* lines 1-3 in scrollback, 4-6 and an empty line on screen */
+	input_str(vte, "1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n");
+	ck_assert_uint_eq(tsm_screen_sb_get_line_count(screen), 3);
+
+	/* viewing line 3: dropping line 1 keeps it, one place higher */
+	tsm_screen_sb_up(screen, 1);
+	ck_assert_uint_eq(tsm_screen_sb_get_line_pos(screen), 2);
+	tsm_screen_set_max_sb(screen, 2);
+	ck_assert_uint_eq(tsm_screen_sb_get_line_pos(screen), 1);
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == '3');
+
+	/* viewing line 2, the top: dropping it passes the view to line 3 */
+	tsm_screen_sb_up(screen, 1);
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == '2');
+	tsm_screen_set_max_sb(screen, 1);	/* raised to 2: nothing goes */
+	tsm_screen_set_max_sb(screen, 0);
+	ck_assert_uint_eq(tsm_screen_sb_get_line_count(screen), 0);
+	ck_assert_uint_eq(tsm_screen_sb_get_line_pos(screen), 0);
+
+	/* no scrollback left: the view is the screen */
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == '4');
+	ck_assert(tsm_frame_cell_at(f, 0, 2)->key == '6');
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -1819,6 +1867,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_margin_cut_wide)
 	TEST(test_vte_protect_wide)
 	TEST(test_vte_word_select_space)
+	TEST(test_vte_max_sb_while_viewed)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(bell)
