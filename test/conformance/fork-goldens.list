@@ -35,3 +35,6 @@ mode-2027-resets            # RIS and DECSTR return to the configured method
 combining-after-move        # a mark after cursor movement joins the cell before it
 cluster-reuse-erase         # clusters erased and printed again
 cluster-max                 # a 33-codepoint cluster keeps 32
+prepend-width               # a Prepend mark starts a cluster with width
+vs16-insert-mode            # VS16 widening in insert mode shifts the line
+insert-wide-one-column      # insert mode with wide cells on a one-column screen

@@ -1,0 +1,6 @@
+size 1x3
+cursor 2,2
+flags INSERT_MODE|AUTO_WRAP
+row 0 |中|
+row 1 ||
+row 2 |❤️|
