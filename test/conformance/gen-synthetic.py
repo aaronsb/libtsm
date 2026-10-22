@@ -258,6 +258,91 @@ def _():
             "tone \U0001F44D\U0001F3FD | end")
 
 
+HEART, VS15, VS16, ZWJ = "❤", "︎", "️", "‍"
+FAMILY = "\U0001F468" + ZWJ + "\U0001F469" + ZWJ + "\U0001F467"
+FLAG_US = "\U0001F1FA\U0001F1F8"
+THUMBS_TONE = "\U0001F44D\U0001F3FD"
+KEYCAP_1 = "1" + VS16 + "⃣"
+
+
+@case("emoji-sequences")
+def _():
+    # ZWJ family, flag, keycap and skin tone: one two-cell cluster each.
+    return "|".join(["", FAMILY, FLAG_US, KEYCAP_1, THUMBS_TONE, ""])
+
+
+@case("vs16-widen")
+def _():
+    # VS16 after a listed base makes the placed cell two wide, mid-line.
+    return "a" + HEART + VS16 + "b"
+
+
+@case("vs16-margin", 10, 4)
+def _():
+    # VS16 widening the cell in the last column: the cluster moves to the
+    # next line and the cell it left is cleared.
+    return "012345678" + HEART + VS16 + "x"
+
+
+@case("vs16-unlisted-base")
+def _():
+    # VS16 after a base with no emoji variation sequence joins and changes
+    # nothing.
+    return "A" + VS16 + "b"
+
+
+@case("vs15-width")
+def _():
+    # VS15 never changes width: a narrow base stays one cell, a wide one two.
+    return "|" + HEART + VS15 + "|⌚" + VS15 + "|"
+
+
+@case("width-methods")
+def _():
+    # The same text under each method: mode 2027 set (unicode), then reset
+    # (wcwidth), where every codepoint with width takes its own cells.
+    text = "é|" + THUMBS_TONE + "|" + FLAG_US + "|" + FAMILY + "|" + HEART + VS16 + "|"
+    return CSI + "?2027h" + text + "\r\n" + CSI + "?2027l" + text
+
+
+@case("mode-2027-decrqm")
+def _():
+    # DECRQM for mode 2027: 1 while set (the default), 2 once reset, 1 again.
+    q = CSI + "?2027$p"
+    return q + CSI + "?2027l" + q + CSI + "?2027h" + q
+
+
+@case("mode-2027-resets")
+def _():
+    # RIS and DECSTR return mode 2027 to the configured method (unicode here).
+    q = CSI + "?2027$p"
+    return (CSI + "?2027l" + ESC + "c" + q + THUMBS_TONE + "\r\n" +
+            CSI + "?2027l" + CSI + "!p" + q + THUMBS_TONE)
+
+
+@case("combining-after-move")
+def _():
+    # After the cursor moves, a combining mark joins the cell before the
+    # cursor; with nothing there it is dropped. SGR does not end a cluster.
+    return ("ab" + CSI + "D" + "́" + "\r\n" +
+            "x" + CSI + "C" + "̀" + "y" + "\r\n" +
+            "e" + CSI + "31m" + "́" + CSI + "0m" + "z")
+
+
+@case("cluster-reuse-erase")
+def _():
+    # Clusters erased and printed again, so their table entries are freed and
+    # reused.
+    return ("éà" + CSI + "2K\r" + "àéô" +
+            CSI + "1;2H" + CSI + "K" + "é")
+
+
+@case("cluster-max")
+def _():
+    # A cluster of 33 codepoints keeps its first 32.
+    return "a" + "̀" * 32 + "b"
+
+
 @case("alt-screen", 20, 4)
 def _():
     return "main-screen" + CSI + "?1049h" + CSI + "H" + "alt-screen" + CSI + "?1049l" + "-back"
