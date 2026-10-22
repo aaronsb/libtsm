@@ -1782,7 +1782,9 @@ void tsm_screen_insert_chars(struct tsm_screen *con, unsigned int num)
 void tsm_screen_repeat_char(struct tsm_screen *con, unsigned int num)
 {
 	struct cell *cells;
-	unsigned int max, i;
+	struct cell_attr attr;
+	tsm_symbol_t ch;
+	unsigned int src, len, x;
 
 	if (!con || !num || !con->size_y || !con->size_x)
 		return;
@@ -1799,19 +1801,29 @@ void tsm_screen_repeat_char(struct tsm_screen *con, unsigned int num)
 	if (!con->cursor_x)
 		return;
 
-	max = con->size_x - con->cursor_x;
-	if (num > max)
-		num = max;
-
+	/* the character before the cursor; after a wide one that is its
+	 * trailing half, so the character starts a cell earlier */
 	cells = con->lines[con->cursor_y]->cells;
-	for (i = 0; i < num; i++) {
-		cell_set_ch(con, &cells[con->cursor_x + i], cells[con->cursor_x - 1].ch);
-		cells[con->cursor_x + i].width = cells[con->cursor_x - 1].width;
-		cells[con->cursor_x + i].attr = cells[con->cursor_x - 1].attr;
-		cells[con->cursor_x + i].age = con->age_cnt;
+	src = con->cursor_x - 1;
+	if (!cells[src].width && src && cells[src - 1].width == 2)
+		--src;
+	ch = cells[src].ch;
+	len = cells[src].width ? cells[src].width : 1;
+	attr = cells[src].attr;
+
+	/* each copy goes through the write path, which keeps a wide
+	 * character's halves together; the copies stop at the margin, where a
+	 * wide one is cut as a written one is */
+	tsm_symbol_ref(con->sym_table, ch);
+	x = con->cursor_x;
+	while (num-- && x < con->size_x) {
+		screen_write(con, x, con->cursor_y, ch, len, &attr);
+		x += len;
 	}
+	tsm_symbol_unref(con->sym_table, ch);
+
 	screen_seg_reset(con);
-	con->cursor_x += num;
+	con->cursor_x = x < con->size_x ? x : con->size_x;
 }
 
 SHL_EXPORT

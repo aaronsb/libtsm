@@ -1565,6 +1565,59 @@ START_TEST(test_vte_frame_inverse_screen)
 }
 END_TEST
 
+/* frame widths of row @y as digits, for comparing a whole row at once */
+static void frame_widths(const struct tsm_frame *f, unsigned int y, char *out)
+{
+	unsigned int x;
+
+	for (x = 0; x < f->cols; ++x)
+		out[x] = '0' + tsm_frame_cell_at(f, x, y)->width;
+	out[f->cols] = 0;
+}
+
+/* REP repeats a wide character whole, and cuts the last copy at the margin
+ * as a written one is cut */
+START_TEST(test_vte_repeat_wide)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char w[16];
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 8, 2);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "\xe4\xb8\xad\e[3b");		/* U+4E2D, REP 3 */
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "20202020");
+	ck_assert(tsm_frame_cell_at(f, 6, 0)->key == 0x4e2d);
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 8);
+
+	/* one column left: the copy is cut there */
+	input_str(vte, "\e[2;1Habcde\xe4\xb8\xad\e[3b");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 1, w);
+	ck_assert_str_eq(w, "11111202");
+	ck_assert(tsm_frame_cell_at(f, 7, 1)->key == 0x4e2d);
+
+	/* a narrow character repeats as before */
+	input_str(vte, "\e[2J\e[1;1Hx\e[2b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 2, 0)->key == 'x');
+	ck_assert(tsm_frame_cell_at(f, 3, 0)->key == 0);
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 3);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -1595,6 +1648,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_frame_cursor_pending_wrap)
 	TEST(test_vte_frame_cursor_trailing_half)
 	TEST(test_vte_frame_inverse_screen)
+	TEST(test_vte_repeat_wide)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(bell)
