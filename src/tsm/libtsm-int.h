@@ -260,8 +260,9 @@ struct tsm_screen {
 		struct tsm_gb_state gb;
 	} seg;
 
-	/* the last codepoint printed, which REP repeats (as foot keeps
-	 * vt.last_printed); 0 before any print and after a reset */
+	/* the codepoint that started the last printed cell, which REP
+	 * repeats; a codepoint that joins a cluster leaves it, as Ghostty
+	 * keeps previous_char; 0 before any print and after a reset */
 	tsm_symbol_t last_printed;
 
 	/* draw2 interface */

@@ -1652,6 +1652,55 @@ START_TEST(test_vte_repeat_last_printed)
 }
 END_TEST
 
+/* REP repeats the codepoint that started the last printed cell, as Ghostty
+ * does: after a base and a combining mark, the base. Each copy takes a cell
+ * of its own, also where the break rules would join it to the cell before */
+START_TEST(test_vte_repeat_cluster)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char w[16];
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 8, 3);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* e and a combining acute, then REP 2: the e twice, in new cells */
+	input_str(vte, "e\xcc\x81\e[2b");
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_ge(tsm_frame_cell_at(f, 0, 0)->key & 0xffffffffu,
+			  TSM_FRAME_CLUSTER_KEY);
+	ck_assert(tsm_frame_cell_at(f, 1, 0)->key == 'e');
+	ck_assert(tsm_frame_cell_at(f, 2, 0)->key == 'e');
+	ck_assert(tsm_frame_cell_at(f, 3, 0)->key == 0);
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 3);
+
+	/* under the break rules, a regional indicator would pair with the
+	 * one before it, and a prepended mark would join what follows */
+	input_str(vte, "\e[?2027h\e[2;1H\xf0\x9f\x87\xba\e[2b");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 1, w);
+	ck_assert_str_eq(w, "20202011");
+	ck_assert(tsm_frame_cell_at(f, 0, 1)->key == 0x1f1fa);
+	ck_assert(tsm_frame_cell_at(f, 2, 1)->key == 0x1f1fa);
+	ck_assert(tsm_frame_cell_at(f, 4, 1)->key == 0x1f1fa);
+	input_str(vte, "\e[3;1H\xd8\x80\e[2b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 2)->key == 0x600);
+	ck_assert(tsm_frame_cell_at(f, 1, 2)->key == 0x600);
+	ck_assert(tsm_frame_cell_at(f, 2, 2)->key == 0x600);
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 3);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 /* a wide character never sits cut at the margin: with one column left it
  * wraps, or without autowrap is not printed; on a narrowed screen an edit
  * that cuts one at the margin takes both halves, so none comes back half
@@ -2068,6 +2117,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_frame_cursor_trailing_half)
 	TEST(test_vte_frame_inverse_screen)
 	TEST(test_vte_repeat_last_printed)
+	TEST(test_vte_repeat_cluster)
 	TEST(test_vte_wide_at_margin)
 	TEST(test_vte_widen_at_margin)
 	TEST(test_vte_clear_past_margin)
