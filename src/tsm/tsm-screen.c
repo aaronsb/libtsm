@@ -1222,10 +1222,19 @@ static void widen_cell(struct tsm_screen *con, unsigned int x, unsigned int y)
 
 	if (x + 1 < con->size_x) {
 		next = &line->cells[x + 1];
-		/* a wide character there loses its lead, so its trailing half
-		 * goes too */
-		if (next->width > 1 && x + 2 < con->size_x)
+		if (con->flags & TSM_SCREEN_INSERT_MODE) {
+			/* the rest of the line moves right one cell, as for an
+			 * inserted wide character, and the last cell goes */
+			cell_release(con, &line->cells[con->size_x - 1]);
+			memmove(&line->cells[x + 2], &line->cells[x + 1],
+				sizeof(struct cell) * (con->size_x - x - 2));
+			next->ch = 0;	/* a copy now */
+			line->age = con->age_cnt;
+		} else if (next->width > 1 && x + 2 < con->size_x) {
+			/* a wide character there loses its lead, so its
+			 * trailing half goes too */
 			screen_cell_clear(con, &line->cells[x + 2]);
+		}
 		cell_set_ch(con, next, 0);
 		next->width = 0;
 		next->attr = cell->attr;
