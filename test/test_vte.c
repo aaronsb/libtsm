@@ -1993,6 +1993,172 @@ START_TEST(test_vte_protect_wide)
 }
 END_TEST
 
+/* the cells of rows @y0-@y1, columns @x0-@x1, are blank with colours @fg and
+ * @bg and nothing else */
+static void check_blank(const struct tsm_frame *f, const char *path,
+			unsigned int x0, unsigned int y0,
+			unsigned int x1, unsigned int y1,
+			struct tsm_screen_color fg, struct tsm_screen_color bg)
+{
+	const uint16_t pen = TSM_FRAME_BOLD | TSM_FRAME_ITALIC | TSM_FRAME_DIM |
+			     TSM_FRAME_BLINK | TSM_FRAME_INVERSE |
+			     TSM_FRAME_PROTECT | TSM_FRAME_STRIKE |
+			     TSM_FRAME_UL_SET;
+	const struct tsm_frame_cell *c;
+	unsigned int x, y;
+
+	for (y = y0; y <= y1; ++y) {
+		for (x = x0; x <= x1; ++x) {
+			c = tsm_frame_cell_at(f, x, y);
+			ck_assert_msg(c->key == 0, "%s %u,%u: key", path, x, y);
+			ck_assert_msg(c->underline == TSM_UNDERLINE_NONE,
+				      "%s %u,%u: underline %u", path, x, y,
+				      c->underline);
+			ck_assert_msg(!(c->flags & pen), "%s %u,%u: flags %x",
+				      path, x, y, c->flags);
+			ck_assert_msg(!memcmp(&c->fg, &fg, sizeof(fg)),
+				      "%s %u,%u: fg", path, x, y);
+			ck_assert_msg(!memcmp(&c->bg, &bg, sizeof(bg)),
+				      "%s %u,%u: bg", path, x, y);
+		}
+	}
+}
+
+struct row_attrs {
+	unsigned int y;
+	struct tsm_screen_attr attr[90];
+};
+
+/* keeps the attributes tsm_screen_draw reports for each cell of row y */
+static int row_draw_cb(struct tsm_screen *con, uint64_t id, const uint32_t *ch,
+		       size_t len, unsigned int width, unsigned int posx,
+		       unsigned int posy, const struct tsm_screen_attr *attr,
+		       tsm_age_t age, void *data)
+{
+	struct row_attrs *out = data;
+
+	UNUSED(con);
+	UNUSED(id);
+	UNUSED(ch);
+	UNUSED(len);
+	UNUSED(width);
+	UNUSED(age);
+	if (posy == out->y && posx < 90)
+		out->attr[posx] = *attr;
+	return 0;
+}
+
+/* every erase leaves cells with the pen's background colour only: not its
+ * foreground, rendition, underline, strike or reverse */
+START_TEST(test_vte_erase_colours_only)
+{
+	static const char pen[] =
+		"\e[1;2;3;5;9;4:2;58;2;9;9;9;38;5;1;44m";
+	static const char *const bgs[] = {
+		"\e[0;48;5;200m",		/* an index of the 256-colour table */
+		"\e[0;48;2;10;20;30m",	/* direct colour */
+	};
+	struct row_attrs row;
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	struct tsm_screen_color fg, bg, blue;
+	unsigned int i, x, y;
+	char buf[32];
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 8, 6);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* the default colours, and the background SGR 44 gives */
+	input_str(vte, "\e[44mX\e[0m");
+	f = tsm_screen_frame(screen);
+	blue = tsm_frame_cell_at(f, 0, 0)->bg;
+	fg = tsm_frame_cell_at(f, 1, 0)->fg;
+	bg = tsm_frame_cell_at(f, 1, 0)->bg;
+	ck_assert(memcmp(&blue, &bg, sizeof(bg)));
+
+	for (y = 1; y <= 6; ++y) {
+		snprintf(buf, sizeof(buf), "\e[%u;1Habcdefgh", y);
+		input_str(vte, buf);
+	}
+	input_str(vte, pen);
+
+	input_str(vte, "\e[1;7H\e[K");		/* EL */
+	input_str(vte, "\e[2;2H\e[2X");		/* ECH */
+	input_str(vte, "\e[3;1H\e[2P");		/* DCH */
+	input_str(vte, "\e[4;1H\e[2@");		/* ICH */
+	input_str(vte, "\e[5;1H\e[L");		/* IL */
+	input_str(vte, "\e[6;5H\e[J");		/* ED */
+	f = tsm_screen_frame(screen);
+	check_blank(f, "EL", 6, 0, 7, 0, fg, blue);
+	check_blank(f, "ECH", 1, 1, 2, 1, fg, blue);
+	check_blank(f, "DCH", 6, 2, 7, 2, fg, blue);
+	check_blank(f, "ICH", 0, 3, 1, 3, fg, blue);
+	check_blank(f, "IL", 0, 4, 7, 4, fg, blue);
+	check_blank(f, "ED", 4, 5, 7, 5, fg, blue);
+
+	/* a line scrolled in, the cell a wrapping wide character leaves, and
+	 * the cells a resize adds past the 80 columns the screen began with */
+	input_str(vte, "\e[6;1H\n\e[3;8H\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 90, 6);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	check_blank(f, "scroll", 0, 5, 7, 5, fg, blue);
+	check_blank(f, "wrap", 7, 2, 7, 2, fg, blue);
+	check_blank(f, "resize", 80, 0, 89, 5, fg, blue);
+
+	/* the alternate screen's clear */
+	input_str(vte, "\e[?1049h");
+	f = tsm_screen_frame(screen);
+	check_blank(f, "alt", 0, 0, 89, 5, fg, blue);
+	input_str(vte, "\e[?1049l");
+
+	/* DL's fill, and the erase attribute DECRC restores with the pen */
+	input_str(vte, "\e[1;1H\e[M\e7\e[0m\e8\e[3;1H\e[K");
+	f = tsm_screen_frame(screen);
+	check_blank(f, "DL", 0, 5, 89, 5, fg, blue);
+	check_blank(f, "DECRC", 0, 2, 89, 2, fg, blue);
+
+	/* reverse video is not applied to an erased cell */
+	input_str(vte, "\e[0m\e[7m\e[1;1H\e[K\e[44m\e[2;1H\e[K");
+	f = tsm_screen_frame(screen);
+	check_blank(f, "SGR 7", 0, 0, 89, 0, fg, bg);
+	check_blank(f, "SGR 7;44", 0, 1, 89, 1, fg, blue);
+
+	/* a background of each other kind: an erased cell matches a cell
+	 * printed with only that background, in kind and value */
+	for (i = 0; i < 2; ++i) {
+		snprintf(buf, sizeof(buf), "\e[%u;1H%sX\e[K", i + 3, bgs[i]);
+		input_str(vte, buf);
+		f = tsm_screen_frame(screen);
+		check_blank(f, bgs[i] + 1, 1, i + 2, 89, i + 2, fg,
+			    tsm_frame_cell_at(f, 0, i + 2)->bg);
+
+		memset(&row, 0, sizeof(row));
+		row.y = i + 2;
+		tsm_screen_draw(screen, row_draw_cb, &row);
+		for (x = 1; x < 90; ++x) {
+			ck_assert_msg(row.attr[x].bccode == row.attr[0].bccode,
+				      "%s %u: bccode %d, printed %d", bgs[i] + 1,
+				      x, row.attr[x].bccode,
+				      row.attr[0].bccode);
+			ck_assert_msg(row.attr[x].br == row.attr[0].br &&
+				      row.attr[x].bg == row.attr[0].bg &&
+				      row.attr[x].bb == row.attr[0].bb,
+				      "%s %u: background", bgs[i] + 1, x);
+		}
+	}
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 /* a word selection on a space selects nothing, even when an earlier
  * selection's lines have left scrollback */
 START_TEST(test_vte_word_select_space)
@@ -2123,6 +2289,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_widen_at_margin)
 	TEST(test_vte_clear_past_margin)
 	TEST(test_vte_protect_wide)
+	TEST(test_vte_erase_colours_only)
 	TEST(test_vte_word_select_space)
 	TEST(test_vte_max_sb_while_viewed)
 TEST_END_CASE

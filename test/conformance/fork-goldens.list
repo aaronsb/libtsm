@@ -40,3 +40,4 @@ vs16-insert-mode            # VS16 widening in insert mode shifts the line
 insert-wide-one-column      # insert mode with wide cells on a one-column screen
 colour-resolve              # colours, dim and reverse with underline colours (ADR-102 step 2)
 wide-chars                  # a wide character with one column left wraps; it is not cut at the margin
+prog-tmux                   # cells tmux's status line erases take its background colour only, not its foreground

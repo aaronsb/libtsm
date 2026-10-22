@@ -455,6 +455,23 @@ static void set_default_colors(struct cell_attr *attr)
 	attr->bg_kind = CELL_COLOR_CODE;
 }
 
+/*
+ * Background colour erase: a cell erased, scrolled in or added takes the pen's
+ * background colour and nothing else of it, the default foreground and no
+ * rendition, underline, strike or protection. SGR 7 is not applied: the cell
+ * takes the background as set, unswapped. As Ghostty's Screen.blankCell and
+ * Style.bgCell (src/terminal/Screen.zig, style.zig) and foot's
+ * erase_cell_range (terminal.c) do; both are MIT-licensed.
+ */
+static void set_erase_attr(struct tsm_vte *vte)
+{
+	struct cell_attr attr = vte->def_attr;
+
+	attr.bg = vte->cattr.bg;
+	attr.bg_kind = vte->cattr.bg_kind;
+	screen_set_def_cell_attr(vte->con, &attr);
+}
+
 static void set_underline(struct cell_attr *attr,
 			  enum tsm_underline_style style)
 {
@@ -813,7 +830,7 @@ static void restore_state(struct tsm_vte *vte)
 			       vte->saved_state.cursor_y);
 	vte->cattr = vte->saved_state.cattr;
 	if (vte->flags & TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE)
-		screen_set_def_cell_attr(vte->con, &vte->cattr);
+		set_erase_attr(vte);
 	vte->gl = vte->saved_state.gl;
 	vte->gr = vte->saved_state.gr;
 	tsm_screen_set_cursor_style(vte->con, vte->saved_state.cursor_style);
@@ -1562,7 +1579,7 @@ static void csi_attribute(struct tsm_vte *vte)
 	}
 
 	if (vte->flags & TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE)
-		screen_set_def_cell_attr(vte->con, &vte->cattr);
+		set_erase_attr(vte);
 }
 
 static void csi_soft_reset(struct tsm_vte *vte)

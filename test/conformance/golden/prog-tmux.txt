@@ -31,7 +31,8 @@ row 22 ||
 row 23 |[0] 0:bash*                                       "f2d99ca42293" 04:00 21-Oct-26|
 attr 23 0-3 fg=0 bg=2
 attr 23 4-10 fg=0 bg=2 underline
-attr 23 11-79 fg=0 bg=2
+attr 23 11-49 bg=2
+attr 23 50-79 fg=0 bg=2
 checkpoint 1014
 size 80x24
 cursor 13,2
@@ -66,7 +67,8 @@ row 22 ||
 row 23 |[0] 0:bash*                                       "f2d99ca42293" 04:00 21-Oct-26|
 attr 23 0-3 fg=0 bg=2
 attr 23 4-10 fg=0 bg=2 underline
-attr 23 11-79 fg=0 bg=2
+attr 23 11-49 bg=2
+attr 23 50-79 fg=0 bg=2
 checkpoint 2475
 size 80x24
 cursor 54,0
@@ -126,7 +128,8 @@ attr 22 40-40 fg=2
 row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
 attr 23 0-3 fg=0 bg=2
 attr 23 4-8 fg=0 bg=2 underline
-attr 23 9-79 fg=0 bg=2
+attr 23 9-49 bg=2
+attr 23 50-79 fg=0 bg=2
 checkpoint 2557
 size 80x24
 cursor 54,2
@@ -188,7 +191,8 @@ attr 22 40-40 fg=2
 row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
 attr 23 0-3 fg=0 bg=2
 attr 23 4-8 fg=0 bg=2 underline
-attr 23 9-79 fg=0 bg=2
+attr 23 9-49 bg=2
+attr 23 50-79 fg=0 bg=2
 checkpoint 3878
 size 80x24
 cursor 54,12
@@ -252,7 +256,8 @@ attr 22 40-40 fg=2
 row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
 attr 23 0-3 fg=0 bg=2
 attr 23 4-8 fg=0 bg=2 underline
-attr 23 9-79 fg=0 bg=2
+attr 23 9-49 bg=2
+attr 23 50-79 fg=0 bg=2
 checkpoint 3981
 size 80x24
 cursor 54,18
@@ -318,7 +323,8 @@ attr 22 40-40 fg=2
 row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
 attr 23 0-3 fg=0 bg=2
 attr 23 4-8 fg=0 bg=2 underline
-attr 23 9-79 fg=0 bg=2
+attr 23 9-49 bg=2
+attr 23 50-79 fg=0 bg=2
 checkpoint 4165
 size 80x24
 cursor 0,1

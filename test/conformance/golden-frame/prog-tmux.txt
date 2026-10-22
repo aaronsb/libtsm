@@ -34,7 +34,8 @@ row 22 ||
 row 23 |[0] 0:bash*                                       "f2d99ca42293" 04:00 21-Oct-26|
 cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
 cells 23 4-10 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
-cells 23 11-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 11-49 w=1 fg=#e5e5e5 bg=#00cd00 ul=#e5e5e5
+cells 23 50-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
 checkpoint 1014
 size 80x24
 cursor 13,2
@@ -72,7 +73,8 @@ row 22 ||
 row 23 |[0] 0:bash*                                       "f2d99ca42293" 04:00 21-Oct-26|
 cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
 cells 23 4-10 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
-cells 23 11-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 11-49 w=1 fg=#e5e5e5 bg=#00cd00 ul=#e5e5e5
+cells 23 50-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
 checkpoint 2475
 size 80x24
 cursor 54,0
@@ -123,7 +125,8 @@ cells 22 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
 row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
 cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
 cells 23 4-8 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
-cells 23 9-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 9-49 w=1 fg=#e5e5e5 bg=#00cd00 ul=#e5e5e5
+cells 23 50-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
 checkpoint 2557
 size 80x24
 cursor 54,2
@@ -176,7 +179,8 @@ cells 22 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
 row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
 cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
 cells 23 4-8 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
-cells 23 9-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 9-49 w=1 fg=#e5e5e5 bg=#00cd00 ul=#e5e5e5
+cells 23 50-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
 checkpoint 3878
 size 80x24
 cursor 54,12
@@ -232,7 +236,8 @@ cells 22 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
 row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
 cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
 cells 23 4-8 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
-cells 23 9-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 9-49 w=1 fg=#e5e5e5 bg=#00cd00 ul=#e5e5e5
+cells 23 50-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
 checkpoint 3981
 size 80x24
 cursor 54,18
@@ -290,7 +295,8 @@ cells 22 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
 row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
 cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
 cells 23 4-8 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
-cells 23 9-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 9-49 w=1 fg=#e5e5e5 bg=#00cd00 ul=#e5e5e5
+cells 23 50-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
 checkpoint 4165
 size 80x24
 cursor 0,1
