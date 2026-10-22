@@ -198,6 +198,40 @@ static void line_free(struct tsm_screen *con, struct line *line)
 	free(line);
 }
 
+static void line_set_age(struct line *line, tsm_age_t age)
+{
+	unsigned int i;
+
+	line->age = age;
+	for (i = 0; i < line->size; ++i)
+		line->cells[i].age = age;
+}
+
+/*
+ * The age counter wrapped. Ages stored before it would read as newer than
+ * every age after it, so all of them become 1, and the counter restarts
+ * above that: content from before the wrap is older than any frame drawn
+ * after it. A frame caller's age from before the wrap names no point in this
+ * history any more; the epoch tells it so, and it draws everything.
+ * tsm_screen_draw learns of the wrap through age_reset.
+ */
+void screen_age_wrap(struct tsm_screen *con)
+{
+	struct shl_dlist *iter;
+	unsigned int i;
+
+	for (i = 0; i < con->line_num; ++i) {
+		line_set_age(con->main_lines[i], 1);
+		line_set_age(con->alt_lines[i], 1);
+	}
+	shl_dlist_for_each(iter, &con->sb.list)
+		line_set_age(shl_dlist_entry(iter, struct line, list), 1);
+	con->age = 1;
+	con->age_cnt = 2;
+	con->age_reset = 1;
+	++con->age_epoch;
+}
+
 static int line_resize(struct tsm_screen *con, struct line *line,
 		       unsigned int width)
 {
