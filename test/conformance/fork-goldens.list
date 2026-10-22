@@ -2,3 +2,7 @@
 # the change of behaviour it judges. Every case in cases.list not named here
 # judges behaviour the fork preserves, and its golden comes from upstream
 # v4.8.0. make-golden.sh writes one set or the other, chosen by REF.
+#
+# ADR-102 step 1 (aaronsb/kmscon): colon sub-parameters, underline styles,
+# underline colour (SGR 58/59) and strike-through (SGR 9/29).
+sgr-basic                   # SGR 9 sets strike
