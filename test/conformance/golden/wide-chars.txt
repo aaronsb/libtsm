@@ -1,7 +1,7 @@
 size 12x4
 cursor 8,3
 flags AUTO_WRAP
-row 0 |漢字テスト|
-row 1 |ＡＢＣ|
-row 2 |0123456789A漢|
+row 0 |ＡＢＣ|
+row 1 |0123456789A|
+row 2 |漢|
 row 3 |ab한국어|

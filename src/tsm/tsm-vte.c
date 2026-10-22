@@ -2196,7 +2196,9 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		break;
 	case 'b': /* Repeat last char */
 		num = vte->csi_argv[0];
-		tsm_screen_repeat_char(vte->con, num);
+		if (num <= 0)
+			num = 1;
+		tsm_screen_repeat_char(vte->con, num, &vte->cattr);
 		break;
 	case 'q': /* DECLL - Load LEDs / DECSCUSR - Set Cursor Style */
 		if (vte->csi_flags & CSI_SPACE) {

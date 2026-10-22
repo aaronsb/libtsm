@@ -1565,6 +1565,528 @@ START_TEST(test_vte_frame_inverse_screen)
 }
 END_TEST
 
+/* frame widths of row @y as digits, for comparing a whole row at once */
+static void frame_widths(const struct tsm_frame *f, unsigned int y, char *out)
+{
+	unsigned int x;
+
+	for (x = 0; x < f->cols; ++x)
+		out[x] = '0' + tsm_frame_cell_at(f, x, y)->width;
+	out[f->cols] = 0;
+}
+
+/* REP prints the last printed character again, as printed text: it wraps
+ * at the margin, honours insert mode, repeats a wide character whole, and
+ * does nothing before the first print or after a reset */
+START_TEST(test_vte_repeat_last_printed)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char w[16];
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 8, 3);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* nothing printed yet */
+	input_str(vte, "\e[3b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 0);
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 0);
+
+	/* REP 10 after "abcdef" wraps onto the next line */
+	input_str(vte, "abcdef\e[10b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 7, 0)->key == 'f');
+	ck_assert(tsm_frame_cell_at(f, 0, 1)->key == 'f');
+	ck_assert(tsm_frame_cell_at(f, 7, 1)->key == 'f');
+	ck_assert_uint_eq(tsm_screen_get_cursor_y(screen), 1);
+
+	/* at the pending wrap after "abcdefgh", REP 1 repeats h on the next
+	 * line */
+	input_str(vte, "\e[2J\e[1;1Habcdefgh\e[b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 7, 0)->key == 'h');
+	ck_assert(tsm_frame_cell_at(f, 6, 0)->key == 'g');
+	ck_assert(tsm_frame_cell_at(f, 0, 1)->key == 'h');
+
+	/* a wide character repeats whole, and the copy that does not fit in
+	 * the last column wraps */
+	input_str(vte, "\e[2J\e[1;1H\xe4\xb8\xad\e[3b");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "20202020");
+	ck_assert(tsm_frame_cell_at(f, 6, 0)->key == 0x4e2d);
+	input_str(vte, "\e[2J\e[1;1Habcde\xe4\xb8\xad\e[b");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "11111201");
+	frame_widths(f, 1, w);
+	ck_assert_str_eq(w, "20111111");
+	ck_assert(tsm_frame_cell_at(f, 0, 1)->key == 0x4e2d);
+
+	/* insert mode: the copies push the line right */
+	input_str(vte, "\e[2J\e[1;1Habc\e[1;2H\e[4hx\e[2b\e[4l");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 'a');
+	ck_assert(tsm_frame_cell_at(f, 1, 0)->key == 'x');
+	ck_assert(tsm_frame_cell_at(f, 3, 0)->key == 'x');
+	ck_assert(tsm_frame_cell_at(f, 4, 0)->key == 'b');
+	ck_assert(tsm_frame_cell_at(f, 5, 0)->key == 'c');
+
+	/* RIS and DECSTR forget the character */
+	input_str(vte, "x\ec\e[3b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 0);
+	input_str(vte, "y\e[!p\e[1;1H\e[2K\e[3b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 0);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* REP repeats the codepoint that started the last printed cell, the one
+ * Ghostty keeps: after a base and a combining mark, the base. Unlike Ghostty,
+ * each copy takes a cell of its own, also where the break rules would join
+ * it to the cell before */
+START_TEST(test_vte_repeat_cluster)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char w[16];
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 8, 3);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* e and a combining acute, then REP 2: the e twice, in new cells */
+	input_str(vte, "e\xcc\x81\e[2b");
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_ge(tsm_frame_cell_at(f, 0, 0)->key & 0xffffffffu,
+			  TSM_FRAME_CLUSTER_KEY);
+	ck_assert(tsm_frame_cell_at(f, 1, 0)->key == 'e');
+	ck_assert(tsm_frame_cell_at(f, 2, 0)->key == 'e');
+	ck_assert(tsm_frame_cell_at(f, 3, 0)->key == 0);
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 3);
+
+	/* under the break rules, a regional indicator would pair with the
+	 * one before it, and a prepended mark would join what follows */
+	input_str(vte, "\e[?2027h\e[2;1H\xf0\x9f\x87\xba\e[2b");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 1, w);
+	ck_assert_str_eq(w, "20202011");
+	ck_assert(tsm_frame_cell_at(f, 0, 1)->key == 0x1f1fa);
+	ck_assert(tsm_frame_cell_at(f, 2, 1)->key == 0x1f1fa);
+	ck_assert(tsm_frame_cell_at(f, 4, 1)->key == 0x1f1fa);
+	input_str(vte, "\e[3;1H\xd8\x80\e[2b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 2)->key == 0x600);
+	ck_assert(tsm_frame_cell_at(f, 1, 2)->key == 0x600);
+	ck_assert(tsm_frame_cell_at(f, 2, 2)->key == 0x600);
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 3);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* a wide character never sits cut at the margin: with one column left it
+ * wraps, or without autowrap is not printed; on a narrowed screen an edit
+ * that cuts one at the margin takes both halves, so none comes back half
+ * when the screen widens */
+START_TEST(test_vte_wide_at_margin)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char w[16];
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 8, 3);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* autowrap off: not printed, the cursor stays */
+	input_str(vte, "\e[?7labcdefg\xe4\xb8\xad");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "11111111");
+	ck_assert(tsm_frame_cell_at(f, 6, 0)->key == 'g');
+	ck_assert(tsm_frame_cell_at(f, 7, 0)->key == 0);
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 7);
+
+	/* a VS16 that would widen the last cell leaves it narrow */
+	input_str(vte, "\e[2;1Habcdefg\xe2\x9d\xa4\xef\xb8\x8f");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 1, w);
+	ck_assert_str_eq(w, "11111111");
+
+	/* autowrap on: the last cell is cleared and the character wraps */
+	input_str(vte, "\e[?7h\e[2J\e[1;1Habcdefgh\e[1;8H\xe4\xb8\xad");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "11111111");
+	ck_assert(tsm_frame_cell_at(f, 7, 0)->key == 0);
+	frame_widths(f, 1, w);
+	ck_assert_str_eq(w, "20111111");
+	ck_assert(tsm_frame_cell_at(f, 0, 1)->key == 0x4e2d);
+
+	/* on 10 columns at 7-8, narrowed to 8: the character stays whole past
+	 * the margin and comes back whole */
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[2J\e[1;1Habcdefg\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 8, 3);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "1111111201");
+
+	/* narrowed, then a write, an erase or a DCH at the margin: no half
+	 * comes back */
+	r = tsm_screen_resize(screen, 8, 3);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[1;8HZ");
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "1111111111");
+	ck_assert(tsm_frame_cell_at(f, 7, 0)->key == 'Z');
+
+	input_str(vte, "\e[1;8H\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 8, 3);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[1;8H\e[K");
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "1111111111");
+
+	input_str(vte, "\e[1;8H\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 8, 3);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[1;2H\e[P");
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "1111111111");
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+
+	/* one column: no room anywhere, an empty cell is printed */
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 1, 2);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\xe4\xb8\xad");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 0);
+	ck_assert_uint_eq(tsm_frame_cell_at(f, 0, 0)->width, 1);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* a VS16 that widens a cell takes the cell after it, or in insert mode
+ * pushes the line right one cell; a wide character it cuts goes whole, also
+ * at the margin of a narrowed screen */
+START_TEST(test_vte_widen_at_margin)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char w[16];
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 4, 2);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* the heart pushes the wide character into the last column */
+	input_str(vte, "\e[1;2H\xe4\xb8\xad\e[1;1H\e[4h\xe2\x9d\xa4\xef\xb8\x8f\e[4l");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "2011");
+	ck_assert(tsm_frame_cell_at(f, 2, 0)->key == 0);
+	ck_assert(tsm_frame_cell_at(f, 3, 0)->key == 0);
+
+	/* narrowed from 6 with the wide character across the margin: the
+	 * push takes its lead, and its trailing half goes too */
+	r = tsm_screen_resize(screen, 6, 2);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[2J\e[1;1H\xe2\x9d\xa4" "bc\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 4, 2);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[1;2H\e[4h\xef\xb8\x8f\e[4l");
+	r = tsm_screen_resize(screen, 6, 2);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "201111");
+	ck_assert(tsm_frame_cell_at(f, 4, 0)->key == 0);
+
+	/* the same without insert mode: the heart takes the lead of the wide
+	 * character after it, whose trailing half lies past the margin */
+	input_str(vte, "\e[2J\e[1;4H\xe4\xb8\xad\e[1;3H\xe2\x9d\xa4");
+	r = tsm_screen_resize(screen, 4, 2);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[1;4H\xef\xb8\x8f");
+	r = tsm_screen_resize(screen, 6, 2);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "112011");
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* on a narrowed screen, a wide character lies across the margin: a line that
+ * scrolls, IL or DL clears is cleared past the margin too, and a wide
+ * character that wraps from the last column clears both halves of the one
+ * it replaces, so no half comes back when the screen widens */
+START_TEST(test_vte_clear_past_margin)
+{
+	/* the screen mode, the edit, and the widths of both rows after */
+	static const struct {
+		const char *mode, *edit, *row0, *row1;
+	} edits[] = {
+		/* scroll up on the alternate screen */
+		{ "\e[?1049h", "\e[2;1H\n", "111201", "111111" },
+		/* scroll down */
+		{ "", "\e[1;1H\eM", "111111", "111201" },
+		/* IL */
+		{ "", "\e[2;1H\e[L", "111201", "111111" },
+		/* DL */
+		{ "", "\e[1;1H\e[M", "111201", "111111" },
+	};
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char w[16];
+	unsigned int i;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* both rows hold a wide character at 3-4; the edit recycles one of
+	 * them as an empty line, then both take "xyz" */
+	for (i = 0; i < sizeof(edits) / sizeof(*edits); ++i) {
+		r = tsm_screen_resize(screen, 6, 2);
+		ck_assert_int_eq(r, 0);
+		input_str(vte, "\ec");
+		input_str(vte, edits[i].mode);
+		input_str(vte, "\e[1;1Habc\xe4\xb8\xad\e[2;1Habc\xe4\xb8\xad");
+		r = tsm_screen_resize(screen, 4, 2);
+		ck_assert_int_eq(r, 0);
+		input_str(vte, edits[i].edit);
+		input_str(vte, "\e[1;1Hxyz\e[2;1Hxyz");
+		r = tsm_screen_resize(screen, 6, 2);
+		ck_assert_int_eq(r, 0);
+		f = tsm_screen_frame(screen);
+		frame_widths(f, 0, w);
+		ck_assert_msg(!strcmp(w, edits[i].row0), "edit %u row 0: %s", i, w);
+		frame_widths(f, 1, w);
+		ck_assert_msg(!strcmp(w, edits[i].row1), "edit %u row 1: %s", i, w);
+	}
+
+	/* a wide character in the last column of the narrowed screen */
+	r = tsm_screen_resize(screen, 6, 2);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\ec\e[1;1Habc\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 4, 2);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[1;4H\xe4\xb8\x81");
+	r = tsm_screen_resize(screen, 6, 2);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "111111");
+	frame_widths(f, 1, w);
+	ck_assert_str_eq(w, "201111");
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* a wide character's halves are protected together, so an erase that skips
+ * protected cells keeps or clears both */
+START_TEST(test_vte_protect_wide)
+{
+	struct tsm_screen *screen;
+	struct tsm_screen_attr attr;
+	const struct tsm_frame *f;
+	const struct tsm_frame_cell *c0, *c1;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 2);
+	ck_assert_int_eq(r, 0);
+	memset(&attr, 0, sizeof(attr));
+	attr.fr = attr.fg = attr.fb = 255;
+
+	/* an unprotected wide character over a protected cell: a protected
+	 * erase clears both halves */
+	attr.protect = 1;
+	tsm_screen_move_to(screen, 1, 0);
+	tsm_screen_write(screen, 'X', &attr);
+	attr.protect = 0;
+	tsm_screen_move_to(screen, 0, 0);
+	tsm_screen_write(screen, 0x4e2d, &attr);
+	tsm_screen_erase_screen(screen, true);
+	f = tsm_screen_frame(screen);
+	c0 = tsm_frame_cell_at(f, 0, 0);
+	c1 = tsm_frame_cell_at(f, 1, 0);
+	ck_assert(c0->key == 0 && c0->width == 1);
+	ck_assert(c1->key == 0 && c1->width == 1);
+	ck_assert(!(c1->flags & TSM_FRAME_PROTECT));
+
+	/* a protected wide character: a protected erase from its trailing
+	 * half keeps both */
+	tsm_screen_erase_screen(screen, false);
+	attr.protect = 1;
+	tsm_screen_move_to(screen, 0, 0);
+	tsm_screen_write(screen, 0x4e2d, &attr);
+	tsm_screen_move_to(screen, 1, 0);
+	tsm_screen_erase_cursor_to_end(screen, true);
+	f = tsm_screen_frame(screen);
+	c0 = tsm_frame_cell_at(f, 0, 0);
+	c1 = tsm_frame_cell_at(f, 1, 0);
+	ck_assert(c0->key == 0x4e2d && c0->width == 2);
+	ck_assert_uint_eq(c1->width, 0);
+	ck_assert(c1->flags & TSM_FRAME_PROTECT);
+
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* a word selection on a space selects nothing, even when an earlier
+ * selection's lines have left scrollback */
+START_TEST(test_vte_word_select_space)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char *out = NULL;
+	unsigned int i;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 4);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_set_max_sb(screen, 2);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "\e[?25laaa\r\nbbb\r\nccc\r\nddd");
+	tsm_screen_selection_start(screen, 0, 0);
+	tsm_screen_selection_target(screen, 2, 1);
+	/* both ends drop out of the two-line scrollback */
+	input_str(vte, "\r\n1\r\n2\r\n3\r\n4\r\n5\r\n6\r\na b");
+	tsm_screen_selection_word(screen, 1, 3);
+
+	f = tsm_screen_frame(screen);
+	for (i = 0; i < f->cols * f->rows; ++i)
+		ck_assert(!(tsm_frame_cell_at(f, i % f->cols, i / f->cols)->flags &
+			    TSM_FRAME_INVERSE));
+	r = tsm_screen_selection_copy(screen, &out);
+	ck_assert_int_eq(r, -ENOENT);
+	ck_assert_ptr_eq(out, NULL);
+
+	/* a word still selects */
+	tsm_screen_selection_word(screen, 2, 3);
+	r = tsm_screen_selection_copy(screen, &out);
+	ck_assert_int_eq(r, 1);
+	ck_assert_str_eq(out, "b");
+	free(out);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* lowering the scrollback limit while scrollback is viewed keeps the view on
+ * a line that still exists, or returns it to the screen */
+START_TEST(test_vte_max_sb_while_viewed)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 8, 4);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_set_max_sb(screen, 4);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* lines 1-3 in scrollback, 4-6 and an empty line on screen */
+	input_str(vte, "1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n");
+	ck_assert_uint_eq(tsm_screen_sb_get_line_count(screen), 3);
+
+	/* viewing line 3: dropping line 1 keeps it, one place higher */
+	tsm_screen_sb_up(screen, 1);
+	ck_assert_uint_eq(tsm_screen_sb_get_line_pos(screen), 2);
+	tsm_screen_set_max_sb(screen, 2);
+	ck_assert_uint_eq(tsm_screen_sb_get_line_pos(screen), 1);
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == '3');
+
+	/* viewing line 2, the top: dropping it passes the view to line 3 */
+	tsm_screen_sb_up(screen, 1);
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == '2');
+	tsm_screen_set_max_sb(screen, 1);	/* raised to 2: nothing goes */
+	tsm_screen_set_max_sb(screen, 0);
+	ck_assert_uint_eq(tsm_screen_sb_get_line_count(screen), 0);
+	ck_assert_uint_eq(tsm_screen_sb_get_line_pos(screen), 0);
+
+	/* no scrollback left: the view is the screen */
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == '4');
+	ck_assert(tsm_frame_cell_at(f, 0, 2)->key == '6');
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -1595,6 +2117,14 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_frame_cursor_pending_wrap)
 	TEST(test_vte_frame_cursor_trailing_half)
 	TEST(test_vte_frame_inverse_screen)
+	TEST(test_vte_repeat_last_printed)
+	TEST(test_vte_repeat_cluster)
+	TEST(test_vte_wide_at_margin)
+	TEST(test_vte_widen_at_margin)
+	TEST(test_vte_clear_past_margin)
+	TEST(test_vte_protect_wide)
+	TEST(test_vte_word_select_space)
+	TEST(test_vte_max_sb_while_viewed)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(bell)
