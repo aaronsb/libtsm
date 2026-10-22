@@ -1739,6 +1739,52 @@ START_TEST(test_vte_protect_wide)
 }
 END_TEST
 
+/* a word selection on a space selects nothing, even when an earlier
+ * selection's lines have left scrollback */
+START_TEST(test_vte_word_select_space)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char *out = NULL;
+	unsigned int i;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 4);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_set_max_sb(screen, 2);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "\e[?25laaa\r\nbbb\r\nccc\r\nddd");
+	tsm_screen_selection_start(screen, 0, 0);
+	tsm_screen_selection_target(screen, 2, 1);
+	/* both ends drop out of the two-line scrollback */
+	input_str(vte, "\r\n1\r\n2\r\n3\r\n4\r\n5\r\n6\r\na b");
+	tsm_screen_selection_word(screen, 1, 3);
+
+	f = tsm_screen_frame(screen);
+	for (i = 0; i < f->cols * f->rows; ++i)
+		ck_assert(!(tsm_frame_cell_at(f, i % f->cols, i / f->cols)->flags &
+			    TSM_FRAME_INVERSE));
+	r = tsm_screen_selection_copy(screen, &out);
+	ck_assert_int_eq(r, -ENOENT);
+	ck_assert_ptr_eq(out, NULL);
+
+	/* a word still selects */
+	tsm_screen_selection_word(screen, 2, 3);
+	r = tsm_screen_selection_copy(screen, &out);
+	ck_assert_int_eq(r, 1);
+	ck_assert_str_eq(out, "b");
+	free(out);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -1772,6 +1818,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_repeat_wide)
 	TEST(test_vte_margin_cut_wide)
 	TEST(test_vte_protect_wide)
+	TEST(test_vte_word_select_space)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(bell)

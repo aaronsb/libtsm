@@ -96,9 +96,15 @@ static void word_select(struct tsm_screen *con,
 	line = con->sel_start.line;
 
 	/* posx is checked against the screen width only; a scrollback line made
-	 * while the screen was narrower has fewer cells */
-	if (!line || posx >= line->size || line->cells[posx].ch == ' ')
+	 * while the screen was narrower has fewer cells. No word there selects
+	 * nothing: an earlier selection's end would otherwise stay, perhaps on
+	 * a line that has since left scrollback. */
+	if (!line || posx >= line->size || line->cells[posx].ch == ' ') {
+		con->sel_active = false;
+		con->sel_start.line = NULL;
+		con->sel_end.line = NULL;
 		return;
+	}
 
 	for (start = posx; start >= 0; start--) {
 		if (line->cells[start].ch == ' ') {
