@@ -1618,11 +1618,11 @@ START_TEST(test_vte_repeat_wide)
 }
 END_TEST
 
-/* a wide character cut at the margin gets its trailing half once it has room:
- * moved in by DCH, on a widened screen, or from scrollback kept at the old
- * width. The frame shows it whole, and the stored cells hold it whole too,
- * which tsm_screen_draw and draw2 read. */
-START_TEST(test_vte_margin_cut_wide)
+/* a wide character never sits cut at the margin: with one column left it
+ * wraps, or without autowrap is not printed; on a narrowed screen an edit
+ * that cuts one at the margin takes both halves, so none comes back half
+ * when the screen widens */
+START_TEST(test_vte_wide_at_margin)
 {
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
@@ -1632,55 +1632,95 @@ START_TEST(test_vte_margin_cut_wide)
 
 	r = tsm_screen_new(&screen, log_cb, NULL);
 	ck_assert_int_eq(r, 0);
-	r = tsm_screen_resize(screen, 8, 2);
+	r = tsm_screen_resize(screen, 8, 3);
 	ck_assert_int_eq(r, 0);
-	tsm_screen_set_max_sb(screen, 10);
 	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
 	ck_assert_int_eq(r, 0);
 
-	/* autowrap off: U+4E2D at the last column is cut there */
-	input_str(vte, "\e[?7l\e[1;1Habcdefg\xe4\xb8\xad");
+	/* autowrap off: not printed, the cursor stays */
+	input_str(vte, "\e[?7labcdefg\xe4\xb8\xad");
 	f = tsm_screen_frame(screen);
 	frame_widths(f, 0, w);
-	ck_assert_str_eq(w, "11111112");
+	ck_assert_str_eq(w, "11111111");
+	ck_assert(tsm_frame_cell_at(f, 6, 0)->key == 'g');
+	ck_assert(tsm_frame_cell_at(f, 7, 0)->key == 0);
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 7);
 
-	/* DCH moves it in: its trailing half follows */
-	input_str(vte, "\e[1;2H\e[P");
-	f = tsm_screen_frame(screen);
-	frame_widths(f, 0, w);
-	ck_assert_str_eq(w, "11111120");
-	ck_assert(tsm_frame_cell_at(f, 6, 0)->key == 0x4e2d);
-	ck_assert_uint_eq(screen->lines[0]->cells[7].width, 0);
-
-	/* cut again, then the screen widens */
-	input_str(vte, "\e[2;1Habcdefg\xe4\xb8\xad");
-	r = tsm_screen_resize(screen, 10, 2);
-	ck_assert_int_eq(r, 0);
+	/* a VS16 that would widen the last cell leaves it narrow */
+	input_str(vte, "\e[2;1Habcdefg\xe2\x9d\xa4\xef\xb8\x8f");
 	f = tsm_screen_frame(screen);
 	frame_widths(f, 1, w);
+	ck_assert_str_eq(w, "11111111");
+
+	/* autowrap on: the last cell is cleared and the character wraps */
+	input_str(vte, "\e[?7h\e[2J\e[1;1Habcdefgh\e[1;8H\xe4\xb8\xad");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "11111111");
+	ck_assert(tsm_frame_cell_at(f, 7, 0)->key == 0);
+	frame_widths(f, 1, w);
+	ck_assert_str_eq(w, "20111111");
+	ck_assert(tsm_frame_cell_at(f, 0, 1)->key == 0x4e2d);
+
+	/* on 10 columns at 7-8, narrowed to 8: the character stays whole past
+	 * the margin and comes back whole */
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[2J\e[1;1Habcdefg\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 8, 3);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
 	ck_assert_str_eq(w, "1111111201");
-	ck_assert_uint_eq(screen->lines[1]->cells[8].width, 0);
 
-	/* a cut line pushed to scrollback at 10 columns, viewed at 12 */
-	input_str(vte, "\e[2J\e[1;1Habcdefghi\xe4\xb8\xad\e[?7h\r\n\n\n");
-	r = tsm_screen_resize(screen, 12, 2);
+	/* narrowed, then a write, an erase or a DCH at the margin: no half
+	 * comes back */
+	r = tsm_screen_resize(screen, 8, 3);
 	ck_assert_int_eq(r, 0);
-	tsm_screen_sb_up(screen, 2);
-	f = tsm_screen_frame(screen);
-	frame_widths(f, 0, w);
-	ck_assert_str_eq(w, "111111111201");
-	ck_assert(tsm_frame_cell_at(f, 9, 0)->key == 0x4e2d);
-
-	/* taller: the line comes back from scrollback onto the screen, and
-	 * the stored cell after the character is its trailing half */
-	tsm_screen_sb_reset(screen);
-	r = tsm_screen_resize(screen, 12, 4);
+	input_str(vte, "\e[1;8HZ");
+	r = tsm_screen_resize(screen, 10, 3);
 	ck_assert_int_eq(r, 0);
 	f = tsm_screen_frame(screen);
 	frame_widths(f, 0, w);
-	ck_assert_str_eq(w, "111111111201");
-	ck_assert_uint_eq(screen->lines[0]->cells[9].width, 2);
-	ck_assert_uint_eq(screen->lines[0]->cells[10].width, 0);
+	ck_assert_str_eq(w, "1111111111");
+	ck_assert(tsm_frame_cell_at(f, 7, 0)->key == 'Z');
+
+	input_str(vte, "\e[1;8H\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 8, 3);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[1;8H\e[K");
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "1111111111");
+
+	input_str(vte, "\e[1;8H\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 8, 3);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[1;2H\e[P");
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "1111111111");
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+
+	/* one column: no room anywhere, an empty cell is printed */
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 1, 2);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\xe4\xb8\xad");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 0);
+	ck_assert_uint_eq(tsm_frame_cell_at(f, 0, 0)->width, 1);
 
 	tsm_vte_unref(vte);
 	tsm_screen_unref(screen);
@@ -1864,7 +1904,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_frame_cursor_trailing_half)
 	TEST(test_vte_frame_inverse_screen)
 	TEST(test_vte_repeat_wide)
-	TEST(test_vte_margin_cut_wide)
+	TEST(test_vte_wide_at_margin)
 	TEST(test_vte_protect_wide)
 	TEST(test_vte_word_select_space)
 	TEST(test_vte_max_sb_while_viewed)

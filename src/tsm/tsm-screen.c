@@ -198,35 +198,6 @@ static void line_free(struct tsm_screen *con, struct line *line)
 	free(line);
 }
 
-/* cell @x of @line, empty, becomes the trailing half of the wide character
- * before it */
-static void line_set_trailing(struct line *line, unsigned int x)
-{
-	line->cells[x].width = 0;
-	line->cells[x].attr = line->cells[x - 1].attr;
-}
-
-/*
- * A wide character cut at a margin keeps no trailing half. Once the first
- * @width cells of @line have room for it (the screen widened, or the line
- * came back from scrollback onto a wider screen), the cell after it becomes
- * its trailing half.
- */
-static void line_mend_cuts(struct tsm_screen *con, struct line *line,
-			   unsigned int width)
-{
-	unsigned int x;
-
-	if (width > line->size)
-		width = line->size;
-	for (x = 1; x < width; ++x) {
-		if (line->cells[x - 1].width != 2 || !line->cells[x].width)
-			continue;
-		screen_cell_clear(con, &line->cells[x]);
-		line_set_trailing(line, x);
-	}
-}
-
 static int line_resize(struct tsm_screen *con, struct line *line,
 		       unsigned int width)
 {
@@ -323,7 +294,6 @@ static void remove_from_sb(struct tsm_screen *con, unsigned int num)
 		if (tmp->size < con->size_x)
 			if (line_resize(con, tmp, con->size_x) < 0)
 				goto end_sbpos;
-		line_mend_cuts(con, tmp, con->size_x);
 		shl_dlist_unlink(&tmp->list);
 		--con->sb.count;
 
@@ -436,11 +406,14 @@ static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
 /*
  * A wide character whose halves lie on both sides of the boundary before cell
  * @x of @line goes whole: an edit on one side would leave half a character.
+ * The boundary may be the margin: a line keeps its cells past it after the
+ * screen narrows, and a character there must not lose a half that comes
+ * back into view when it widens again.
  */
 static void line_split_wide(struct tsm_screen *con, struct line *line,
 			    unsigned int x)
 {
-	if (!x || x >= con->size_x || line->cells[x].width ||
+	if (!x || x >= line->size || line->cells[x].width ||
 	    line->cells[x - 1].width != 2)
 		return;
 	screen_cell_clear(con, &line->cells[x - 1]);
@@ -468,10 +441,13 @@ static void screen_write(struct tsm_screen *con, unsigned int x,
 	 * write ends or, in insert mode, where the margin cuts the cells it
 	 * moves */
 	line_split_wide(con, line, x);
-	if (!(con->flags & TSM_SCREEN_INSERT_MODE))
+	if (!(con->flags & TSM_SCREEN_INSERT_MODE)) {
 		line_split_wide(con, line, x + len);
-	else if (len < con->size_x)
-		line_split_wide(con, line, con->size_x - len);
+	} else {
+		if (len < con->size_x)
+			line_split_wide(con, line, con->size_x - len);
+		line_split_wide(con, line, con->size_x);
+	}
 
 	/* len may exceed a screen narrower than a wide cell */
 	if ((con->flags & TSM_SCREEN_INSERT_MODE) &&
@@ -536,7 +512,7 @@ static void screen_erase_region(struct tsm_screen *con,
 		if (x_from && !line->cells[x_from].width &&
 		    line->cells[x_from - 1].width == 2)
 			--x_from;
-		if (to + 1 < con->size_x && line->cells[to].width == 2 &&
+		if (to + 1 < line->size && line->cells[to].width == 2 &&
 		    !line->cells[to + 1].width)
 			++to;
 		for ( ; x_from <= to; ++x_from) {
@@ -779,8 +755,6 @@ int tsm_screen_resize(struct tsm_screen *con, unsigned int x,
 			ret = line_resize(con, con->alt_lines[i], x);
 			if (ret)
 				return ret;
-			line_mend_cuts(con, con->main_lines[i], x);
-			line_mend_cuts(con, con->alt_lines[i], x);
 		}
 	}
 
@@ -1323,10 +1297,11 @@ static void widen_cell(struct tsm_screen *con, unsigned int x, unsigned int y)
 		return;
 	}
 
-	if (!(con->flags & TSM_SCREEN_AUTO_WRAP)) {
-		cell->width = 2;	/* cut at the margin, as a wide character */
+	/* a wide character does not fit in the last column: without autowrap
+	 * the cluster stays narrow, as a wide character is not printed there;
+	 * a screen one column wide has no room for it anywhere */
+	if (!(con->flags & TSM_SCREEN_AUTO_WRAP) || con->size_x < 2)
 		return;
-	}
 
 	attr = cell->attr;
 	tsm_symbol_ref(con->sym_table, key);
@@ -1433,6 +1408,31 @@ void screen_write_char(struct tsm_screen *con, tsm_symbol_t ch,
 			move_cursor(con, 0, con->cursor_y + 1);
 		else
 			move_cursor(con, con->size_x - 1, con->cursor_y);
+	}
+
+	/*
+	 * A wide character with only the last column left does not fit. With
+	 * autowrap it goes to the next line, and the cell it leaves is
+	 * cleared, as foot pads it with a spacer (terminal.c, print_spacer).
+	 * Without autowrap it is not printed and the cursor stays, which
+	 * Ghostty notes is how xterm behaves (src/terminal/Terminal.zig,
+	 * print). On a screen one column wide it cannot fit anywhere, and an
+	 * empty cell is printed instead, as Ghostty does. Ghostty and foot
+	 * are MIT-licensed.
+	 */
+	if (len == 2 && con->cursor_x == con->size_x - 1) {
+		if (con->size_x < 2) {
+			ch = 0;
+			len = 1;
+		} else if (!(con->flags & TSM_SCREEN_AUTO_WRAP)) {
+			return;
+		} else {
+			line_split_wide(con, con->lines[con->cursor_y],
+					con->cursor_x);
+			screen_cell_clear(con,
+				&con->lines[con->cursor_y]->cells[con->cursor_x]);
+			move_cursor(con, 0, con->cursor_y + 1);
+		}
 	}
 
 	if (con->cursor_y > last) {
@@ -1805,10 +1805,11 @@ void tsm_screen_insert_chars(struct tsm_screen *con, unsigned int num)
 		num = max;
 	mv = max - num;
 
-	/* a wide character at the insertion point or at the margin's cut goes
-	 * whole */
+	/* a wide character at the insertion point, where the margin cuts
+	 * the moved cells, or across the margin itself goes whole */
 	line_split_wide(con, con->lines[con->cursor_y], con->cursor_x);
 	line_split_wide(con, con->lines[con->cursor_y], con->cursor_x + mv);
+	line_split_wide(con, con->lines[con->cursor_y], con->size_x);
 
 	cells = con->lines[con->cursor_y]->cells;
 	/* the cells pushed past the margin go; the vacated ones are copies */
@@ -1894,9 +1895,11 @@ void tsm_screen_delete_chars(struct tsm_screen *con, unsigned int num)
 		num = max;
 	mv = max - num;
 
-	/* a wide character at either end of the deleted cells goes whole */
+	/* a wide character at either end of the deleted cells, or across the
+	 * margin, goes whole */
 	line_split_wide(con, con->lines[con->cursor_y], con->cursor_x);
 	line_split_wide(con, con->lines[con->cursor_y], con->cursor_x + num);
+	line_split_wide(con, con->lines[con->cursor_y], con->size_x);
 
 	cells = con->lines[con->cursor_y]->cells;
 	/* the deleted cells go; the vacated ones at the end are copies */
@@ -1909,11 +1912,6 @@ void tsm_screen_delete_chars(struct tsm_screen *con, unsigned int num)
 
 	for (i = 0; i < num; ++i)
 		screen_cell_init(con, &cells[con->cursor_x + mv + i]);
-
-	/* a wide character cut at the margin moved in from it, and its
-	 * trailing half now fits */
-	if (mv && cells[con->cursor_x + mv - 1].width == 2)
-		line_set_trailing(con->lines[con->cursor_y], con->cursor_x + mv);
 }
 
 SHL_EXPORT
