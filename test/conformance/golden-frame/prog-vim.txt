@@ -124,7 +124,7 @@ size 80x24
 cursor 23,3
 flags AUTO_WRAP|ALTERNATE
 palette legacy fg=#e5e5e5 bg=#000000
-changed 1920
+changed 91
 frame-cursor 23,3 default visible w=1 fg=#000000 bg=#0000ee ul=#000000
 row 0 |#include <stdio.h>|
 cells 0 0-8 w=1 fg=#cd00cd bg=#000000 ul=#cd00cd
@@ -246,7 +246,7 @@ size 80x24
 cursor 41,4
 flags AUTO_WRAP|ALTERNATE
 palette legacy fg=#e5e5e5 bg=#000000
-changed 1920
+changed 262
 frame-cursor 41,4 default visible w=1 fg=#000000 bg=#0000ee ul=#000000
 row 0 |  1 #include <stdio.h>|
 cells 0 0-3 w=1 fg=#af5f00 bg=#000000 ul=#af5f00
@@ -390,7 +390,7 @@ size 80x24
 cursor 20,7
 flags AUTO_WRAP|ALTERNATE
 palette legacy fg=#e5e5e5 bg=#000000
-changed 1920
+changed 82
 frame-cursor 20,7 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
 row 0 |  1 #include <stdio.h>|
 cells 0 0-3 w=1 fg=#af5f00 bg=#000000 ul=#af5f00
