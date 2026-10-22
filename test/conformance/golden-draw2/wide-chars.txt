@@ -2,7 +2,7 @@ size 12x4
 cursor 8,3
 flags AUTO_WRAP
 palette legacy fg=#e5e5e5 bg=#000000
-row 0 |漢 字 テ ス ト|
-row 1 |Ａ Ｂ Ｃ|
-row 2 |0123456789A漢|
+row 0 |Ａ Ｂ Ｃ|
+row 1 |0123456789A|
+row 2 |漢|
 row 3 |ab한 국 어|

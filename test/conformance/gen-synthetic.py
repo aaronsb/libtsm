@@ -368,8 +368,9 @@ def _():
 
 @case("insert-wide-one-column", 1, 3)
 def _():
-    # Insert mode on a one-column screen: a wide character and a VS16
-    # cluster are written cut at the margin, without shifting the line.
+    # Insert mode on a one-column screen: a wide character has no room and
+    # prints as an empty cell; a VS16 cluster stays narrow. Neither shifts
+    # the line.
     return CSI + "4h" + "\u4e2d" + "\r\n" + HEART + VS16
 
 
