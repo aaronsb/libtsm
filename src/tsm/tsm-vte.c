@@ -658,6 +658,17 @@ int tsm_vte_set_custom_palette(struct tsm_vte *vte, uint8_t (*palette)[3])
 }
 
 SHL_EXPORT
+int tsm_vte_get_palette_color(struct tsm_vte *vte, unsigned int index,
+			      uint8_t rgb[3])
+{
+	if (!vte || !rgb || index > 255)
+		return -EINVAL;
+
+	tsm_color_table_rgb(vte->palette, index, &rgb[0], &rgb[1], &rgb[2]);
+	return 0;
+}
+
+SHL_EXPORT
 void tsm_vte_get_def_attr(struct tsm_vte *vte, struct tsm_screen_attr *out)
 {
 	if (!vte || !out)
