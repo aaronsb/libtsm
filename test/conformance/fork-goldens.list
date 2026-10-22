@@ -23,3 +23,15 @@ sgr-color-semicolon-subparams # semicolon form with sub-parameters consumes noth
 # ADR-102 step 3: grapheme clusters, width methods, mode 2027.
 combining                   # combining marks join their base cell
 emoji                       # one cell per emoji sequence; VS16 widens the heart
+# Added with step 3:
+emoji-sequences             # ZWJ family, flag, keycap, skin tone: one cell each
+vs16-widen                  # VS16 widens a placed cell
+vs16-margin                 # VS16 in the last column moves the cluster down
+vs16-unlisted-base          # VS16 on an unlisted base changes nothing
+vs15-width                  # VS15 never changes width
+width-methods               # unicode and wcwidth on the same text
+mode-2027-decrqm            # DECRQM replies for mode 2027
+mode-2027-resets            # RIS and DECSTR return to the configured method
+combining-after-move        # a mark after cursor movement joins the cell before it
+cluster-reuse-erase         # clusters erased and printed again
+cluster-max                 # a 33-codepoint cluster keeps 32
