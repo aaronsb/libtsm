@@ -2024,17 +2024,46 @@ static void check_blank(const struct tsm_frame *f, const char *path,
 	}
 }
 
+struct row_attrs {
+	unsigned int y;
+	struct tsm_screen_attr attr[90];
+};
+
+/* keeps the attributes tsm_screen_draw reports for each cell of row y */
+static int row_draw_cb(struct tsm_screen *con, uint64_t id, const uint32_t *ch,
+		       size_t len, unsigned int width, unsigned int posx,
+		       unsigned int posy, const struct tsm_screen_attr *attr,
+		       tsm_age_t age, void *data)
+{
+	struct row_attrs *out = data;
+
+	UNUSED(con);
+	UNUSED(id);
+	UNUSED(ch);
+	UNUSED(len);
+	UNUSED(width);
+	UNUSED(age);
+	if (posy == out->y && posx < 90)
+		out->attr[posx] = *attr;
+	return 0;
+}
+
 /* every erase leaves cells with the pen's background colour only: not its
- * foreground, rendition, underline, strike, reverse or protection */
+ * foreground, rendition, underline, strike or reverse */
 START_TEST(test_vte_erase_colours_only)
 {
 	static const char pen[] =
-		"\e[1\"q\e[1;2;3;5;9;4:2;58;2;9;9;9;38;5;1;44m";
+		"\e[1;2;3;5;9;4:2;58;2;9;9;9;38;5;1;44m";
+	static const char *const bgs[] = {
+		"\e[0;48;5;200m",		/* an index of the 256-colour table */
+		"\e[0;48;2;10;20;30m",	/* direct colour */
+	};
+	struct row_attrs row;
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
 	const struct tsm_frame *f;
 	struct tsm_screen_color fg, bg, blue;
-	unsigned int y;
+	unsigned int i, x, y;
 	char buf[32];
 	int r;
 
@@ -2096,10 +2125,34 @@ START_TEST(test_vte_erase_colours_only)
 	check_blank(f, "DECRC", 0, 2, 89, 2, fg, blue);
 
 	/* reverse video is not applied to an erased cell */
-	input_str(vte, "\e[0m\e[0\"q\e[7m\e[1;1H\e[K\e[44m\e[2;1H\e[K");
+	input_str(vte, "\e[0m\e[7m\e[1;1H\e[K\e[44m\e[2;1H\e[K");
 	f = tsm_screen_frame(screen);
 	check_blank(f, "SGR 7", 0, 0, 89, 0, fg, bg);
 	check_blank(f, "SGR 7;44", 0, 1, 89, 1, fg, blue);
+
+	/* a background of each other kind: an erased cell matches a cell
+	 * printed with only that background, in kind and value */
+	for (i = 0; i < 2; ++i) {
+		snprintf(buf, sizeof(buf), "\e[%u;1H%sX\e[K", i + 3, bgs[i]);
+		input_str(vte, buf);
+		f = tsm_screen_frame(screen);
+		check_blank(f, bgs[i] + 1, 1, i + 2, 89, i + 2, fg,
+			    tsm_frame_cell_at(f, 0, i + 2)->bg);
+
+		memset(&row, 0, sizeof(row));
+		row.y = i + 2;
+		tsm_screen_draw(screen, row_draw_cb, &row);
+		for (x = 1; x < 90; ++x) {
+			ck_assert_msg(row.attr[x].bccode == row.attr[0].bccode,
+				      "%s %u: bccode %d, printed %d", bgs[i] + 1,
+				      x, row.attr[x].bccode,
+				      row.attr[0].bccode);
+			ck_assert_msg(row.attr[x].br == row.attr[0].br &&
+				      row.attr[x].bg == row.attr[0].bg &&
+				      row.attr[x].bb == row.attr[0].bb,
+				      "%s %u: background", bgs[i] + 1, x);
+		}
+	}
 
 	tsm_vte_unref(vte);
 	tsm_screen_unref(screen);
