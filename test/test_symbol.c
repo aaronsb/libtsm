@@ -213,6 +213,20 @@ START_TEST(test_symbol_grapheme_breaks)
 }
 END_TEST
 
+/* the SipHash-2-4 test vector of the SipHash paper (appendix A), which
+ * checks the rounds the cluster table's SipHash-1-3 shares */
+START_TEST(test_symbol_siphash)
+{
+	const uint64_t key[2] = { 0x0706050403020100ULL, 0x0f0e0d0c0b0a0908ULL };
+	uint8_t msg[15];
+	unsigned int i;
+
+	for (i = 0; i < sizeof(msg); ++i)
+		msg[i] = i;
+	ck_assert(tsm_siphash(key, msg, sizeof(msg), 2, 4) == 0xa129ca6149be45e5ULL);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_symbol_null)
 	TEST(test_symbol_init)
@@ -220,6 +234,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_symbol_cluster_max)
 	TEST(test_symbol_width)
 	TEST(test_symbol_grapheme_breaks)
+	TEST(test_symbol_siphash)
 TEST_END_CASE
 
 TEST_DEFINE(

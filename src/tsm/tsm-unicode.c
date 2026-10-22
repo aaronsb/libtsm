@@ -57,6 +57,9 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/random.h>
+#include <time.h>
+#include <unistd.h>
 #include "libtsm.h"
 #include "libtsm-int.h"
 #include "shl-htable.h"
@@ -199,6 +202,7 @@ struct cluster_buf {
 
 struct tsm_symbol_table {
 	unsigned long ref;
+	uint64_t hash_key[2];		/* random per table: see hash_cluster */
 	struct cluster **slots;		/* by key - TSM_CLUSTER_BASE; NULL when free */
 	uint32_t nslots, slots_cap;
 	uint32_t *free;			/* free slots, reused before new ones */
@@ -207,14 +211,94 @@ struct tsm_symbol_table {
 	struct shl_htable index;	/* clusters by content */
 };
 
+/*
+ * SipHash, written from J.-P. Aumasson and D. J. Bernstein, "SipHash: a fast
+ * short-input PRF" (INDOCRYPT 2012), with @crounds compression and @drounds
+ * finalization rounds.
+ */
+#define SIP_ROTL(x, b) (uint64_t)(((x) << (b)) | ((x) >> (64 - (b))))
+
+#define SIP_ROUND(v0, v1, v2, v3)					\
+	do {								\
+		v0 += v1; v1 = SIP_ROTL(v1, 13); v1 ^= v0;		\
+		v0 = SIP_ROTL(v0, 32);					\
+		v2 += v3; v3 = SIP_ROTL(v3, 16); v3 ^= v2;		\
+		v0 += v3; v3 = SIP_ROTL(v3, 21); v3 ^= v0;		\
+		v2 += v1; v1 = SIP_ROTL(v1, 17); v1 ^= v2;		\
+		v2 = SIP_ROTL(v2, 32);					\
+	} while (0)
+
+uint64_t tsm_siphash(const uint64_t key[2], const uint8_t *in, size_t len,
+		     unsigned int crounds, unsigned int drounds)
+{
+	uint64_t v0 = 0x736f6d6570736575ULL ^ key[0];
+	uint64_t v1 = 0x646f72616e646f6dULL ^ key[1];
+	uint64_t v2 = 0x6c7967656e657261ULL ^ key[0];
+	uint64_t v3 = 0x7465646279746573ULL ^ key[1];
+	uint64_t m, last = (uint64_t)len << 56;
+	size_t i, j;
+	unsigned int r;
+
+	for (i = 0; i + 8 <= len; i += 8) {
+		m = 0;
+		for (j = 0; j < 8; ++j)
+			m |= (uint64_t)in[i + j] << (8 * j);
+		v3 ^= m;
+		for (r = 0; r < crounds; ++r)
+			SIP_ROUND(v0, v1, v2, v3);
+		v0 ^= m;
+	}
+	for (j = 0; i + j < len; ++j)
+		last |= (uint64_t)in[i + j] << (8 * j);
+
+	v3 ^= last;
+	for (r = 0; r < crounds; ++r)
+		SIP_ROUND(v0, v1, v2, v3);
+	v0 ^= last;
+
+	v2 ^= 0xff;
+	for (r = 0; r < drounds; ++r)
+		SIP_ROUND(v0, v1, v2, v3);
+	return v0 ^ v1 ^ v2 ^ v3;
+}
+
+/* Clusters are interned by a keyed hash, so text a program prints cannot be
+ * made of colliding clusters that turn each lookup into a long scan. */
 static size_t hash_cluster(const void *elem, void *priv)
 {
 	const struct cluster *c = elem;
-	size_t i, val = 5381;
+	const struct tsm_symbol_table *tbl = priv;
 
-	for (i = 0; i < c->len; ++i)
-		val = val * 33 + c->cps[i];
-	return val;
+	return tsm_siphash(tbl->hash_key, (const uint8_t *)c->cps,
+			   c->len * sizeof(c->cps[0]), 1, 3);
+}
+
+/* a key no other screen can guess: the kernel's randomness, or failing that
+ * the clocks, the pid and the table's address, mixed */
+static void make_hash_key(struct tsm_symbol_table *tbl)
+{
+	struct timespec mono, real;
+	uint64_t x;
+	int i;
+
+	if (getrandom(tbl->hash_key, sizeof(tbl->hash_key), GRND_NONBLOCK) ==
+	    sizeof(tbl->hash_key))
+		return;
+
+	clock_gettime(CLOCK_MONOTONIC, &mono);
+	clock_gettime(CLOCK_REALTIME, &real);
+	x = (uint64_t)mono.tv_nsec ^ ((uint64_t)real.tv_sec << 20) ^
+	    ((uint64_t)getpid() << 40) ^ (uint64_t)(uintptr_t)tbl;
+	for (i = 0; i < 2; ++i) {
+		/* splitmix64 */
+		x += 0x9e3779b97f4a7c15ULL;
+		tbl->hash_key[i] = x;
+		tbl->hash_key[i] = (tbl->hash_key[i] ^ (tbl->hash_key[i] >> 30)) *
+				   0xbf58476d1ce4e5b9ULL;
+		tbl->hash_key[i] = (tbl->hash_key[i] ^ (tbl->hash_key[i] >> 27)) *
+				   0x94d049bb133111ebULL;
+		tbl->hash_key[i] ^= tbl->hash_key[i] >> 31;
+	}
 }
 
 static bool cmp_cluster(const void *a, const void *b)
@@ -241,7 +325,8 @@ int tsm_symbol_table_new(struct tsm_symbol_table **out)
 	if (!tbl)
 		return -ENOMEM;
 	tbl->ref = 1;
-	shl_htable_init(&tbl->index, cmp_cluster, hash_cluster, NULL);
+	make_hash_key(tbl);
+	shl_htable_init(&tbl->index, cmp_cluster, hash_cluster, tbl);
 
 	*out = tbl;
 	return 0;
@@ -335,7 +420,8 @@ static int take_slot(struct tsm_symbol_table *tbl, uint32_t *slot)
 		return 0;
 	}
 
-	if (tbl->nslots >= 0xffffffffU - TSM_CLUSTER_BASE)
+	/* keys stay within TSM_UCS4_MAX: the draw id keeps the bits above */
+	if (tbl->nslots > TSM_UCS4_MAX - TSM_CLUSTER_BASE)
 		return -ENOSPC;
 	if (tbl->nslots == tbl->slots_cap) {
 		cap = tbl->slots_cap ? tbl->slots_cap * 2 : 64;
@@ -387,7 +473,7 @@ tsm_symbol_t tsm_symbol_append(struct tsm_symbol_table *tbl,
 	buf.cps[len++] = ucs4;
 	buf.len = len;
 
-	if (shl_htable_lookup(&tbl->index, &buf, hash_cluster(&buf, NULL), &found))
+	if (shl_htable_lookup(&tbl->index, &buf, hash_cluster(&buf, tbl), &found))
 		return ((struct cluster *)found)->key;
 
 	c = malloc(sizeof(*c) + len * sizeof(c->cps[0]));
@@ -401,7 +487,7 @@ tsm_symbol_t tsm_symbol_append(struct tsm_symbol_table *tbl,
 	c->key = TSM_CLUSTER_BASE + slot;
 	c->len = len;
 	memcpy(c->cps, buf.cps, len * sizeof(c->cps[0]));
-	if (shl_htable_insert(&tbl->index, c, hash_cluster(c, NULL))) {
+	if (shl_htable_insert(&tbl->index, c, hash_cluster(c, tbl))) {
 		give_slot(tbl, slot);
 		free(c);
 		return sym;
@@ -426,7 +512,7 @@ void tsm_symbol_unref(struct tsm_symbol_table *tbl, tsm_symbol_t sym)
 	if (!c || !c->refs || --c->refs)
 		return;
 
-	shl_htable_remove(&tbl->index, c, hash_cluster(c, NULL), NULL);
+	shl_htable_remove(&tbl->index, c, hash_cluster(c, tbl), NULL);
 	give_slot(tbl, sym - TSM_CLUSTER_BASE);
 	--tbl->count;
 	free(c);

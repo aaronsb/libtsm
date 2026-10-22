@@ -82,6 +82,10 @@ struct tsm_gb_state {
 	uint8_t linker;		/* InCB=Linker InCB=Extend* */
 };
 
+/* SipHash-c-d of @in under the 128-bit @key */
+uint64_t tsm_siphash(const uint64_t key[2], const uint8_t *in, size_t len,
+		     unsigned int crounds, unsigned int drounds);
+
 void tsm_gb_start(struct tsm_gb_state *st, uint32_t ucs4);
 /* true when @ucs4 continues the cluster; @st moves on to @ucs4 either way */
 bool tsm_gb_continues(struct tsm_gb_state *st, uint32_t ucs4);
