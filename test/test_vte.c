@@ -1687,6 +1687,58 @@ START_TEST(test_vte_margin_cut_wide)
 }
 END_TEST
 
+/* a wide character's halves are protected together, so an erase that skips
+ * protected cells keeps or clears both */
+START_TEST(test_vte_protect_wide)
+{
+	struct tsm_screen *screen;
+	struct tsm_screen_attr attr;
+	const struct tsm_frame *f;
+	const struct tsm_frame_cell *c0, *c1;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 2);
+	ck_assert_int_eq(r, 0);
+	memset(&attr, 0, sizeof(attr));
+	attr.fr = attr.fg = attr.fb = 255;
+
+	/* an unprotected wide character over a protected cell: a protected
+	 * erase clears both halves */
+	attr.protect = 1;
+	tsm_screen_move_to(screen, 1, 0);
+	tsm_screen_write(screen, 'X', &attr);
+	attr.protect = 0;
+	tsm_screen_move_to(screen, 0, 0);
+	tsm_screen_write(screen, 0x4e2d, &attr);
+	tsm_screen_erase_screen(screen, true);
+	f = tsm_screen_frame(screen);
+	c0 = tsm_frame_cell_at(f, 0, 0);
+	c1 = tsm_frame_cell_at(f, 1, 0);
+	ck_assert(c0->key == 0 && c0->width == 1);
+	ck_assert(c1->key == 0 && c1->width == 1);
+	ck_assert(!(c1->flags & TSM_FRAME_PROTECT));
+
+	/* a protected wide character: a protected erase from its trailing
+	 * half keeps both */
+	tsm_screen_erase_screen(screen, false);
+	attr.protect = 1;
+	tsm_screen_move_to(screen, 0, 0);
+	tsm_screen_write(screen, 0x4e2d, &attr);
+	tsm_screen_move_to(screen, 1, 0);
+	tsm_screen_erase_cursor_to_end(screen, true);
+	f = tsm_screen_frame(screen);
+	c0 = tsm_frame_cell_at(f, 0, 0);
+	c1 = tsm_frame_cell_at(f, 1, 0);
+	ck_assert(c0->key == 0x4e2d && c0->width == 2);
+	ck_assert_uint_eq(c1->width, 0);
+	ck_assert(c1->flags & TSM_FRAME_PROTECT);
+
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -1719,6 +1771,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_frame_inverse_screen)
 	TEST(test_vte_repeat_wide)
 	TEST(test_vte_margin_cut_wide)
+	TEST(test_vte_protect_wide)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(bell)

@@ -492,10 +492,13 @@ static void screen_write(struct tsm_screen *con, unsigned int x,
 	line->cells[x].width = len;
 	memcpy(&line->cells[x].attr, attr, sizeof(*attr));
 
+	/* the trailing half takes the character's attributes, so an erase
+	 * that skips protected cells keeps or clears both halves */
 	for (i = 1; i < len && i + x < con->size_x; ++i) {
 		line->cells[x + i].age = con->age_cnt;
 		line->cells[x + i].width = 0;
 		cell_set_ch(con, &line->cells[x + i], 0);
+		memcpy(&line->cells[x + i].attr, attr, sizeof(*attr));
 	}
 }
 
