@@ -12,6 +12,12 @@
 # A rewritten golden is a change to the judge: commit it on its own, with the
 # diff reviewed, never alongside the code it judges (ADR-301 in the kmscon fork).
 
+# Dev image pins (moving one is a one-line commit; see docs). DEV_BASE is the
+# archlinux:base-devel digest, DEV_ARCHIVE the Arch Linux Archive snapshot that
+# pacman installs from. Both are recorded in the conformance reports.
+DEV_BASE    := archlinux@sha256:ee205c220399524a683cf495d411691b921baed8ab47cdc6d732efa782fae484
+DEV_ARCHIVE := 2026/10/21
+
 IMAGE ?= libtsm-dev
 BUILD := fork/build
 REF   ?= v4.8.0
@@ -28,7 +34,8 @@ help: ## Show this help
 
 .PHONY: image
 image: ## Build the dev image
-	docker build -t $(IMAGE) -f fork/dev.Dockerfile fork
+	docker build -t $(IMAGE) --build-arg BASE=$(DEV_BASE) --build-arg ARCHIVE_DATE=$(DEV_ARCHIVE) \
+		-f fork/dev.Dockerfile fork
 
 .PHONY: test
 test: image ## Build, then run unit tests and the conformance replay
