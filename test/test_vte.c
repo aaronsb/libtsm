@@ -1083,13 +1083,18 @@ START_TEST(test_vte_frame_changed)
 	ck_assert(frame_changed(f, 0, 3));
 	ck_assert_uint_eq(frame_count_changed(f), 1);
 
-	/* an erase, a scroll, a palette change and a selection reach their cells */
+	/* an erase marks its row and the cursor's old cell, and no other */
 	input_str(vte, "\e[1;1H\e[K");
 	f = tsm_screen_frame(screen);
-	ck_assert(frame_changed(f, 0, 0) && frame_changed(f, 1, 0));
+	ck_assert(frame_changed(f, 0, 0) && frame_changed(f, 9, 0));
+	ck_assert(frame_changed(f, 0, 3));
+	ck_assert(!frame_changed(f, 5, 1));
+	ck_assert_uint_eq(frame_count_changed(f), 11);
+
+	/* a scroll, a palette change and a selection move every visible cell */
 	input_str(vte, "\e[S");
 	f = tsm_screen_frame(screen);
-	ck_assert(frame_changed(f, 5, 0));
+	ck_assert_uint_eq(frame_count_changed(f), 40);
 	r = tsm_vte_set_palette(vte, "vga");
 	ck_assert_int_eq(r, 0);
 	f = tsm_screen_frame(screen);
@@ -1098,7 +1103,9 @@ START_TEST(test_vte_frame_changed)
 	ck_assert_uint_eq(frame_count_changed(f), 0);
 	tsm_screen_selection_start(screen, 1, 1);
 	f = tsm_screen_frame(screen);
-	ck_assert(frame_changed(f, 1, 1));
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
 
 	tsm_vte_unref(vte);
 	tsm_screen_unref(screen);

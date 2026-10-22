@@ -456,9 +456,9 @@ static void screen_erase_region(struct tsm_screen *con,
 	unsigned int to;
 	struct line *line;
 
+	/* each cleared cell takes the age the caller moved to; the rest of the
+	 * screen keeps its own */
 	screen_seg_reset(con);
-	/* TODO: more sophisticated ageing */
-	con->age = con->age_cnt;
 
 	if (y_to >= con->size_y)
 		y_to = con->size_y - 1;
