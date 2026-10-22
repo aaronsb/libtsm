@@ -2,12 +2,13 @@
 """Replay every conformance case and compare it with its golden.
 
 Usage:
-  check.py REPLAY DIR [--draw2] [--report FILE]   compare; exit 1 on any difference
-  check.py REPLAY DIR [--draw2] --update          rewrite the goldens from this REPLAY
+  check.py REPLAY DIR [--draw2 | --frame] [--report FILE]   compare; exit 1 on any difference
+  check.py REPLAY DIR [--draw2 | --frame] --update          rewrite the goldens from this REPLAY
 
---draw2 replays every case through tsm-replay's draw2 view (resolved colours,
-the cells a renderer reads) and compares it with golden-draw2/<name>.txt. Those
-goldens are all fork-sourced (see README).
+--draw2 and --frame replay every case through tsm-replay's draw2 or frame view
+(resolved colours, the cells a renderer reads) and compare it with
+golden-draw2/<name>.txt or golden-frame/<name>.txt. Those goldens are all
+fork-sourced (see README).
 
 --report writes the run as JSON for the contact sheet: for each case its
 name, size, status (pass, fail or missing), golden and actual output, and
@@ -69,8 +70,8 @@ def load_cases(root):
     return cases
 
 
-def replay(tool, root, name, cols, rows, draw2=False):
-    cmd = [tool] + (["--draw2"] if draw2 else []) + [cols, rows, str(root / "cases" / f"{name}.bin")]
+def replay(tool, root, name, cols, rows, view=None):
+    cmd = [tool] + ([f"--{view}"] if view else []) + [cols, rows, str(root / "cases" / f"{name}.bin")]
     cuts = root / "cases" / f"{name}.cuts"
     if cuts.exists():
         cmd.append(str(cuts))
@@ -84,8 +85,8 @@ def replay(tool, root, name, cols, rows, draw2=False):
 def main():
     args = sys.argv[1:]
     update = "--update" in args
-    draw2 = "--draw2" in args
-    args = [a for a in args if a not in ("--update", "--draw2")]
+    view = "draw2" if "--draw2" in args else "frame" if "--frame" in args else None
+    args = [a for a in args if a not in ("--update", "--draw2", "--frame")]
     report = None
     if "--report" in args:
         i = args.index("--report")
@@ -99,11 +100,11 @@ def main():
         print("conformance: no cases listed; refusing to report a pass")
         return 1
 
-    golden_dir = root / ("golden-draw2" if draw2 else "golden")
-    label = "conformance-draw2" if draw2 else "conformance"
+    golden_dir = root / (f"golden-{view}" if view else "golden")
+    label = f"conformance-{view}" if view else "conformance"
     failed, missing, results = [], [], []
     for name, cols, rows in cases:
-        got = replay(tool, root, name, cols, rows, draw2)
+        got = replay(tool, root, name, cols, rows, view)
         golden = golden_dir / f"{name}.txt"
         if update:
             golden_dir.mkdir(exist_ok=True)

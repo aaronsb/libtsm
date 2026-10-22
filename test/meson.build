@@ -58,3 +58,10 @@ test(
     args: [files('conformance/check.py'), tsm_replay, meson.current_source_dir() / 'conformance',
            '--draw2'],
 )
+# And through the frame call that replaces draw2 (ADR-102 step 4).
+test(
+    'conformance-frame',
+    find_program('python3'),
+    args: [files('conformance/check.py'), tsm_replay, meson.current_source_dir() / 'conformance',
+           '--frame'],
+)
