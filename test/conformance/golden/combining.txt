@@ -1,7 +1,7 @@
 size 80x24
 cursor 13,0
 flags AUTO_WRAP
-row 0 |e a nx o lead|
+row 0 |é ã̀ n̈x o̲̲ ́lead|
 row 1 ||
 row 2 ||
 row 3 ||

@@ -37,10 +37,16 @@
 
 #define SHL_EXPORT __attribute__((visibility("default")))
 
-/* max combined-symbol length */
-#define TSM_UCS4_MAXLEN 10
-
-/* symbols */
+/*
+ * Symbols (glyph keys)
+ * A key below TSM_CLUSTER_BASE is a codepoint. A key at or above it names a
+ * cluster: a sequence of at most TSM_CLUSTER_MAX codepoints in the symbol
+ * table, interned by content (ADR-102 in aaronsb/kmscon). Each cluster counts
+ * the cells that hold its key, through tsm_symbol_ref and tsm_symbol_unref;
+ * at zero it is freed and its key reused.
+ */
+#define TSM_CLUSTER_BASE (1U << 21)
+#define TSM_CLUSTER_MAX 32
 
 struct tsm_symbol_table;
 
@@ -49,14 +55,43 @@ extern const tsm_symbol_t tsm_symbol_default;
 int tsm_symbol_table_new(struct tsm_symbol_table **out);
 void tsm_symbol_table_ref(struct tsm_symbol_table *tbl);
 void tsm_symbol_table_unref(struct tsm_symbol_table *tbl);
+/* the number of clusters held */
+unsigned int tsm_symbol_table_count(struct tsm_symbol_table *tbl);
 
 tsm_symbol_t tsm_symbol_make(uint32_t ucs4);
+/* the key of @sym's codepoints followed by @ucs4, without a reference of its
+ * own; @sym itself once it holds TSM_CLUSTER_MAX codepoints */
 tsm_symbol_t tsm_symbol_append(struct tsm_symbol_table *tbl,
 			       tsm_symbol_t sym, uint32_t ucs4);
+/* a number that differs between clusters that held the same key at different
+ * times; 0 for a codepoint */
+uint32_t tsm_symbol_generation(struct tsm_symbol_table *tbl, tsm_symbol_t sym);
+void tsm_symbol_ref(struct tsm_symbol_table *tbl, tsm_symbol_t sym);
+void tsm_symbol_unref(struct tsm_symbol_table *tbl, tsm_symbol_t sym);
 const uint32_t *tsm_symbol_get(struct tsm_symbol_table *tbl,
 			       tsm_symbol_t *sym, size_t *size);
 unsigned int tsm_symbol_get_width(struct tsm_symbol_table *tbl,
-				  tsm_symbol_t sym);
+				  tsm_symbol_t sym,
+				  enum tsm_width_method method);
+
+/*
+ * Grapheme cluster boundaries (UAX #29, extended grapheme clusters), applied
+ * one codepoint at a time.
+ */
+struct tsm_gb_state {
+	uint8_t gcb;		/* Grapheme_Cluster_Break of the last codepoint */
+	uint8_t pict;		/* 1: Extended_Pictographic Extend*, 2: then ZWJ */
+	uint8_t ri;		/* an odd number of Regional_Indicators in a row */
+	uint8_t linker;		/* InCB=Linker InCB=Extend* */
+};
+
+/* SipHash-c-d of @in under the 128-bit @key */
+uint64_t tsm_siphash(const uint64_t key[2], const uint8_t *in, size_t len,
+		     unsigned int crounds, unsigned int drounds);
+
+void tsm_gb_start(struct tsm_gb_state *st, uint32_t ucs4);
+/* true when @ucs4 continues the cluster; @st moves on to @ucs4 either way */
+bool tsm_gb_continues(struct tsm_gb_state *st, uint32_t ucs4);
 
 /* utf8 state machine */
 
@@ -215,6 +250,16 @@ struct tsm_screen {
 	struct selection_pos sel_start;		/* First cell to copy in terminal order */
 	struct selection_pos sel_end;		/* Last cell to copy */
 
+	/* how printed text is divided into cells */
+	enum tsm_width_method width_method;
+	/* the cluster the last print wrote, which the next print may join */
+	struct {
+		bool valid;			/* cleared by cursor movement and controls */
+		unsigned int x, y;		/* its lead cell */
+		tsm_symbol_t key;		/* what that cell held after the print */
+		struct tsm_gb_state gb;
+	} seg;
+
 	/* draw2 interface */
 	struct tsm_screen_cell *cells;
 	unsigned int cells_count;
@@ -225,6 +270,8 @@ void screen_write_char(struct tsm_screen *con, tsm_symbol_t ch,
 		       const struct cell_attr *attr);
 void screen_set_def_cell_attr(struct tsm_screen *con, const struct cell_attr *attr);
 void screen_set_palette(struct tsm_screen *con, uint8_t (*palette)[3]);
+void screen_seg_reset(struct tsm_screen *con);
+void screen_set_width_method(struct tsm_screen *con, enum tsm_width_method method);
 
 void tsm_screen_set_opts(struct tsm_screen *scr, unsigned int opts);
 void tsm_screen_reset_opts(struct tsm_screen *scr, unsigned int opts);

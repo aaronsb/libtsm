@@ -1,7 +1,7 @@
 size 80x24
-cursor 67,0
+cursor 62,0
 flags AUTO_WRAP
-row 0 |smile 😀 | vs16 ❤ | text ❤ | zwj 👨👩👧 | flag 🇺🇸 | tone 👍🏽 | end|
+row 0 |smile 😀 | vs16 ❤️ | text ❤ | zwj 👨‍👩‍👧 | flag 🇺🇸 | tone 👍🏽 | end|
 row 1 ||
 row 2 ||
 row 3 ||

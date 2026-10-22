@@ -1,0 +1,5 @@
+size 8x2
+cursor 2,0
+flags AUTO_WRAP
+row 0 |❤️abc|
+row 1 ||

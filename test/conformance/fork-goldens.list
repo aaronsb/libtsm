@@ -19,3 +19,22 @@ sgr-58-semicolon-no-blink   # 58 consumes its 5
 sgr-subparam-overflow       # sub-parameters past eight dropped
 sgr-color-colon-out-of-range  # colon index or component above 255 rejected
 sgr-color-semicolon-subparams # semicolon form with sub-parameters consumes nothing
+#
+# ADR-102 step 3: grapheme clusters, width methods, mode 2027.
+combining                   # combining marks join their base cell
+emoji                       # one cell per emoji sequence; VS16 widens the heart
+# Added with step 3:
+emoji-sequences             # ZWJ family, flag, keycap, skin tone: one cell each
+vs16-widen                  # VS16 widens a placed cell
+vs16-margin                 # VS16 in the last column moves the cluster down
+vs16-unlisted-base          # VS16 on an unlisted base changes nothing
+vs15-width                  # VS15 never changes width
+width-methods               # unicode and wcwidth on the same text
+mode-2027-decrqm            # DECRQM replies for mode 2027
+mode-2027-resets            # RIS and DECSTR return to the configured method
+combining-after-move        # a mark after cursor movement joins the cell before it
+cluster-reuse-erase         # clusters erased and printed again
+cluster-max                 # a 33-codepoint cluster keeps 32
+prepend-width               # a Prepend mark starts a cluster with width
+vs16-insert-mode            # VS16 widening in insert mode shifts the line
+insert-wide-one-column      # insert mode with wide cells on a one-column screen

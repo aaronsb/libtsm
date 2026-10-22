@@ -39,16 +39,9 @@ apply:
 The hash-table implementation in src/shared/shl-htable.* uses internally the
 htable from CCAN, see LICENSE_htable.
 
-The wcwidth() implementation in ./external/wcwidth is from
-
-	Copyright (C) Fredrik Fornwall 2016.
-	Distributed under the MIT License.
-	
-	Implementation of wcwidth(3) as a C port of:
-	https://github.com/jquast/wcwidth
-	
-	Report issues at:
-	https://github.com/termux/wcwidth
+src/tsm/tsm-unicode-data.h and test/tsm-grapheme-break-test.h are generated
+by src/tsm/gen-unicode.py from the Unicode Character Database, distributed
+under the Unicode License v3 (https://www.unicode.org/license.txt).
 
 UCS-4 to UTF-8 encoding is copied from "terminology":
 

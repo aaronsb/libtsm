@@ -291,8 +291,13 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 					age = con->age;
 			}
 
-			/* Encode attributes into the id to avoid caching problems */
+			/* Encode attributes into the id to avoid caching problems.
+			 * A cluster's key is reused once its cells are gone, so
+			 * its generation goes in too: an id never names two
+			 * different clusters. */
 			id = cell->ch;
+			id |= (uint64_t)(tsm_symbol_generation(con->sym_table, cell->ch) &
+					 0xfffffff) << (TSM_UCS4_MAX_BITS + 5);
 			if (attr.bold)
 				id |= 1ULL << TSM_UCS4_MAX_BITS;
 			if (attr.italic)
@@ -348,6 +353,7 @@ const struct tsm_screen_cell *tsm_screen_draw2(struct tsm_screen *con)
 	struct cell *cell, empty;
 	struct tsm_screen_cell *out;
 	struct tsm_screen_attr attr;
+	tsm_symbol_t ch;
 	bool in_sel = false, sel_start = false, sel_end = false;
 	bool inverse = false;
 
@@ -398,13 +404,17 @@ const struct tsm_screen_cell *tsm_screen_draw2(struct tsm_screen *con)
 
 		for (j = 0; j < con->size_x; ++j) {
 			out = &con->cells[i * con->size_x + j];
-			/* don't handle multiple codepoints yet */
-			if (j < line->size && line->cells[j].ch <= TSM_UCS4_MAX)
+			if (j < line->size)
 				cell = &line->cells[j];
 			else
 				cell = &empty;
 			cell_attr_resolve(con->palette, &cell->attr, &attr);
-			out->ch = cell->ch ? cell->ch : ' ';
+			/* a cluster shows its base codepoint here; its marks and
+			 * the rest of it reach tsm_screen_draw only */
+			ch = cell->ch;
+			out->ch = *tsm_symbol_get(con->sym_table, &ch, NULL);
+			if (!out->ch)
+				out->ch = ' ';
 			out->attr2.bold = attr.bold;
 			out->attr2.italic = attr.italic;
 			out->attr2.underline = attr.underline;

@@ -3,7 +3,7 @@
 check_dep = dependency('check')
 
 # For tests that depends on libtsm and all dependencies
-test_deps = [shl_dep, check_dep, libtsm_dep, xkbcommon_dep, wcwidth_dep]
+test_deps = [shl_dep, check_dep, libtsm_dep, xkbcommon_dep]
 
 test_htable = executable(
     'test_htable',
