@@ -19,3 +19,6 @@ sgr-58-semicolon-no-blink   # 58 consumes its 5
 sgr-subparam-overflow       # sub-parameters past eight dropped
 sgr-color-colon-out-of-range  # colon index or component above 255 rejected
 sgr-color-semicolon-subparams # semicolon form with sub-parameters consumes nothing
+#
+# ADR-102 step 3: grapheme clusters, width methods, mode 2027.
+combining                   # combining marks join their base cell
