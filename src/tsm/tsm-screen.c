@@ -1076,6 +1076,7 @@ void tsm_screen_reset(struct tsm_screen *con)
 	screen_inc_age(con);
 	con->age = con->age_cnt;
 
+	con->last_printed = 0;
 	con->flags = 0;
 	con->margin_top = 0;
 	con->margin_bottom = con->size_y - 1;
@@ -1383,6 +1384,7 @@ void screen_write_char(struct tsm_screen *con, tsm_symbol_t ch,
 	if (ch >= TSM_CLUSTER_BASE)
 		ch = TSM_UCS4_REPLACEMENT;
 	len = tsm_ucs4_get_width(ch);
+	con->last_printed = ch;
 
 	if (seg_cell(con)) {
 		if (con->width_method == TSM_WIDTH_UNICODE)
@@ -1824,51 +1826,19 @@ void tsm_screen_insert_chars(struct tsm_screen *con, unsigned int num)
 		screen_cell_init(con, &cells[con->cursor_x + i]);
 }
 
-void tsm_screen_repeat_char(struct tsm_screen *con, unsigned int num)
+/*
+ * REP: prints the last printed character @num more times, through the same
+ * path as printed text, so the copies wrap at the margin and honour insert
+ * mode. Nothing is repeated before the first print.
+ */
+void tsm_screen_repeat_char(struct tsm_screen *con, unsigned int num,
+			    const struct cell_attr *attr)
 {
-	struct cell *cells;
-	struct cell_attr attr;
-	tsm_symbol_t ch;
-	unsigned int src, len, x;
-
-	if (!con || !num || !con->size_y || !con->size_x)
+	if (!con || !con->last_printed)
 		return;
 
-	screen_inc_age(con);
-	/* TODO: more sophisticated ageing */
-	con->age = con->age_cnt;
-
-	if (con->cursor_x >= con->size_x)
-		con->cursor_x = con->size_x - 1;
-	if (con->cursor_y >= con->size_y)
-		con->cursor_y = con->size_y - 1;
-
-	if (!con->cursor_x)
-		return;
-
-	/* the character before the cursor; after a wide one that is its
-	 * trailing half, so the character starts a cell earlier */
-	cells = con->lines[con->cursor_y]->cells;
-	src = con->cursor_x - 1;
-	if (!cells[src].width && src && cells[src - 1].width == 2)
-		--src;
-	ch = cells[src].ch;
-	len = cells[src].width ? cells[src].width : 1;
-	attr = cells[src].attr;
-
-	/* each copy goes through the write path, which keeps a wide
-	 * character's halves together; the copies stop at the margin, where a
-	 * wide one is cut as a written one is */
-	tsm_symbol_ref(con->sym_table, ch);
-	x = con->cursor_x;
-	while (num-- && x < con->size_x) {
-		screen_write(con, x, con->cursor_y, ch, len, &attr);
-		x += len;
-	}
-	tsm_symbol_unref(con->sym_table, ch);
-
-	screen_seg_reset(con);
-	con->cursor_x = x < con->size_x ? x : con->size_x;
+	while (num--)
+		screen_write_char(con, con->last_printed, attr);
 }
 
 SHL_EXPORT

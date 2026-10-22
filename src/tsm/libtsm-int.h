@@ -260,6 +260,10 @@ struct tsm_screen {
 		struct tsm_gb_state gb;
 	} seg;
 
+	/* the last codepoint printed, which REP repeats (as foot keeps
+	 * vt.last_printed); 0 before any print and after a reset */
+	tsm_symbol_t last_printed;
+
 	/* draw2 interface */
 	struct tsm_screen_cell *cells;
 	unsigned int cells_count;
@@ -282,7 +286,8 @@ void screen_set_width_method(struct tsm_screen *con, enum tsm_width_method metho
 void tsm_screen_set_opts(struct tsm_screen *scr, unsigned int opts);
 void tsm_screen_reset_opts(struct tsm_screen *scr, unsigned int opts);
 unsigned int tsm_screen_get_opts(struct tsm_screen *scr);
-void tsm_screen_repeat_char(struct tsm_screen *con, unsigned int num);
+void tsm_screen_repeat_char(struct tsm_screen *con, unsigned int num,
+			    const struct cell_attr *attr);
 
 static inline void screen_inc_age(struct tsm_screen *con)
 {

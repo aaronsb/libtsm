@@ -1575,9 +1575,10 @@ static void frame_widths(const struct tsm_frame *f, unsigned int y, char *out)
 	out[f->cols] = 0;
 }
 
-/* REP repeats a wide character whole, and cuts the last copy at the margin
- * as a written one is cut */
-START_TEST(test_vte_repeat_wide)
+/* REP prints the last printed character again, as printed text: it wraps
+ * at the margin, honours insert mode, repeats a wide character whole, and
+ * does nothing before the first print or after a reset */
+START_TEST(test_vte_repeat_last_printed)
 {
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
@@ -1587,31 +1588,64 @@ START_TEST(test_vte_repeat_wide)
 
 	r = tsm_screen_new(&screen, log_cb, NULL);
 	ck_assert_int_eq(r, 0);
-	r = tsm_screen_resize(screen, 8, 2);
+	r = tsm_screen_resize(screen, 8, 3);
 	ck_assert_int_eq(r, 0);
 	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
 	ck_assert_int_eq(r, 0);
 
-	input_str(vte, "\xe4\xb8\xad\e[3b");		/* U+4E2D, REP 3 */
+	/* nothing printed yet */
+	input_str(vte, "\e[3b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 0);
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 0);
+
+	/* REP 10 after "abcdef" wraps onto the next line */
+	input_str(vte, "abcdef\e[10b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 7, 0)->key == 'f');
+	ck_assert(tsm_frame_cell_at(f, 0, 1)->key == 'f');
+	ck_assert(tsm_frame_cell_at(f, 7, 1)->key == 'f');
+	ck_assert_uint_eq(tsm_screen_get_cursor_y(screen), 1);
+
+	/* at the pending wrap after "abcdefgh", REP 1 repeats h on the next
+	 * line */
+	input_str(vte, "\e[2J\e[1;1Habcdefgh\e[b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 7, 0)->key == 'h');
+	ck_assert(tsm_frame_cell_at(f, 6, 0)->key == 'g');
+	ck_assert(tsm_frame_cell_at(f, 0, 1)->key == 'h');
+
+	/* a wide character repeats whole, and the copy that does not fit in
+	 * the last column wraps */
+	input_str(vte, "\e[2J\e[1;1H\xe4\xb8\xad\e[3b");
 	f = tsm_screen_frame(screen);
 	frame_widths(f, 0, w);
 	ck_assert_str_eq(w, "20202020");
 	ck_assert(tsm_frame_cell_at(f, 6, 0)->key == 0x4e2d);
-	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 8);
-
-	/* one column left: the copy is cut there */
-	input_str(vte, "\e[2;1Habcde\xe4\xb8\xad\e[3b");
+	input_str(vte, "\e[2J\e[1;1Habcde\xe4\xb8\xad\e[b");
 	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "11111201");
 	frame_widths(f, 1, w);
-	ck_assert_str_eq(w, "11111202");
-	ck_assert(tsm_frame_cell_at(f, 7, 1)->key == 0x4e2d);
+	ck_assert_str_eq(w, "20111111");
+	ck_assert(tsm_frame_cell_at(f, 0, 1)->key == 0x4e2d);
 
-	/* a narrow character repeats as before */
-	input_str(vte, "\e[2J\e[1;1Hx\e[2b");
+	/* insert mode: the copies push the line right */
+	input_str(vte, "\e[2J\e[1;1Habc\e[1;2H\e[4hx\e[2b\e[4l");
 	f = tsm_screen_frame(screen);
-	ck_assert(tsm_frame_cell_at(f, 2, 0)->key == 'x');
-	ck_assert(tsm_frame_cell_at(f, 3, 0)->key == 0);
-	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 3);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 'a');
+	ck_assert(tsm_frame_cell_at(f, 1, 0)->key == 'x');
+	ck_assert(tsm_frame_cell_at(f, 3, 0)->key == 'x');
+	ck_assert(tsm_frame_cell_at(f, 4, 0)->key == 'b');
+	ck_assert(tsm_frame_cell_at(f, 5, 0)->key == 'c');
+
+	/* RIS and DECSTR forget the character */
+	input_str(vte, "x\ec\e[3b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 0);
+	input_str(vte, "y\e[!p\e[1;1H\e[2K\e[3b");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 0);
 
 	tsm_vte_unref(vte);
 	tsm_screen_unref(screen);
@@ -1903,7 +1937,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_frame_cursor_pending_wrap)
 	TEST(test_vte_frame_cursor_trailing_half)
 	TEST(test_vte_frame_inverse_screen)
-	TEST(test_vte_repeat_wide)
+	TEST(test_vte_repeat_last_printed)
 	TEST(test_vte_wide_at_margin)
 	TEST(test_vte_protect_wide)
 	TEST(test_vte_word_select_space)
