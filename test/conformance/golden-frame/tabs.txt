@@ -3,7 +3,7 @@ cursor 80,1
 flags AUTO_WRAP
 palette legacy fg=#e5e5e5 bg=#000000
 changed 1920
-frame-cursor 80,1 default hidden
+frame-cursor 79,1 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
 row 0 |a       b       c|
 row 1 |    x       y                                                                  z|
 row 2 ||
