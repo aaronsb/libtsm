@@ -25,7 +25,7 @@ A case judges either behaviour the fork preserves or behaviour it changed on pur
 - **Upstream-sourced**, every case not in `fork-goldens.list`: `make golden REF=v4.8.0` writes these, from upstream's code and this tree's `tsm-replay.c`. The fork's code never produces them.
 - **Fork-sourced**, the cases in `fork-goldens.list`: `make golden REF=<fork commit>` writes these, from the fork's code at that commit. Name the commit that holds the change, and commit the goldens on their own, saying what changed.
 
-`make-golden.sh` writes only the set its `REF` selects, so regenerating one set never overwrites the other. Moving a case into `fork-goldens.list` is itself a change to the judge and goes in the golden commit, with the reason beside the name.
+`make-golden.sh` writes only the set its `REF` selects, so regenerating one set never overwrites the other. It refuses any other `REF`: an older upstream tag would write fork-listed goldens from upstream code. A commit counts as the fork's when it carries `fork-goldens.list`. It also refuses a name in `fork-goldens.list` that is not in `cases.list`, since a misspelling would leave that case in the upstream set. Moving a case into `fork-goldens.list` is itself a change to the judge and goes in the golden commit, with the reason beside the name.
 
 `tsm-replay.c` prints the fork's added attributes (underline style, underline colour, strike) only where `libtsm.h` defines `TSM_SCREEN_ATTR_UNDERLINE_STYLE`, and only when set, so it builds against upstream and prints what upstream would. To check that the upstream-sourced goldens still hold, run `make golden REF=v4.8.0` and read `git status`: nothing should change.
 
