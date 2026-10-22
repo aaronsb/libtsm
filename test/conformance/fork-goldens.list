@@ -6,3 +6,4 @@
 # ADR-102 step 1 (aaronsb/kmscon): colon sub-parameters, underline styles,
 # underline colour (SGR 58/59) and strike-through (SGR 9/29).
 sgr-basic                   # SGR 9 sets strike
+sgr-underline-extended      # 4:x styles and 58 colours apply; 4;58;5;196 no longer blinks
