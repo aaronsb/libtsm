@@ -22,3 +22,4 @@ sgr-color-semicolon-subparams # semicolon form with sub-parameters consumes noth
 #
 # ADR-102 step 3: grapheme clusters, width methods, mode 2027.
 combining                   # combining marks join their base cell
+emoji                       # one cell per emoji sequence; VS16 widens the heart
