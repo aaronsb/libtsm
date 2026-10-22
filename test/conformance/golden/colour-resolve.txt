@@ -1,0 +1,35 @@
+size 80x24
+cursor 21,0
+flags AUTO_WRAP
+row 0 |BR DU DS RU RS I T B1|
+attr 0 0-1 fg=1 bold
+attr 0 3-4 underline dim
+attr 0 6-7 underline ul=#0a141e dim
+attr 0 9-10 underline inverse
+attr 0 12-13 underline ul=1 inverse
+attr 0 15-15 fg=#ff0000
+attr 0 17-17 fg=#010203
+attr 0 19-20 fg=1 bold
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 ||

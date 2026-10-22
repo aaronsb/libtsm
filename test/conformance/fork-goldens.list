@@ -38,3 +38,4 @@ cluster-max                 # a 33-codepoint cluster keeps 32
 prepend-width               # a Prepend mark starts a cluster with width
 vs16-insert-mode            # VS16 widening in insert mode shifts the line
 insert-wide-one-column      # insert mode with wide cells on a one-column screen
+colour-resolve              # colours, dim and reverse with underline colours (ADR-102 step 2)
