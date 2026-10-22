@@ -146,14 +146,15 @@ static unsigned int calc_line_len(struct line *line)
 	return 0;
 }
 
-/* TODO: tsm_ucs4_to_utf8 expects UCS4 characters, but a cell contains a
- * tsm-symbol (which can contain multiple UCS4 chars). Fix this when introducing
- * support for combining characters. */
+/* copies a line's text, each cluster with all its codepoints */
 static unsigned int copy_line(struct tsm_screen *con, struct line *line, char *buf)
 {
 	unsigned int i, start, end;
 	char *pos = buf;
 	int line_len;
+	const uint32_t *ucs4;
+	tsm_symbol_t ch;
+	size_t len, j;
 
 	line_len = calc_line_len(line);
 	start = (con->sel_start.line == line) ? con->sel_start.x : 0;
@@ -166,10 +167,14 @@ static unsigned int copy_line(struct tsm_screen *con, struct line *line, char *b
 		end = line_len;
 
 	for (i = start; i < end; i++) {
-		if (line->cells[i].ch)
-			pos += tsm_ucs4_to_utf8(line->cells[i].ch, pos);
-		else
+		ch = line->cells[i].ch;
+		if (!ch) {
 			pos += tsm_ucs4_to_utf8(' ', pos);
+			continue;
+		}
+		ucs4 = tsm_symbol_get(con->sym_table, &ch, &len);
+		for (j = 0; j < len; ++j)
+			pos += tsm_ucs4_to_utf8(ucs4[j], pos);
 	}
 	pos += tsm_ucs4_to_utf8('\n', pos);
 	return pos - buf;
@@ -316,8 +321,9 @@ static int selection_count_lines(struct tsm_screen *con, struct selection_pos *s
  */
 static unsigned int calc_line_copy_buffer(struct tsm_screen *con, unsigned int num_lines)
 {
-	// 4 is the max size of a Unicode character
-	return con->size_x * num_lines * 4 + 1;
+	/* a cell holds up to TSM_CLUSTER_MAX codepoints of up to 4 bytes,
+	 * and each line ends in a newline */
+	return (con->size_x * TSM_CLUSTER_MAX * 4 + 1) * num_lines + 1;
 }
 
 static int copy_lines(struct tsm_screen *con, struct selection_pos *start, struct selection_pos *end, char *buf, int pos)

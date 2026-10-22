@@ -165,3 +165,8 @@ global:
 	tsm_screen_get_cursor_blinking_rate_ms;
 	tsm_screen_set_cursor_blinking_rate_ms;
 } LIBTSM_4_7;
+
+LIBTSM_4_8_FORK {
+global:
+	tsm_vte_set_width_method;
+} LIBTSM_4_8;

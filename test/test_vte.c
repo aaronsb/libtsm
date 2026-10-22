@@ -791,6 +791,142 @@ START_TEST(test_vte_underline_color_dim)
 }
 END_TEST
 
+/* draw2 shows a cluster's base codepoint, so a combining mark does not blank
+ * the letter it is on */
+START_TEST(test_vte_draw2_cluster_base)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_screen_cell *cells;
+	const char *input = "e\xcc\x81" "a";	/* e U+0301 a */
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	tsm_vte_input(vte, input, strlen(input));
+
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 1);
+	cells = tsm_screen_draw2(screen);
+	ck_assert_ptr_ne(cells, NULL);
+	ck_assert_uint_eq(cells[0].ch, 'e');
+	ck_assert_uint_eq(cells[1].ch, 'a');
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+static void input_str(struct tsm_vte *vte, const char *s)
+{
+	tsm_vte_input(vte, s, strlen(s));
+}
+
+/* the cluster table holds only what the screen and scrollback hold: every
+ * way a cell is overwritten, erased or dropped releases its cluster */
+START_TEST(test_vte_cluster_release)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	unsigned int i;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_set_max_sb(screen, 2);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* overwritten in place */
+	input_str(vte, "e\xcc\x81\r" "x");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 0);
+
+	/* erased */
+	input_str(vte, "\re\xcc\x81" "a\xcc\x80" "\e[2K");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 0);
+
+	/* deleted and pushed off the line */
+	input_str(vte, "\re\xcc\x81" "a\xcc\x80" "\r\e[P");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 1);
+	input_str(vte, "\r\e[10@");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 0);
+
+	/* shared by two cells, copied by REP, released by both */
+	input_str(vte, "\re\xcc\x81\e[3b");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 1);
+	input_str(vte, "\e[2K");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 0);
+
+	/* scrolled into the scrollback, then out past its limit of 2 lines */
+	input_str(vte, "\re\xcc\x81\r\na\xcc\x80\r\no\xcc\x82\r\n");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 3);
+	for (i = 0; i < 5; ++i)
+		input_str(vte, "\r\n");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 0);
+
+	/* the scrollback cleared */
+	input_str(vte, "e\xcc\x81\r\n\r\n\r\n\r\n");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 1);
+	tsm_screen_clear_sb(screen);
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 0);
+
+	/* the alternate screen cleared, and a hard reset */
+	input_str(vte, "\e[?1049h" "e\xcc\x81" "\e[?1049l" "a\xcc\x80");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 2);
+	input_str(vte, "\e[?1049h");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 1);
+	input_str(vte, "\e[?1049l\ec");
+	ck_assert_uint_eq(tsm_symbol_table_count(screen->sym_table), 0);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+static char decrqm_reply[64];
+
+static void decrqm_write_cb(struct tsm_vte *vte, const char *u8, size_t len, void *data)
+{
+	UNUSED(vte);
+	UNUSED(data);
+	ck_assert_uint_lt(len, sizeof(decrqm_reply));
+	memcpy(decrqm_reply, u8, len);
+	decrqm_reply[len] = 0;
+}
+
+/* RIS and DECSTR return mode 2027 to the configured method, here wcwidth */
+START_TEST(test_vte_width_method_resets)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, decrqm_write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_set_width_method(vte, TSM_WIDTH_WCWIDTH);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_set_width_method(vte, 7);
+	ck_assert_int_eq(r, -EINVAL);
+
+	input_str(vte, "\e[?2027$p");
+	ck_assert_str_eq(decrqm_reply, "\e[?2027;2$y");
+	input_str(vte, "\e[?2027h\e[?2027$p");
+	ck_assert_str_eq(decrqm_reply, "\e[?2027;1$y");
+	input_str(vte, "\ec\e[?2027$p");
+	ck_assert_str_eq(decrqm_reply, "\e[?2027;2$y");
+	input_str(vte, "\e[?2027h\e[!p\e[?2027$p");
+	ck_assert_str_eq(decrqm_reply, "\e[?2027;2$y");
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -806,6 +942,9 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_underline_color_not_bright)
 	TEST(test_vte_underline_color_follows_palette)
 	TEST(test_vte_underline_color_dim)
+	TEST(test_vte_draw2_cluster_base)
+	TEST(test_vte_cluster_release)
+	TEST(test_vte_width_method_resets)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(bell)

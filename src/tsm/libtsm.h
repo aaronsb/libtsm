@@ -117,7 +117,22 @@ typedef void (*tsm_log_t) (void *data,
 
 /* ucs4 to utf8 converter */
 
+/* the cells a codepoint takes, 0 to 2, from the Unicode tables the library
+ * was built with */
 unsigned int tsm_ucs4_get_width(uint32_t ucs4);
+
+/*
+ * How printed text is divided into cells (ADR-102 in aaronsb/kmscon).
+ * TSM_WIDTH_UNICODE: grapheme clusters (UAX #29) take one cell each, as wide
+ * as their first codepoint, or two when VS16 follows a base that takes it.
+ * TSM_WIDTH_WCWIDTH: every codepoint with width takes its own cells, as
+ * programs that count per codepoint expect; zero-width ones join the cell
+ * before them.
+ */
+enum tsm_width_method {
+	TSM_WIDTH_UNICODE,
+	TSM_WIDTH_WCWIDTH,
+};
 size_t tsm_ucs4_to_utf8(uint32_t ucs4, char *out);
 char *tsm_ucs4_to_utf8_alloc(const uint32_t *ucs4, size_t len, size_t *len_out);
 
@@ -588,6 +603,14 @@ int tsm_vte_set_palette(struct tsm_vte *vte, const char *palette_name);
  * @retval -ENOMEM if malloc fails.
  */
 int tsm_vte_set_custom_palette(struct tsm_vte *vte, uint8_t (*palette)[3]);
+
+/*
+ * The width method the terminal starts with, and returns to on a hard (RIS)
+ * or soft (DECSTR) reset. DEC private mode 2027 switches it while the
+ * terminal runs: set is TSM_WIDTH_UNICODE, reset TSM_WIDTH_WCWIDTH.
+ * The default is TSM_WIDTH_UNICODE.
+ */
+int tsm_vte_set_width_method(struct tsm_vte *vte, enum tsm_width_method method);
 
 void tsm_vte_get_def_attr(struct tsm_vte *vte, struct tsm_screen_attr *out);
 unsigned int tsm_vte_get_flags(struct tsm_vte *vte);

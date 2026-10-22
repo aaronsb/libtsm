@@ -30,7 +30,7 @@ if not cc.links(code, args: link_flags, name: '-Wl,--version-script=...')
     endif
 endif
 
-deps = [wcwidth_dep, shl_dep, xkbcommon_dep]
+deps = [shl_dep, xkbcommon_dep]
 
 libtsm = library(
     'tsm',

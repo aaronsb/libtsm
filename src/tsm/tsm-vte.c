@@ -160,6 +160,8 @@ struct tsm_vte {
 	void *data;
 	char *palette_name;
 	bool backspace_sends_delete;
+	/* the width method the terminal starts with and resets to */
+	enum tsm_width_method width_method;
 
 	struct tsm_utf8_mach *mach;
 	unsigned long parse_cnt;
@@ -861,6 +863,9 @@ void tsm_vte_reset(struct tsm_vte *vte)
 
 	vte->cattr = vte->def_attr;
 	screen_set_def_cell_attr(vte->con, &vte->def_attr);
+	/* RIS and DECSTR return mode 2027 to the configured method, where the
+	 * draft resets it to off (a deviation ADR-102 records) */
+	screen_set_width_method(vte->con, vte->width_method);
 
 	reset_state(vte);
 }
@@ -886,6 +891,10 @@ static void send_primary_da(struct tsm_vte *vte)
 /* execute control character (C0 or C1) */
 static void do_execute(struct tsm_vte *vte, uint32_t ctrl)
 {
+	/* text after a control character starts its own cluster */
+	if (ctrl)
+		screen_seg_reset(vte->con);
+
 	switch (ctrl) {
 	case 0x00: /* NUL */
 		/* Ignore on input */
@@ -1830,6 +1839,10 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 			    continue;
 			}
 			continue;
+		case 2027: /* grapheme cluster width (terminal-unicode-core) */
+			screen_set_width_method(vte->con, set ? TSM_WIDTH_UNICODE :
+						TSM_WIDTH_WCWIDTH);
+			continue;
 		case TSM_VTE_BRACKETED_PASTE:
 			vte->bracketed_paste = set;
 			continue;
@@ -1887,6 +1900,17 @@ static void csi_report_window_size(struct tsm_vte *vte)
 	len = snprintf(buf, sizeof(buf), "\e[%u;%u;%ut", resp,  h, w);
 	if (len >= sizeof(buf))
 		return;
+	vte_write(vte, buf, len);
+}
+
+/* DECRQM for mode 2027: 1 set (unicode), 2 reset (wcwidth) */
+static void csi_decrqm_2027(struct tsm_vte *vte)
+{
+	char buf[32];
+	int len;
+
+	len = snprintf(buf, sizeof(buf), "\e[?2027;%u$y",
+		       vte->con->width_method == TSM_WIDTH_UNICODE ? 1 : 2);
 	vte_write(vte, buf, len);
 }
 
@@ -2053,13 +2077,10 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			/* DECSTR: Soft Reset */
 			csi_soft_reset(vte);
 		} else if (vte->csi_flags & CSI_CASH) {
-			/* DECRQM: Request DEC Private Mode */
-			/* If CSI_WHAT is set, then enable,
-			 * otherwise disable */
-
-			/* Ignore */
-
-			/* FIXME: Implement DECRQM */
+			/* DECRQM: Request Mode. Only DEC private mode 2027
+			 * replies; the rest are ignored, as before. */
+			if ((vte->csi_flags & CSI_WHAT) && vte->csi_argv[0] == 2027)
+				csi_decrqm_2027(vte);
 		} else {
 			/* DECSCL: Compatibility Level */
 			/* Sometimes CSI_DQUOTE is set here, too */
@@ -2789,6 +2810,17 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 		}
 	}
 	--vte->parse_cnt;
+}
+
+SHL_EXPORT
+int tsm_vte_set_width_method(struct tsm_vte *vte, enum tsm_width_method method)
+{
+	if (!vte || (method != TSM_WIDTH_UNICODE && method != TSM_WIDTH_WCWIDTH))
+		return -EINVAL;
+
+	vte->width_method = method;
+	screen_set_width_method(vte->con, method);
+	return 0;
 }
 
 SHL_EXPORT

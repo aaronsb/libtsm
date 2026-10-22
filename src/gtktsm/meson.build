@@ -6,7 +6,6 @@ gtk_dep = dependency('gtk+-3.0')
 cairo_dep = dependency('cairo')
 
 gtktsm_deps = [
-    wcwidth_dep,
     shl_dep,
     libtsm_dep,
     gtk_dep,
