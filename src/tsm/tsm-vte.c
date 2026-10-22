@@ -1405,37 +1405,52 @@ struct sgr_color {
  * space cs may be empty and the fields T.416 puts after b are ignored. The
  * colon form ":2:r:g:b" is not in T.416 but programs send it; it is told apart
  * from ":2:cs:r:g:b" by its count of sub-parameters, as foot does (csi.c,
- * MIT, Copyright (c) 2019 Daniel Eklöf). An empty colon field reads as 0, and
- * components above 255 keep their low byte.
+ * MIT, Copyright (c) 2019 Daniel Eklöf). An empty colon field reads as 0.
+ *
+ * Out-of-range values differ by form. The colon forms are new to this fork, so
+ * an index or component above 255 rejects the colour. The semicolon forms keep
+ * upstream's handling, which the upstream goldens record: a component keeps its
+ * low byte and any index is looked up. A semicolon form whose arguments carry
+ * sub-parameters is not that form.
  *
  * Returns how many arguments after @i the colour used (the semicolon forms
  * span several), or -1 if it is not one of these forms.
  */
 static int sgr_color(struct tsm_vte *vte, unsigned int i, struct sgr_color *out)
 {
+	const unsigned int *nsubs = &vte->csi_subargc[i];
 	const int *sub = vte->csi_subargv[i];
 	const int *arg = &vte->csi_argv[i];
-	unsigned int nsub = vte->csi_subargc[i];
 	unsigned int nargs = vte->csi_argc - i - 1;
-	int index, rgb, used;
+	int index, r, g, b, used;
 
-	if (nsub == 2 && sub[0] == 5) {
+	if (nsubs[0] == 2 && sub[0] == 5) {
 		index = sub[1] < 0 ? 0 : sub[1];
+		if (index > 255)
+			return -1;
 		used = 0;
-	} else if (nsub >= 4 && sub[0] == 2) {
-		rgb = nsub == 4 ? 1 : 2;
+	} else if (nsubs[0] >= 4 && sub[0] == 2) {
+		/* r, g, b follow the colour-space slot when there is one */
+		sub += nsubs[0] == 4 ? 1 : 2;
+		r = sub[0] < 0 ? 0 : sub[0];
+		g = sub[1] < 0 ? 0 : sub[1];
+		b = sub[2] < 0 ? 0 : sub[2];
+		if (r > 255 || g > 255 || b > 255)
+			return -1;
 		out->code = -1;
-		out->r = sub[rgb] < 0 ? 0 : sub[rgb];
-		out->g = sub[rgb + 1] < 0 ? 0 : sub[rgb + 1];
-		out->b = sub[rgb + 2] < 0 ? 0 : sub[rgb + 2];
+		out->r = r;
+		out->g = g;
+		out->b = b;
 		return 0;
-	} else if (nsub) {
+	} else if (nsubs[0]) {
 		return -1;
-	} else if (nargs >= 2 && arg[1] == 5 && arg[2] >= 0) {
+	} else if (nargs >= 2 && arg[1] == 5 && arg[2] >= 0 &&
+		   !nsubs[1] && !nsubs[2]) {
 		index = arg[2];
 		used = 2;
 	} else if (nargs >= 4 && arg[1] == 2 &&
-		   arg[2] >= 0 && arg[3] >= 0 && arg[4] >= 0) {
+		   arg[2] >= 0 && arg[3] >= 0 && arg[4] >= 0 &&
+		   !nsubs[1] && !nsubs[2] && !nsubs[3] && !nsubs[4]) {
 		out->code = -1;
 		out->r = arg[2];
 		out->g = arg[3];
