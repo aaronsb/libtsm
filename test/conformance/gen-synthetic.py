@@ -190,6 +190,21 @@ def _():
     return cup(2, 3) + CSI + "5:1H" + "here" + CSI + "1:2C" + "next"
 
 
+@case("colour-resolve")
+def _():
+    # Colours as a renderer resolves them, for the draw2 view: bold brightens a
+    # base colour, dim dims a default underline but not a set one, reverse
+    # video swaps the default underline with the foreground but not a set one.
+    return (sgr(1, 31) + "BR" + sgr(0) + " " +
+            sgr(2, 4) + "DU" + sgr(0) + " " +
+            sgr(2, 4, 58, 2, 10, 20, 30) + "DS" + sgr(0) + " " +
+            sgr(7, 4) + "RU" + sgr(0) + " " +
+            sgr(7, 4, 58, 5, 1) + "RS" + sgr(0) + " " +
+            sgr(38, 5, 196) + "I" + sgr(0) + " " +
+            sgr(38, 2, 1, 2, 3) + "T" + sgr(0) + " " +
+            sgr(1, 38, 5, 1) + "B1" + sgr(0))
+
+
 @case("cursor-motion")
 def _():
     return (cup(5, 10) + "A" + CSI + "2A" + "B" + CSI + "3B" + "C" + CSI + "4C" + "D" +

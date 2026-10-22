@@ -2,8 +2,12 @@
 """Replay every conformance case and compare it with its golden.
 
 Usage:
-  check.py REPLAY DIR [--report FILE]   compare; exit 1 on any difference
-  check.py REPLAY DIR --update          rewrite the goldens from this REPLAY
+  check.py REPLAY DIR [--draw2] [--report FILE]   compare; exit 1 on any difference
+  check.py REPLAY DIR [--draw2] --update          rewrite the goldens from this REPLAY
+
+--draw2 replays every case through tsm-replay's draw2 view (resolved colours,
+the cells a renderer reads) and compares it with golden-draw2/<name>.txt. Those
+goldens are all fork-sourced (see README).
 
 --report writes the run as JSON for the contact sheet: for each case its
 name, size, status (pass, fail or missing), golden and actual output, and
@@ -65,8 +69,8 @@ def load_cases(root):
     return cases
 
 
-def replay(tool, root, name, cols, rows):
-    cmd = [tool, cols, rows, str(root / "cases" / f"{name}.bin")]
+def replay(tool, root, name, cols, rows, draw2=False):
+    cmd = [tool] + (["--draw2"] if draw2 else []) + [cols, rows, str(root / "cases" / f"{name}.bin")]
     cuts = root / "cases" / f"{name}.cuts"
     if cuts.exists():
         cmd.append(str(cuts))
@@ -80,7 +84,8 @@ def replay(tool, root, name, cols, rows):
 def main():
     args = sys.argv[1:]
     update = "--update" in args
-    args = [a for a in args if a != "--update"]
+    draw2 = "--draw2" in args
+    args = [a for a in args if a not in ("--update", "--draw2")]
     report = None
     if "--report" in args:
         i = args.index("--report")
@@ -94,10 +99,11 @@ def main():
         print("conformance: no cases listed; refusing to report a pass")
         return 1
 
-    golden_dir = root / "golden"
+    golden_dir = root / ("golden-draw2" if draw2 else "golden")
+    label = "conformance-draw2" if draw2 else "conformance"
     failed, missing, results = [], [], []
     for name, cols, rows in cases:
-        got = replay(tool, root, name, cols, rows)
+        got = replay(tool, root, name, cols, rows, draw2)
         golden = golden_dir / f"{name}.txt"
         if update:
             golden_dir.mkdir(exist_ok=True)
@@ -116,18 +122,18 @@ def main():
             failed.append(name)
             sys.stdout.writelines(difflib.unified_diff(
                 want.splitlines(keepends=True), got.splitlines(keepends=True),
-                fromfile=f"golden/{name}.txt", tofile=f"replay/{name}"))
+                fromfile=f"{golden_dir.name}/{name}.txt", tofile=f"replay/{name}"))
 
     if update:
-        print(f"conformance: wrote {len(cases)} goldens")
+        print(f"{label}: wrote {len(cases)} goldens")
         return 0
     if report:
         report.parent.mkdir(parents=True, exist_ok=True)
         report.write_text(json.dumps({"tier": 1, "tools": tool_versions(), "cases": results}, ensure_ascii=False, indent=1) + "\n")
     for name in missing:
-        print(f"conformance: {name}: no golden")
+        print(f"{label}: {name}: no golden")
     passed = len(cases) - len(failed) - len(missing)
-    print(f"conformance: {passed}/{len(cases)} match"
+    print(f"{label}: {passed}/{len(cases)} match"
           + (f"; differ: {', '.join(failed)}" if failed else "")
           + (f"; missing golden: {', '.join(missing)}" if missing else ""))
     return 1 if failed or missing else 0

@@ -9,6 +9,7 @@ Tier 1 of the kmscon fork's conformance harness (ADR-301 in aaronsb/kmscon). Rec
 | `fork-goldens.list` | The cases whose golden comes from a fork commit, each with the change of behaviour it judges. |
 | `cases/*.bin`, `cases/*.cuts` | The streams, and checkpoint offsets for recorded programs. |
 | `golden/*.txt` | The expected output for each case. |
+| `golden-draw2/*.txt` | The expected output of every case through the draw2 view, all fork-sourced (below). |
 | `gen-synthetic.py` | Writes the synthetic streams, one area of terminal behaviour each. |
 | `record-programs.py` | Records real programs (shell, less, vim, tmux) in a pseudo-terminal of fixed size with scripted keys. |
 | `check.py` | Replays every case and compares it with its golden; `--update` rewrites goldens. |
@@ -37,6 +38,12 @@ make golden REF=v4.8.0 RUN="docker run --rm --user $(id -u):$(id -g) -e HOME=/tm
 ```
 
 Upstream `v4.8.0`, as its goldens recorded before the fork changed these cases, discarded a whole SGR sequence containing a colon sub-parameter (`4:3`, `58:2::r:g:b`), set blink on `4;58;5;196` because the unhandled 58 left its `5` to be read as SGR 5, and ignored SGR 9. The fork implements colon sub-parameters, underline styles, underline colour and strike-through (ADR-102 in aaronsb/kmscon), so `sgr-basic`, `sgr-underline-extended` and the cases added with them are fork-sourced.
+
+## The draw2 view
+
+`tsm-replay --draw2` prints each screen through `tsm_screen_draw2`, the cells a renderer such as kmscon reads, in place of `tsm_screen_draw`. Colours appear resolved to RGB through the palette, with bold-as-bright, reverse video, dim and the underline colour applied, so tier 1 judges what the screen looks like as well as what it holds (aaronsb/kmscon#26). The view pins the `legacy` palette and prints it with its default colours. Rows show the codepoint each cell carries, and `cells` lines show runs that differ from the default cell. The header of `tsm-replay.c` gives the format.
+
+The meson test `conformance-draw2` runs every case through this view and compares it with `golden-draw2/`. Only the fork's libtsm has the view, so that whole set is fork-sourced: a fork `REF` writes all of it, and `REF=v4.8.0` none. The view is a separate set of files, not a section added to `golden/`, so every file still has one source. A section in `golden/` would have mixed upstream output with fork output in one file, and every upstream-sourced golden would have needed a fork run as well.
 
 ## Pinned dev image
 
