@@ -160,6 +160,12 @@ static unsigned int copy_line(struct tsm_screen *con, struct line *line, char *b
 	start = (con->sel_start.line == line) ? con->sel_start.x : 0;
 	end = (con->sel_end.line == line) ? con->sel_end.x + 1 : con->size_x;
 
+	/* The copy buffer is sized from the current width. A line keeps its
+	 * cells past it after the screen narrows, and a selection made before
+	 * keeps its columns, so neither may reach past size_x. */
+	if (line_len > (int)con->size_x)
+		line_len = con->size_x;
+
 	if (start > line_len)
 		return 0;
 

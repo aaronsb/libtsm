@@ -888,6 +888,41 @@ START_TEST(test_screen_robustness)
 }
 END_TEST
 
+/* a selection made on a wider screen copies only what the narrower screen
+ * shows: the copy buffer is sized from the current width */
+START_TEST(test_screen_copy_after_narrowing)
+{
+	struct tsm_screen *screen;
+	struct tsm_screen_attr attr;
+	char *str = NULL;
+	int r, i, len;
+
+	r = tsm_screen_new(&screen, NULL, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 40, 3);
+	ck_assert_int_eq(r, 0);
+
+	/* 40 cells of e with U+0301, three bytes each */
+	memset(&attr, 0, sizeof(attr));
+	for (i = 0; i < 40; i++) {
+		tsm_screen_write(screen, 'e', &attr);
+		tsm_screen_write(screen, 0x301, &attr);
+	}
+
+	tsm_screen_selection_start(screen, 0, 0);
+	tsm_screen_selection_target(screen, 39, 0);
+	r = tsm_screen_resize(screen, 4, 3);
+	ck_assert_int_eq(r, 0);
+
+	len = tsm_screen_selection_copy(screen, &str);
+	ck_assert_int_eq(len, 4 * 3);
+	ck_assert_str_eq(str, "e\xcc\x81" "e\xcc\x81" "e\xcc\x81" "e\xcc\x81");
+
+	free(str);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_screen_copy_incomplete)
 	TEST(test_screen_copy_one_cell)
@@ -902,6 +937,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_screen_copy_lines_sb_scrolled)
 	TEST(test_screen_copy_lines_sb_scrolled_cut_off)
 	TEST(test_screen_robustness)
+	TEST(test_screen_copy_after_narrowing)
 TEST_END_CASE
 
 TEST_DEFINE(
