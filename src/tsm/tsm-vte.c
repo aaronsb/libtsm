@@ -114,6 +114,9 @@ enum parser_action {
 /* max CSI arguments */
 #define CSI_ARG_MAX 16
 
+/* max colon-separated sub-parameters of one CSI argument */
+#define CSI_SUBARG_MAX 8
+
 /* max length of an OSC code */
 #define OSC_MAX_LEN 128
 
@@ -164,6 +167,13 @@ struct tsm_vte {
 	unsigned int state;
 	unsigned int csi_argc;
 	int csi_argv[CSI_ARG_MAX];
+	/* Sub-parameters: "4:3" is csi_argv 4 with csi_subargc 1 and
+	 * csi_subargv {3}; an argument without a colon has csi_subargc 0. An
+	 * empty sub-parameter is -1. Colons past CSI_SUBARG_MAX set
+	 * csi_subarg_drop, which discards digits until the next ';'. */
+	unsigned int csi_subargc[CSI_ARG_MAX];
+	int csi_subargv[CSI_ARG_MAX][CSI_SUBARG_MAX];
+	bool csi_subarg_drop;
 	unsigned int csi_flags;
 
 	tsm_vte_osc_cb osc_cb;
@@ -468,6 +478,16 @@ static void to_rgb(struct tsm_vte *vte, struct tsm_screen_attr *attr)
 		attr->bg = vte->palette[code][1];
 		attr->bb = vte->palette[code][2];
 	}
+
+	code = attr->uccode;
+	if (attr->ucset && code >= 0) {
+		if (code >= TSM_COLOR_NUM)
+			code = TSM_COLOR_FOREGROUND;
+
+		attr->ur = vte->palette[code][0];
+		attr->ug = vte->palette[code][1];
+		attr->ub = vte->palette[code][2];
+	}
 }
 
 static void copy_fcolor(struct tsm_screen_attr *dest,
@@ -486,6 +506,38 @@ static void copy_bcolor(struct tsm_screen_attr *dest,
 	dest->br = src->br;
 	dest->bg = src->bg;
 	dest->bb = src->bb;
+}
+
+static void set_underline(struct tsm_screen_attr *attr,
+			  enum tsm_underline_style style)
+{
+	attr->underline_style = style;
+	attr->underline = style != TSM_UNDERLINE_NONE;
+}
+
+/* SGR 59: the underline takes the foreground colour again */
+static void clear_ucolor(struct tsm_screen_attr *attr)
+{
+	attr->ucset = 0;
+	attr->uccode = 0;
+	attr->ur = 0;
+	attr->ug = 0;
+	attr->ub = 0;
+}
+
+/* SGR 0: everything SGR sets returns to its default */
+static void reset_sgr(struct tsm_vte *vte, struct tsm_screen_attr *attr)
+{
+	copy_fcolor(attr, &vte->def_attr);
+	copy_bcolor(attr, &vte->def_attr);
+	attr->bold = 0;
+	attr->italic = 0;
+	attr->inverse = 0;
+	attr->blink = 0;
+	attr->dim = 0;
+	attr->strike = 0;
+	set_underline(attr, TSM_UNDERLINE_NONE);
+	clear_ucolor(attr);
 }
 
 SHL_EXPORT
@@ -785,15 +837,8 @@ static void reset_state(struct tsm_vte *vte)
 	vte->saved_state.gr = &vte->g1;
 	vte->saved_state.cursor_style = TSM_SCREEN_CURSOR_DEFAULT;
 
-	copy_fcolor(&vte->saved_state.cattr, &vte->def_attr);
-	copy_bcolor(&vte->saved_state.cattr, &vte->def_attr);
-	vte->saved_state.cattr.bold = 0;
-	vte->saved_state.cattr.italic = 0;
-	vte->saved_state.cattr.underline = 0;
-	vte->saved_state.cattr.inverse = 0;
+	reset_sgr(vte, &vte->saved_state.cattr);
 	vte->saved_state.cattr.protect = 0;
-	vte->saved_state.cattr.blink = 0;
-	vte->saved_state.cattr.dim = 0;
 }
 
 static void save_state(struct tsm_vte *vte)
@@ -1009,8 +1054,11 @@ static void do_clear(struct tsm_vte *vte)
 	int i;
 
 	vte->csi_argc = 0;
-	for (i = 0; i < CSI_ARG_MAX; ++i)
+	for (i = 0; i < CSI_ARG_MAX; ++i) {
 		vte->csi_argv[i] = -1;
+		vte->csi_subargc[i] = 0;
+	}
+	vte->csi_subarg_drop = false;
 	vte->csi_flags = 0;
 
 	vte->osc_len = 0;
@@ -1058,7 +1106,8 @@ static void do_collect(struct tsm_vte *vte, uint32_t data)
 
 static void do_param(struct tsm_vte *vte, uint32_t data)
 {
-	int new;
+	unsigned int *subargc;
+	int *val, new;
 
 	if (data == ';') {
 		if (vte->csi_argc < CSI_ARG_MAX) {
@@ -1067,23 +1116,42 @@ static void do_param(struct tsm_vte *vte, uint32_t data)
 				vte->csi_argv[vte->csi_argc] = 0;
 			vte->csi_argc++;
 		}
+		vte->csi_subarg_drop = false;
 		return;
 	}
 
 	if (vte->csi_argc >= CSI_ARG_MAX)
 		return;
 
+	subargc = &vte->csi_subargc[vte->csi_argc];
+	if (data == ':') {
+		/* a sub-parameter of the current argument; past the limit the
+		 * rest are dropped and the sequence still dispatches */
+		if (*subargc < CSI_SUBARG_MAX)
+			vte->csi_subargv[vte->csi_argc][(*subargc)++] = -1;
+		else
+			vte->csi_subarg_drop = true;
+		return;
+	}
+
+	if (vte->csi_subarg_drop)
+		return;
+	if (*subargc)
+		val = &vte->csi_subargv[vte->csi_argc][*subargc - 1];
+	else
+		val = &vte->csi_argv[vte->csi_argc];
+
 	/* avoid integer overflows; max allowed value is 16384 anyway */
-	if (vte->csi_argv[vte->csi_argc] > 0xffff)
+	if (*val > 0xffff)
 		return;
 
 	if (data >= '0' && data <= '9') {
-		new = vte->csi_argv[vte->csi_argc];
+		new = *val;
 		if (new <= 0)
 			new = data - '0';
 		else
 			new = new * 10 + data - '0';
-		vte->csi_argv[vte->csi_argc] = new;
+		*val = new;
 	}
 }
 
@@ -1321,29 +1389,145 @@ static void lookup_color(struct tsm_vte *vte, int color, uint8_t *cr,
 	}
 }
 
+/* An SGR colour as struct tsm_screen_attr keeps it: a palette code, or -1
+ * with RGB components. */
+struct sgr_color {
+	int8_t code;
+	uint8_t r;
+	uint8_t g;
+	uint8_t b;
+};
+
+/*
+ * Read the colour that SGR 38, 48 or 58 at argument @i selects. The forms are
+ * xterm's ";5;n" and ";2;r;g;b", which always takes exactly three values, and
+ * the colon forms of ITU T.416: ":5:n" and ":2:cs:r:g:b", where the colour
+ * space cs may be empty and the fields T.416 puts after b are ignored. The
+ * colon form ":2:r:g:b" is not in T.416 but programs send it; it is told apart
+ * from ":2:cs:r:g:b" by its count of sub-parameters, as foot does (csi.c,
+ * MIT, Copyright (c) 2019 Daniel Eklöf). An empty colon field reads as 0.
+ *
+ * Out-of-range values differ by form. The colon forms are new to this fork, so
+ * an index or component above 255 rejects the colour. The semicolon forms keep
+ * upstream's handling, which the upstream goldens record: a component keeps its
+ * low byte and any index is looked up. A semicolon form whose arguments carry
+ * sub-parameters is not that form.
+ *
+ * Returns how many arguments after @i the colour used (the semicolon forms
+ * span several), or -1 if it is not one of these forms.
+ */
+static int sgr_color(struct tsm_vte *vte, unsigned int i, struct sgr_color *out)
+{
+	const unsigned int *nsubs = &vte->csi_subargc[i];
+	const int *sub = vte->csi_subargv[i];
+	const int *arg = &vte->csi_argv[i];
+	unsigned int nargs = vte->csi_argc - i - 1;
+	int index, r, g, b, used;
+
+	if (nsubs[0] == 2 && sub[0] == 5) {
+		index = sub[1] < 0 ? 0 : sub[1];
+		if (index > 255)
+			return -1;
+		used = 0;
+	} else if (nsubs[0] >= 4 && sub[0] == 2) {
+		/* r, g, b follow the colour-space slot when there is one */
+		sub += nsubs[0] == 4 ? 1 : 2;
+		r = sub[0] < 0 ? 0 : sub[0];
+		g = sub[1] < 0 ? 0 : sub[1];
+		b = sub[2] < 0 ? 0 : sub[2];
+		if (r > 255 || g > 255 || b > 255)
+			return -1;
+		out->code = -1;
+		out->r = r;
+		out->g = g;
+		out->b = b;
+		return 0;
+	} else if (nsubs[0]) {
+		return -1;
+	} else if (nargs >= 2 && arg[1] == 5 && arg[2] >= 0 &&
+		   !nsubs[1] && !nsubs[2]) {
+		index = arg[2];
+		used = 2;
+	} else if (nargs >= 4 && arg[1] == 2 &&
+		   arg[2] >= 0 && arg[3] >= 0 && arg[4] >= 0 &&
+		   !nsubs[1] && !nsubs[2] && !nsubs[3] && !nsubs[4]) {
+		out->code = -1;
+		out->r = arg[2];
+		out->g = arg[3];
+		out->b = arg[4];
+		return 4;
+	} else {
+		return -1;
+	}
+
+	/* the 16 base colours stay codes, so bold can brighten them; the
+	 * rest of the 256 are resolved here */
+	if (index < 16) {
+		out->code = index;
+		out->r = out->g = out->b = 0;
+	} else {
+		out->code = -1;
+		lookup_color(vte, index, &out->r, &out->g, &out->b);
+	}
+	return used;
+}
+
+/* SGR 4 with its sub-parameter: 4 and 4:1 single, 4:0 none, 4:2-4:5
+ * double, curly, dotted, dashed; any other style draws single, as Ghostty
+ * does (sgr.zig, MIT). Returns false for more than one sub-parameter. */
+static bool sgr_underline(struct tsm_vte *vte, unsigned int i)
+{
+	int style;
+
+	if (vte->csi_subargc[i] > 1)
+		return false;
+
+	style = TSM_UNDERLINE_SINGLE;
+	if (vte->csi_subargc[i] == 1) {
+		style = vte->csi_subargv[i][0];
+		if (style < 0)
+			style = TSM_UNDERLINE_NONE;
+		else if (style > TSM_UNDERLINE_DASHED)
+			style = TSM_UNDERLINE_SINGLE;
+	}
+	set_underline(&vte->cattr, style);
+	return true;
+}
+
 static void csi_attribute(struct tsm_vte *vte)
 {
-	unsigned int i, code, val;
-	uint8_t cr, cg, cb;
+	struct sgr_color color;
+	unsigned int i;
+	int used;
 
-	if (vte->csi_argc <= 1 && vte->csi_argv[0] == -1) {
+	if (vte->csi_argc <= 1 && vte->csi_argv[0] == -1 &&
+	    !vte->csi_subargc[0]) {
 		vte->csi_argc = 1;
 		vte->csi_argv[0] = 0;
 	}
 
 	for (i = 0; i < vte->csi_argc; ++i) {
+		/* Only 4, 38, 48 and 58 take sub-parameters. Any other
+		 * argument that has them is skipped on its own. */
+		switch (vte->csi_argv[i]) {
+		case 4:
+		case 38:
+		case 48:
+		case 58:
+			break;
+		default:
+			if (vte->csi_subargc[i]) {
+				llog_debug(vte, "SGR %i with unknown sub-parameters",
+					   vte->csi_argv[i]);
+				continue;
+			}
+		}
+
 		switch (vte->csi_argv[i]) {
 		case -1:
 			break;
 		case 0:
-			copy_fcolor(&vte->cattr, &vte->def_attr);
-			copy_bcolor(&vte->cattr, &vte->def_attr);
-			vte->cattr.bold = 0;
-			vte->cattr.italic = 0;
-			vte->cattr.underline = 0;
-			vte->cattr.inverse = 0;
-			vte->cattr.blink = 0;
-			vte->cattr.dim = 0;
+			reset_sgr(vte, &vte->cattr);
 			break;
 		case 1:
 			vte->cattr.bold = 1;
@@ -1355,13 +1539,22 @@ static void csi_attribute(struct tsm_vte *vte)
 			vte->cattr.italic = 1;
 			break;
 		case 4:
-			vte->cattr.underline = 1;
+			if (!sgr_underline(vte, i))
+				llog_debug(vte, "SGR 4 with unknown sub-parameters");
 			break;
 		case 5:
 			vte->cattr.blink = 1;
 			break;
 		case 7:
 			vte->cattr.inverse = 1;
+			break;
+		case 9:
+			vte->cattr.strike = 1;
+			break;
+		case 21:
+			/* ECMA-48 double underline; the Linux VT once read it as
+			 * normal intensity */
+			set_underline(&vte->cattr, TSM_UNDERLINE_DOUBLE);
 			break;
 		case 22:
 			vte->cattr.bold = 0;
@@ -1371,13 +1564,16 @@ static void csi_attribute(struct tsm_vte *vte)
 			vte->cattr.italic = 0;
 			break;
 		case 24:
-			vte->cattr.underline = 0;
+			set_underline(&vte->cattr, TSM_UNDERLINE_NONE);
 			break;
 		case 25:
 			vte->cattr.blink = 0;
 			break;
 		case 27:
 			vte->cattr.inverse = 0;
+			break;
+		case 29:
+			vte->cattr.strike = 0;
 			break;
 		case 30:
 			vte->cattr.fccode = TSM_COLOR_BLACK;
@@ -1482,57 +1678,35 @@ static void csi_attribute(struct tsm_vte *vte)
 			vte->cattr.bccode = TSM_COLOR_WHITE;
 			break;
 		case 38:
-			/* fallthrough */
 		case 48:
-			val = vte->csi_argv[i];
-			/* the 5/2 subcommand + its operands live in later argv slots;
-			 * bail if they would read past the parsed args (csi_argv[16] OOB). */
-			if (i + 1 >= vte->csi_argc)
-				break;
-			if (vte->csi_argv[i + 1] == 5) { // 256color mode
-				if (i + 2 >= vte->csi_argc ||
-					vte->csi_argv[i + 2] < 0) {
-					llog_debug(vte, "invalid 256color SGR");
-					break;
-				}
-				code = vte->csi_argv[i + 2];
-				if (code < 16) {
-					//no change
-					cb = cg = cr = 0;
-				} else {
-					lookup_color(vte, code, &cr, &cg, &cb);
-					code = -1;
-				}
-				i += 2;
-			} else if (vte->csi_argv[i + 1] == 2) {  // true color mode
-				if (i + 4 >= vte->csi_argc ||
-					vte->csi_argv[i + 2] < 0 ||
-					vte->csi_argv[i + 3] < 0 ||
-					vte->csi_argv[i + 4] < 0) {
-						llog_debug(vte, "invalid true color SGR");
-						break;
-					}
-				cr = vte->csi_argv[i + 2];
-				cg = vte->csi_argv[i + 3];
-				cb = vte->csi_argv[i + 4];
-				code = -1;
-				i += 4;
-			} else {
-				llog_debug(vte, "invalid SGR");
+		case 58:
+			used = sgr_color(vte, i, &color);
+			if (used < 0) {
+				llog_debug(vte, "invalid colour in SGR %i",
+					   vte->csi_argv[i]);
 				break;
 			}
-			if (val == 38) {
-				vte->cattr.fccode = code;
-				vte->cattr.fr = cr;
-				vte->cattr.fg = cg;
-				vte->cattr.fb = cb;
+			if (vte->csi_argv[i] == 38) {
+				vte->cattr.fccode = color.code;
+				vte->cattr.fr = color.r;
+				vte->cattr.fg = color.g;
+				vte->cattr.fb = color.b;
+			} else if (vte->csi_argv[i] == 48) {
+				vte->cattr.bccode = color.code;
+				vte->cattr.br = color.r;
+				vte->cattr.bg = color.g;
+				vte->cattr.bb = color.b;
 			} else {
-				vte->cattr.bccode = code;
-				vte->cattr.br = cr;
-				vte->cattr.bg = cg;
-				vte->cattr.bb = cb;
+				vte->cattr.ucset = 1;
+				vte->cattr.uccode = color.code;
+				vte->cattr.ur = color.r;
+				vte->cattr.ug = color.g;
+				vte->cattr.ub = color.b;
 			}
-
+			i += used;
+			break;
+		case 59:
+			clear_ucolor(&vte->cattr);
 			break;
 		default:
 			llog_debug(vte, "unhandled SGR attr %i",
@@ -1890,6 +2064,16 @@ static void csi_report_window_size(struct tsm_vte *vte)
 	vte_write(vte, buf, len);
 }
 
+static bool csi_has_subargs(struct tsm_vte *vte)
+{
+	unsigned int i;
+
+	for (i = 0; i < vte->csi_argc; ++i)
+		if (vte->csi_subargc[i])
+			return true;
+	return false;
+}
+
 static void do_csi(struct tsm_vte *vte, uint32_t data)
 {
 	int num, x, y, upper, lower;
@@ -1897,6 +2081,14 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 
 	if (vte->csi_argc < CSI_ARG_MAX)
 		vte->csi_argc++;
+
+	/* Only SGR reads sub-parameters. Any other sequence carrying them is
+	 * ignored whole, as it was before colons were parsed, and as Ghostty
+	 * does (Parser.zig, MIT). */
+	if (data != 'm' && csi_has_subargs(vte)) {
+		llog_debug(vte, "CSI %c with sub-parameters ignored", data);
+		return;
+	}
 
 	switch (data) {
 	case 'A': /* CUU */
@@ -2526,11 +2718,7 @@ static void parse_data(struct tsm_vte *vte, uint32_t raw)
 		case 0x20 ... 0x2f:
 			do_trans(vte, raw, STATE_CSI_INT, ACTION_COLLECT);
 			return;
-		case 0x3a:
-			do_trans(vte, raw, STATE_CSI_IGNORE, ACTION_NONE);
-			return;
-		case 0x30 ... 0x39:
-		case 0x3b:
+		case 0x30 ... 0x3b:
 			do_trans(vte, raw, STATE_CSI_PARAM, ACTION_PARAM);
 			return;
 		case 0x3c ... 0x3f:
@@ -2549,14 +2737,12 @@ static void parse_data(struct tsm_vte *vte, uint32_t raw)
 		case 0x1c ... 0x1f:
 			do_trans(vte, raw, STATE_NONE, ACTION_EXECUTE);
 			return;
-		case 0x30 ... 0x39:
-		case 0x3b:
+		case 0x30 ... 0x3b:
 			do_trans(vte, raw, STATE_NONE, ACTION_PARAM);
 			return;
 		case 0x7f:
 			do_trans(vte, raw, STATE_NONE, ACTION_IGNORE);
 			return;
-		case 0x3a:
 		case 0x3c ... 0x3f:
 			do_trans(vte, raw, STATE_CSI_IGNORE, ACTION_NONE);
 			return;

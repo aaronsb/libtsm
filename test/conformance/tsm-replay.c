@@ -25,7 +25,16 @@
  *
  * In TEXT a cell with no character is a space, a cell holding several
  * codepoints prints them all, and the cell after a wide character prints
- * nothing, so wide characters keep their row aligned in a monospace view.
+ * nothing, so wide characters keep their row aligned in a monospace view. A
+ * cell with more than MAX_CP codepoints is an error (exit 3), so a cluster is
+ * never truncated silently.
+ *
+ * KEY is fg=, bg= (a palette index or #rrggbb), or a flag: bold, italic,
+ * underline, inverse, protect, blink, dim. Against a libtsm that declares
+ * TSM_SCREEN_ATTR_UNDERLINE_STYLE it also prints, only when set:
+ *   underline=STYLE           (in place of "underline" for double, curly, dotted, dashed)
+ *   ul=                       (underline colour set by SGR 58, as fg=)
+ *   strike
  *
  * SPDX-License-Identifier: MIT
  */
@@ -39,7 +48,7 @@
 
 #include "libtsm.h"
 
-#define MAX_CP 8
+#define MAX_CP 32
 
 struct cell {
 	uint32_t cp[MAX_CP];
@@ -88,8 +97,13 @@ static int on_draw(struct tsm_screen *con, uint64_t id, const uint32_t *ch, size
 	(void)age;
 	if (posx >= g->cols || posy >= g->rows)
 		return 0;
+	if (len > MAX_CP) {
+		fprintf(stderr, "tsm-replay: cell %u,%u holds %zu codepoints, more than %d\n",
+			posx, posy, len, MAX_CP);
+		exit(3);
+	}
 	c = &g->cells[posy * g->cols + posx];
-	c->len = len < MAX_CP ? len : MAX_CP;
+	c->len = len;
 	memcpy(c->cp, ch, c->len * sizeof(*ch));
 	c->width = width;
 	c->drawn = true;
@@ -120,7 +134,11 @@ static bool attr_is_default(const struct tsm_screen_attr *a)
 {
 	return a->fccode == TSM_COLOR_FOREGROUND && a->bccode == TSM_COLOR_BACKGROUND &&
 	       !a->bold && !a->italic && !a->underline && !a->inverse && !a->protect &&
-	       !a->blink && !a->dim;
+	       !a->blink && !a->dim
+#ifdef TSM_SCREEN_ATTR_UNDERLINE_STYLE
+	       && !a->ucset && !a->strike
+#endif
+		;
 }
 
 static bool attr_equal(const struct tsm_screen_attr *a, const struct tsm_screen_attr *b)
@@ -130,7 +148,14 @@ static bool attr_equal(const struct tsm_screen_attr *a, const struct tsm_screen_
 	       (a->bccode >= 0 || (a->br == b->br && a->bg == b->bg && a->bb == b->bb)) &&
 	       a->bold == b->bold && a->italic == b->italic && a->underline == b->underline &&
 	       a->inverse == b->inverse && a->protect == b->protect && a->blink == b->blink &&
-	       a->dim == b->dim;
+	       a->dim == b->dim
+#ifdef TSM_SCREEN_ATTR_UNDERLINE_STYLE
+	       && a->underline_style == b->underline_style && a->strike == b->strike &&
+	       a->ucset == b->ucset &&
+	       (!a->ucset || (a->uccode == b->uccode &&
+			      (a->uccode >= 0 || (a->ur == b->ur && a->ug == b->ug && a->ub == b->ub))))
+#endif
+		;
 }
 
 static void print_color(const char *key, int8_t code, uint8_t r, uint8_t g, uint8_t b)
@@ -153,8 +178,24 @@ static void print_attr(unsigned int row, unsigned int from, unsigned int to,
 		printf(" bold");
 	if (a->italic)
 		printf(" italic");
-	if (a->underline)
-		printf(" underline");
+	if (a->underline) {
+#ifdef TSM_SCREEN_ATTR_UNDERLINE_STYLE
+		static const char *const styles[] = {
+			[TSM_UNDERLINE_DOUBLE] = "double", [TSM_UNDERLINE_CURLY] = "curly",
+			[TSM_UNDERLINE_DOTTED] = "dotted", [TSM_UNDERLINE_DASHED] = "dashed",
+		};
+
+		if (a->underline_style < sizeof(styles) / sizeof(styles[0]) &&
+		    styles[a->underline_style])
+			printf(" underline=%s", styles[a->underline_style]);
+		else
+#endif
+			printf(" underline");
+	}
+#ifdef TSM_SCREEN_ATTR_UNDERLINE_STYLE
+	if (a->ucset)
+		print_color("ul", a->uccode, a->ur, a->ug, a->ub);
+#endif
 	if (a->inverse)
 		printf(" inverse");
 	if (a->protect)
@@ -163,6 +204,10 @@ static void print_attr(unsigned int row, unsigned int from, unsigned int to,
 		printf(" blink");
 	if (a->dim)
 		printf(" dim");
+#ifdef TSM_SCREEN_ATTR_UNDERLINE_STYLE
+	if (a->strike)
+		printf(" strike");
+#endif
 	putchar('\n');
 }
 

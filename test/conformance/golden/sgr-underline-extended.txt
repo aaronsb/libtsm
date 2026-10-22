@@ -2,7 +2,12 @@ size 80x24
 cursor 48,0
 flags AUTO_WRAP
 row 0 |curly double boldcurly redulnocolor ul196 ulnone|
-attr 0 36-40 underline blink
+attr 0 0-4 underline=curly
+attr 0 6-11 underline=double
+attr 0 13-21 bold underline=curly
+attr 0 23-27 underline ul=#ff0000
+attr 0 28-34 underline
+attr 0 36-40 underline ul=#ff0000
 row 1 ||
 row 2 ||
 row 3 ||

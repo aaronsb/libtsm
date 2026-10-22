@@ -155,6 +155,22 @@ typedef uint_fast32_t tsm_age_t;
 #define TSM_SCREEN_FIXED_POS	0x20
 #define TSM_SCREEN_ALTERNATE	0x40
 
+/*
+ * Defined when struct tsm_screen_attr carries underline_style, strike and the
+ * underline colour (ucset, uccode, ur, ug, ub), so programs built against
+ * several libtsm versions can test for them.
+ */
+#define TSM_SCREEN_ATTR_UNDERLINE_STYLE 1
+
+enum tsm_underline_style {
+	TSM_UNDERLINE_NONE	= 0,
+	TSM_UNDERLINE_SINGLE	= 1,
+	TSM_UNDERLINE_DOUBLE	= 2,
+	TSM_UNDERLINE_CURLY	= 3,
+	TSM_UNDERLINE_DOTTED	= 4,
+	TSM_UNDERLINE_DASHED	= 5,
+};
+
 struct tsm_screen_attr {
 	int8_t fccode;			/* foreground color code or <0 for rgb */
 	int8_t bccode;			/* background color code or <0 for rgb */
@@ -166,11 +182,18 @@ struct tsm_screen_attr {
 	uint8_t bb;			/* background blue */
 	unsigned int bold : 1;		/* bold character */
 	unsigned int italic : 1;	/* italics character */
-	unsigned int underline : 1;	/* underlined character */
+	unsigned int underline : 1;	/* underlined, in any style */
 	unsigned int inverse : 1;	/* inverse colors */
 	unsigned int protect : 1;	/* cannot be erased */
 	unsigned int blink : 1;		/* blinking character */
 	unsigned int dim:1;		/* dim color */
+	unsigned int underline_style : 3; /* enum tsm_underline_style */
+	unsigned int strike : 1;	/* struck through */
+	unsigned int ucset : 1;		/* underline colour set (SGR 58); clear follows the foreground */
+	int8_t uccode;			/* underline color code or <0 for rgb, if ucset */
+	uint8_t ur;			/* underline red */
+	uint8_t ug;			/* underline green */
+	uint8_t ub;			/* underline blue */
 };
 
 /* Attributes that alter the glyph shape */

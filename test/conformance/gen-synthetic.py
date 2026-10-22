@@ -80,6 +80,116 @@ def _():
             CSI + "4:0m" + "ulnone" + sgr(0))
 
 
+def color_forms(selector, prefix=""):
+    # Each colour form SGR 38, 48 and 58 accept, one labelled run each, with a
+    # distinct colour per form so a form read wrong shows as a wrong value.
+    forms = [
+        ("c5", ":5:196"),                    # colon palette index, 16-255: resolved to RGB
+        ("c5lo", ":5:9"),                    # colon palette index below 16: stays a code
+        ("s5", ";5;33"),                     # semicolon palette index
+        ("c2", ":2:10:20:30"),               # colon RGB without a colour-space slot
+        ("c2e", ":2::40:50:60"),             # colon RGB, colour space empty (T.416)
+        ("c2cs", ":2:0:70:80:90"),           # colon RGB with a colour space
+        ("c2t", ":2:0:100:110:120:7:8:9"),   # trailing T.416 fields ignored
+        ("s2", ";2;130;140;150;1"),          # semicolon RGB takes exactly 3; the 1 is bold
+    ]
+    return "".join(CSI + prefix + str(selector) + form + "m" + label + sgr(0) + " "
+                   for label, form in forms)
+
+
+@case("sgr-color-forms-fg")
+def _():
+    return color_forms(38)
+
+
+@case("sgr-color-forms-bg")
+def _():
+    return color_forms(48)
+
+
+@case("sgr-color-forms-ul")
+def _():
+    # The underline colour on a single underline.
+    return color_forms(58, "4;")
+
+
+@case("sgr-underline-styles")
+def _():
+    # 4:0-4:5, an unknown style (single), plain 4, 21 double, 24 none,
+    # and a style replaced by plain 4.
+    out = "".join(CSI + f"4:{n}m" + f"s{n}" + sgr(0) + " " for n in (0, 1, 2, 3, 4, 5, 9))
+    return (out + sgr(4) + "plain" + sgr(0) + " " + sgr(21) + "dbl21" + sgr(0) + " " +
+            CSI + "4:3m" + "curly" + sgr(24) + "off24" + " " +
+            CSI + "4:3m" + "curly" + sgr(4) + "single" + sgr(0))
+
+
+@case("sgr-strike")
+def _():
+    # 9 on, 29 off, strike beside other attributes, SGR 0 clearing it.
+    return (sgr(9) + "struck" + sgr(29) + "clear" + " " +
+            sgr(1, 9, 31) + "boldred" + sgr(22) + "red" + sgr(0) + "reset")
+
+
+@case("sgr-underline-color-reset")
+def _():
+    # 59 clears the colour and keeps the style; 24 clears the style and keeps
+    # the colour; SGR 0 clears both.
+    return (CSI + "4:3;58:5:196m" + "curlyred" + CSI + "59m" + "curly" + " " +
+            CSI + "4:2;58:5:2m" + "dblgreen" + sgr(24) + "colouronly" + sgr(4) + "single" + " " +
+            CSI + "4:3;58;2;1;2;3m" + "set" + sgr(0) + "reset")
+
+
+@case("sgr-subparam-unknown")
+def _():
+    # A parameter with sub-parameters SGR does not know is skipped on its own;
+    # the rest of the sequence still applies.
+    return (CSI + "1;3:1;4m" + "boldul" + sgr(0) + " " +       # italic with a sub-parameter
+            CSI + "4:3:1;1m" + "bold" + sgr(0) + " " +          # underline with two
+            CSI + "38:9:1;1m" + "bold" + sgr(0) + " " +         # unknown colour form
+            CSI + "38:5;3m" + "italic" + sgr(0) + " " +         # colon palette form missing its index
+            CSI + "7:1;9m" + "strike" + sgr(0))
+
+
+@case("sgr-color-colon-out-of-range")
+def _():
+    # In the colon forms an index or component above 255 rejects the colour
+    # alone; 255 itself is accepted. (The semicolon forms keep upstream's
+    # handling of large values.)
+    return (CSI + "48:2:256:300:65535;1m" + "bold" + sgr(0) + " " +
+            CSI + "38:5:256;3m" + "italic" + sgr(0) + " " +
+            CSI + "4;58:2::0:0:256m" + "ul" + sgr(0) + " " +
+            CSI + "38:2:255:255:255;48:5:255m" + "max" + sgr(0))
+
+
+@case("sgr-color-semicolon-subparams")
+def _():
+    # A semicolon colour form whose arguments carry sub-parameters is not that
+    # form: nothing is consumed, and the arguments are read as SGR on their own.
+    return (CSI + "38;5:1;9m" + "strike" + sgr(0) + " " +     # 5:1 skipped, 9 strike
+            CSI + "48;2;1;2;3:4m" + "dimbold" + sgr(0))       # 2 dim, 1 bold, 3:4 skipped
+
+
+@case("sgr-58-semicolon-no-blink")
+def _():
+    # 58 consumes its own 5 and index; a later 5 is still blink.
+    return (sgr(4, 58, 5, 196) + "ul196" + sgr(0) + " " +
+            sgr(4, 58, 2, 1, 2, 3, 5) + "blink" + sgr(0))
+
+
+@case("sgr-subparam-overflow")
+def _():
+    # Sub-parameters past the eighth are dropped; the parameter and the rest of
+    # the sequence still apply.
+    return CSI + "38:2:0:10:20:30:0:0:0:99:99;1m" + "bold" + sgr(0)
+
+
+@case("csi-subparam-non-sgr")
+def _():
+    # Only SGR reads sub-parameters: any other sequence carrying them is
+    # ignored whole, as upstream ignores every sequence with a colon.
+    return cup(2, 3) + CSI + "5:1H" + "here" + CSI + "1:2C" + "next"
+
+
 @case("cursor-motion")
 def _():
     return (cup(5, 10) + "A" + CSI + "2A" + "B" + CSI + "3B" + "C" + CSI + "4C" + "D" +

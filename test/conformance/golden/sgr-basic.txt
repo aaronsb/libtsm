@@ -8,6 +8,7 @@ attr 0 15-20 italic
 attr 0 22-30 underline
 attr 0 32-36 blink
 attr 0 38-44 inverse
+attr 0 54-59 strike
 row 1 |fg30 fg31 fg32 fg33 fg34 fg35 fg36 fg37|
 attr 1 0-3 fg=0
 attr 1 5-8 fg=1

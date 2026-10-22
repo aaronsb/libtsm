@@ -9,8 +9,12 @@ libtsm_srcs = [
     'tsm-vte.c',
 ]
 
-version=meson.project_version()
-major=version.split('.')[0]
+# The fork's ABI differs from upstream's: struct tsm_screen_attr grew from 12
+# to 16 bytes (ADR-102 in aaronsb/kmscon). Its own soname keeps a program built
+# against upstream's header from loading it as libtsm.so.4, and the file name
+# keeps an install from replacing upstream's. Raise the number after "fork" on
+# every further ABI change, and keep it in step with the project version.
+soversion = '4-fork.1'
 
 # Export symbol with version
 link_flags = '-Wl,--version-script=' + meson.current_source_dir() + '/libtsm.sym'
@@ -31,8 +35,7 @@ libtsm = library(
     libtsm_srcs,
     dependencies: deps,
     install: true,
-    version: version,
-    soversion: major,
+    soversion: soversion,
     link_args: link_flags,
 )
 

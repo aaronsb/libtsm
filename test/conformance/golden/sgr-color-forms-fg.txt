@@ -1,0 +1,35 @@
+size 80x24
+cursor 30,0
+flags AUTO_WRAP
+row 0 |c5 c5lo s5 c2 c2e c2cs c2t s2|
+attr 0 0-1 fg=#ff0000
+attr 0 3-6 fg=9
+attr 0 8-9 fg=#0087ff
+attr 0 11-12 fg=#0a141e
+attr 0 14-16 fg=#28323c
+attr 0 18-21 fg=#46505a
+attr 0 23-25 fg=#646e78
+attr 0 27-28 fg=#828c96 bold
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 ||

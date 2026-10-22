@@ -1,0 +1,32 @@
+size 80x24
+cursor 30,0
+flags AUTO_WRAP
+row 0 |boldul bold bold italic strike|
+attr 0 0-5 bold underline
+attr 0 7-10 bold
+attr 0 12-15 bold
+attr 0 17-22 italic
+attr 0 24-29 strike
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 ||
