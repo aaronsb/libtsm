@@ -80,12 +80,63 @@ void tsm_utf8_mach_reset(struct tsm_utf8_mach *mach);
 
 /* TSM screen */
 
+/*
+ * Colours as cells keep them (ADR-102 in aaronsb/kmscon): as written, and
+ * resolved to RGB only when the screen is drawn, so they follow the palette in
+ * use and the cell's bold. The kind of each colour lives in struct cell_attr.
+ */
+enum cell_color_kind {
+	CELL_COLOR_CODE,	/* code: a palette entry, 0-15, TSM_COLOR_FOREGROUND
+				   or TSM_COLOR_BACKGROUND */
+	CELL_COLOR_INDEX,	/* rgb[0]: an index 16-255 of the 256-colour table */
+	CELL_COLOR_RGB,		/* rgb as written, reported with code: -1, or the
+				   code a caller of the public API gave with it */
+};
+
+struct cell_color {
+	int8_t code;
+	uint8_t rgb[3];
+};
+
+struct cell_attr {
+	struct cell_color fg;
+	struct cell_color bg;
+	struct cell_color ul;			/* underline colour, if ucset */
+	unsigned int fg_kind : 2;		/* enum cell_color_kind */
+	unsigned int bg_kind : 2;
+	unsigned int ul_kind : 2;
+	unsigned int bold : 1;
+	unsigned int italic : 1;
+	unsigned int underline : 1;		/* any style */
+	unsigned int inverse : 1;
+	unsigned int protect : 1;
+	unsigned int blink : 1;
+	unsigned int dim : 1;
+	unsigned int underline_style : 3;	/* enum tsm_underline_style */
+	unsigned int strike : 1;
+	unsigned int ucset : 1;			/* clear: the underline follows the foreground */
+};
+
+/* the RGB of entry @index of the 256-colour table, whose first 16 entries are
+ * @palette's; black outside 0-255 */
+void tsm_color_table_rgb(uint8_t (*palette)[3], int index,
+			 uint8_t *r, uint8_t *g, uint8_t *b);
+/* @in as struct tsm_screen_attr reports it, resolved through @palette */
+void cell_attr_resolve(uint8_t (*palette)[3], const struct cell_attr *in,
+		       struct tsm_screen_attr *out);
+/* a struct tsm_screen_attr from the public API, kept as given */
+void cell_attr_from_screen_attr(const struct tsm_screen_attr *in,
+				struct cell_attr *out);
+
 struct cell {
 	tsm_symbol_t ch;		/* stored character */
 	unsigned int width;		/* character width */
-	struct tsm_screen_attr attr;	/* cell attributes */
+	struct cell_attr attr;		/* cell attributes */
 	tsm_age_t age;			/* age of the single cell */
 };
+
+/* a screen of 960x135 with 1000 lines of scrollback is a million cells */
+_Static_assert(sizeof(struct cell) <= 32, "struct cell grew past 32 bytes");
 
 struct line {
 	struct shl_dlist list;		/* list node, next/prev are NULL if not in sb */
@@ -119,12 +170,16 @@ struct tsm_screen {
 	struct tsm_symbol_table *sym_table;
 
 	/* default attributes for new cells */
-	struct tsm_screen_attr def_attr;
+	struct cell_attr def_attr;
 
 	/* save default attributes of main screen here when we switch to alt screen
 	 * on resize of the alt screen we need to init the new cells of the main
 	 * screen with these attributes and not the ones of the alt screen */
-	struct tsm_screen_attr def_attr_main;
+	struct cell_attr def_attr_main;
+
+	/* the palette colours resolve through when drawn; the vte writing to
+	 * this screen keeps it in step with its own */
+	uint8_t palette[TSM_COLOR_NUM][3];
 
 	/* ageing */
 	tsm_age_t age_cnt;			/* current age counter */
@@ -166,6 +221,10 @@ struct tsm_screen {
 };
 
 void screen_cell_init(struct tsm_screen *con, struct cell *cell);
+void screen_write_char(struct tsm_screen *con, tsm_symbol_t ch,
+		       const struct cell_attr *attr);
+void screen_set_def_cell_attr(struct tsm_screen *con, const struct cell_attr *attr);
+void screen_set_palette(struct tsm_screen *con, uint8_t (*palette)[3]);
 
 void tsm_screen_set_opts(struct tsm_screen *scr, unsigned int opts);
 void tsm_screen_reset_opts(struct tsm_screen *scr, unsigned int opts);

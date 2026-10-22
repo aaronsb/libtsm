@@ -112,7 +112,7 @@ static void move_cursor(struct tsm_screen *con, unsigned int x, unsigned int y)
 	c->age = con->age_cnt;
 }
 
-static void screen_cell_init_generic(struct tsm_screen *con, struct cell *cell, struct tsm_screen_attr *attr)
+static void screen_cell_init_generic(struct tsm_screen *con, struct cell *cell, struct cell_attr *attr)
 {
 	cell->ch = 0;
 	cell->width = 1;
@@ -368,7 +368,7 @@ static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
 
 static void screen_write(struct tsm_screen *con, unsigned int x,
 			  unsigned int y, tsm_symbol_t ch, unsigned int len,
-			  const struct tsm_screen_attr *attr)
+			  const struct cell_attr *attr)
 {
 	struct line *line;
 	unsigned int i;
@@ -480,9 +480,12 @@ int tsm_screen_new(struct tsm_screen **out, tsm_log_t log, void *log_data)
 	con->llog_data = log_data;
 	con->age_cnt = 1;
 	con->age = con->age_cnt;
-	con->def_attr.fr = 255;
-	con->def_attr.fg = 255;
-	con->def_attr.fb = 255;
+	/* white on black until a vte or the program sets its own */
+	con->def_attr.fg_kind = CELL_COLOR_RGB;
+	con->def_attr.fg.rgb[0] = 255;
+	con->def_attr.fg.rgb[1] = 255;
+	con->def_attr.fg.rgb[2] = 255;
+	con->def_attr.bg_kind = CELL_COLOR_RGB;
 	con->blinking_rate_ms = 500;
 	shl_dlist_init(&con->sb.list);
 
@@ -936,15 +939,31 @@ unsigned int tsm_screen_sb_get_line_pos(struct tsm_screen *con)
 	return con->sb.pos_num;
 }
 
+void screen_set_def_cell_attr(struct tsm_screen *con, const struct cell_attr *attr)
+{
+	con->def_attr = *attr;
+	if (!(con->flags & TSM_SCREEN_ALTERNATE))
+		con->def_attr_main = *attr;
+}
+
 SHL_EXPORT
 void tsm_screen_set_def_attr(struct tsm_screen *con,
 				 const struct tsm_screen_attr *attr)
 {
+	struct cell_attr cattr;
+
 	if (!con || !attr)
 		return;
-	memcpy(&con->def_attr, attr, sizeof(*attr));
-	if (!(con->flags & TSM_SCREEN_ALTERNATE))
-		memcpy(&con->def_attr_main, attr, sizeof(*attr));
+	cell_attr_from_screen_attr(attr, &cattr);
+	screen_set_def_cell_attr(con, &cattr);
+}
+
+void screen_set_palette(struct tsm_screen *con, uint8_t (*palette)[3])
+{
+	memcpy(con->palette, palette, sizeof(con->palette));
+	/* every cell resolves anew, so the whole screen is redrawn */
+	screen_inc_age(con);
+	con->age = con->age_cnt;
 }
 
 SHL_EXPORT
@@ -1095,14 +1114,10 @@ void tsm_screen_reset_all_tabstops(struct tsm_screen *con)
 		con->tab_ruler[i] = false;
 }
 
-SHL_EXPORT
-void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
-			  const struct tsm_screen_attr *attr)
+void screen_write_char(struct tsm_screen *con, tsm_symbol_t ch,
+		       const struct cell_attr *attr)
 {
 	unsigned int last, len;
-
-	if (!con)
-		return;
 
 	len = tsm_symbol_get_width(con->sym_table, ch);
 	if (!len)
@@ -1130,6 +1145,18 @@ void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 
 	screen_write(con, con->cursor_x, con->cursor_y, ch, len, attr);
 	move_cursor(con, con->cursor_x + len, con->cursor_y);
+}
+
+SHL_EXPORT
+void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
+			  const struct tsm_screen_attr *attr)
+{
+	struct cell_attr cattr;
+
+	if (!con || !attr)
+		return;
+	cell_attr_from_screen_attr(attr, &cattr);
+	screen_write_char(con, ch, &cattr);
 }
 
 SHL_EXPORT

@@ -214,11 +214,20 @@ struct tsm_screen_color {
 	uint8_t b; /* blue */
 };
 
+/*
+ * Defined when struct tsm_screen_cell carries the underline colour (ul, ul_set).
+ */
+#define TSM_SCREEN_CELL_UNDERLINE_COLOR 1
+
 struct tsm_screen_cell {
 	uint32_t ch;                  /* character */
 	struct tsm_screen_color fg;   /* foreground color */
 	struct tsm_screen_color bg;   /* background color */
 	tsm_screen_attr2_t attr2;     /* glyph attributes */
+	struct tsm_screen_color ul;   /* underline color: as set (SGR 58) when
+				         ul_set, else the drawn foreground */
+	uint8_t ul_set;               /* the underline color was set; it does not
+				         swap with reverse video */
 };
 
 enum tsm_screen_cursor_style {
