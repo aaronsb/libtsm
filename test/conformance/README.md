@@ -18,3 +18,9 @@ From the repository root: `make test` runs everything, `make cases` and `make re
 A golden is the judge. Regenerate goldens only from a reference build or for an intended change of behaviour, and commit them on their own, with the diff read, never in the same commit as the code they judge.
 
 Goldens from upstream `v4.8.0` record its behaviour as it is, defects included. `sgr-underline-extended` shows two: colon sub-parameters (`4:3`, `58:2::r:g:b`) discard the whole SGR sequence, and `4;58;5;196` sets blink, because the unhandled 58 leaves its `5` to be read as SGR 5.
+
+## Pinned dev image
+
+`DEV_BASE` (the `archlinux:base-devel` digest) and `DEV_ARCHIVE` (an Arch Linux Archive date) at the top of the Makefile pin the dev image, so a rebuild installs the same packages. The kmscon fork pins its image the same way.
+`check.py --report` records them in a `tools` object, with the versions of the toolchain packages installed in the image, so a golden mismatch can be traced to a version change.
+To move a pin, change the one line, run `make test`, and read `git status`. Nothing is regenerated unless a golden moves, and a moved golden lands in its own commit.

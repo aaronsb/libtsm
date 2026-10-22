@@ -6,7 +6,8 @@ Usage:
   check.py REPLAY DIR --update          rewrite the goldens from this REPLAY
 
 --report writes the run as JSON for the contact sheet: for each case its
-name, size, status (pass, fail or missing), golden and actual output. The
+name, size, status (pass, fail or missing), golden and actual output, and
+the tools object: the dev image digest, archive date and package versions. The
 sheet is drawn from the same run that gives the verdict, so the two cannot
 disagree.
 
@@ -22,9 +23,35 @@ SPDX-License-Identifier: MIT
 
 import difflib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+
+# Packages whose version can move a rendered pixel or a replayed cell.
+TOOL_PACKAGES = ("freetype2", "fontconfig", "harfbuzz", "pixman", "gcc", "meson")
+
+
+def tool_versions():
+    """The dev image's pins and package versions, read inside the container.
+
+    Outside the image (no DEV_* variables, no pacman) the fields are null, so a
+    report from a bare host says it does not know rather than guessing.
+    """
+    packages = {}
+    for pkg in TOOL_PACKAGES:
+        try:
+            out = subprocess.run(["pacman", "-Q", pkg], capture_output=True, text=True)
+        except OSError:
+            break
+        if out.returncode == 0:
+            packages[pkg] = out.stdout.split()[1]
+    return {
+        "image_base": os.environ.get("DEV_IMAGE_BASE"),
+        "archive_date": os.environ.get("DEV_ARCHIVE_DATE"),
+        "packages": packages,
+    }
 
 
 def load_cases(root):
@@ -96,7 +123,7 @@ def main():
         return 0
     if report:
         report.parent.mkdir(parents=True, exist_ok=True)
-        report.write_text(json.dumps({"tier": 1, "cases": results}, ensure_ascii=False, indent=1) + "\n")
+        report.write_text(json.dumps({"tier": 1, "tools": tool_versions(), "cases": results}, ensure_ascii=False, indent=1) + "\n")
     for name in missing:
         print(f"conformance: {name}: no golden")
     passed = len(cases) - len(failed) - len(missing)
