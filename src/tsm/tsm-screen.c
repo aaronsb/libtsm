@@ -198,6 +198,35 @@ static void line_free(struct tsm_screen *con, struct line *line)
 	free(line);
 }
 
+/* cell @x of @line, empty, becomes the trailing half of the wide character
+ * before it */
+static void line_set_trailing(struct line *line, unsigned int x)
+{
+	line->cells[x].width = 0;
+	line->cells[x].attr = line->cells[x - 1].attr;
+}
+
+/*
+ * A wide character cut at a margin keeps no trailing half. Once the first
+ * @width cells of @line have room for it (the screen widened, or the line
+ * came back from scrollback onto a wider screen), the cell after it becomes
+ * its trailing half.
+ */
+static void line_mend_cuts(struct tsm_screen *con, struct line *line,
+			   unsigned int width)
+{
+	unsigned int x;
+
+	if (width > line->size)
+		width = line->size;
+	for (x = 1; x < width; ++x) {
+		if (line->cells[x - 1].width != 2 || !line->cells[x].width)
+			continue;
+		screen_cell_clear(con, &line->cells[x]);
+		line_set_trailing(line, x);
+	}
+}
+
 static int line_resize(struct tsm_screen *con, struct line *line,
 		       unsigned int width)
 {
@@ -294,6 +323,7 @@ static void remove_from_sb(struct tsm_screen *con, unsigned int num)
 		if (tmp->size < con->size_x)
 			if (line_resize(con, tmp, con->size_x) < 0)
 				goto end_sbpos;
+		line_mend_cuts(con, tmp, con->size_x);
 		shl_dlist_unlink(&tmp->list);
 		--con->sb.count;
 
@@ -746,6 +776,8 @@ int tsm_screen_resize(struct tsm_screen *con, unsigned int x,
 			ret = line_resize(con, con->alt_lines[i], x);
 			if (ret)
 				return ret;
+			line_mend_cuts(con, con->main_lines[i], x);
+			line_mend_cuts(con, con->alt_lines[i], x);
 		}
 	}
 
@@ -1865,6 +1897,11 @@ void tsm_screen_delete_chars(struct tsm_screen *con, unsigned int num)
 
 	for (i = 0; i < num; ++i)
 		screen_cell_init(con, &cells[con->cursor_x + mv + i]);
+
+	/* a wide character cut at the margin moved in from it, and its
+	 * trailing half now fits */
+	if (mv && cells[con->cursor_x + mv - 1].width == 2)
+		line_set_trailing(con->lines[con->cursor_y], con->cursor_x + mv);
 }
 
 SHL_EXPORT

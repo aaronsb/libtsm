@@ -1618,6 +1618,75 @@ START_TEST(test_vte_repeat_wide)
 }
 END_TEST
 
+/* a wide character cut at the margin gets its trailing half once it has room:
+ * moved in by DCH, on a widened screen, or from scrollback kept at the old
+ * width. The frame shows it whole, and the stored cells hold it whole too,
+ * which tsm_screen_draw and draw2 read. */
+START_TEST(test_vte_margin_cut_wide)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char w[16];
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 8, 2);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_set_max_sb(screen, 10);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* autowrap off: U+4E2D at the last column is cut there */
+	input_str(vte, "\e[?7l\e[1;1Habcdefg\xe4\xb8\xad");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "11111112");
+
+	/* DCH moves it in: its trailing half follows */
+	input_str(vte, "\e[1;2H\e[P");
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "11111120");
+	ck_assert(tsm_frame_cell_at(f, 6, 0)->key == 0x4e2d);
+	ck_assert_uint_eq(screen->lines[0]->cells[7].width, 0);
+
+	/* cut again, then the screen widens */
+	input_str(vte, "\e[2;1Habcdefg\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 10, 2);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 1, w);
+	ck_assert_str_eq(w, "1111111201");
+	ck_assert_uint_eq(screen->lines[1]->cells[8].width, 0);
+
+	/* a cut line pushed to scrollback at 10 columns, viewed at 12 */
+	input_str(vte, "\e[2J\e[1;1Habcdefghi\xe4\xb8\xad\e[?7h\r\n\n\n");
+	r = tsm_screen_resize(screen, 12, 2);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_sb_up(screen, 2);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "111111111201");
+	ck_assert(tsm_frame_cell_at(f, 9, 0)->key == 0x4e2d);
+
+	/* taller: the line comes back from scrollback onto the screen, and
+	 * the stored cell after the character is its trailing half */
+	tsm_screen_sb_reset(screen);
+	r = tsm_screen_resize(screen, 12, 4);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "111111111201");
+	ck_assert_uint_eq(screen->lines[0]->cells[9].width, 2);
+	ck_assert_uint_eq(screen->lines[0]->cells[10].width, 0);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -1649,6 +1718,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_frame_cursor_trailing_half)
 	TEST(test_vte_frame_inverse_screen)
 	TEST(test_vte_repeat_wide)
+	TEST(test_vte_margin_cut_wide)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(bell)

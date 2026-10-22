@@ -563,16 +563,28 @@ static void frame_cursor_cell(struct tsm_frame_cursor *cur)
 	}
 }
 
-/* a wide character's two halves draw as one: when either changed, both are
- * flagged */
+/*
+ * A wide character's two halves draw as one: when either changed, both are
+ * flagged. A scrollback line kept from a narrower screen can hold a wide
+ * character cut at its old margin; on the wider screen the cell after it
+ * draws as its trailing half.
+ */
 static void frame_pair_row(struct tsm_frame_cell *row, unsigned int cols)
 {
 	unsigned int j;
 	uint16_t changed;
 
 	for (j = 1; j < cols; ++j) {
-		if (row[j].width || row[j - 1].width != 2)
+		if (row[j - 1].width != 2)
 			continue;
+		if (row[j].width) {
+			changed = (row[j - 1].flags | row[j].flags) &
+				  TSM_FRAME_CHANGED;
+			row[j] = row[j - 1];
+			row[j].key = 0;
+			row[j].width = 0;
+			row[j].flags = (row[j].flags & ~TSM_FRAME_CHANGED) | changed;
+		}
 		changed = (row[j - 1].flags | row[j].flags) & TSM_FRAME_CHANGED;
 		row[j - 1].flags |= changed;
 		row[j].flags |= changed;
