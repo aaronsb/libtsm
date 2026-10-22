@@ -143,7 +143,7 @@ enum parser_action {
 struct vte_saved_state {
 	unsigned int cursor_x;
 	unsigned int cursor_y;
-	struct tsm_screen_attr cattr;
+	struct cell_attr cattr;
 	tsm_vte_charset **gl;
 	tsm_vte_charset **gr;
 	enum tsm_screen_cursor_style cursor_style;
@@ -198,8 +198,8 @@ struct tsm_vte {
 
 	uint8_t (*custom_palette_storage)[3];
 	uint8_t (*palette)[3];
-	struct tsm_screen_attr def_attr;
-	struct tsm_screen_attr cattr;
+	struct cell_attr def_attr;
+	struct cell_attr cattr;
 	unsigned int flags;
 
 	tsm_vte_charset **gl;
@@ -444,71 +444,16 @@ static uint8_t (*get_palette(struct tsm_vte *vte))[3]
 	return color_palette_legacy;
 }
 
-/* Several effects may occur when non-RGB colors are used. For instance, if bold
- * is enabled, then a dark color code is always converted to a light color to
- * simulate bold (even though bold may actually be supported!). To support this,
- * we need to differentiate between a set color-code and a set rgb-color.
- * This function actually converts a set color-code into an RGB color. This must
- * be called before passing the attribute to the console layer so the console
- * layer can always work with RGB values and does not have to care for color
- * codes. */
-static void to_rgb(struct tsm_vte *vte, struct tsm_screen_attr *attr)
+/* the palette's default foreground and background, as cells keep them */
+static void set_default_colors(struct cell_attr *attr)
 {
-	int8_t code;
-
-	code = attr->fccode;
-	if (code >= 0) {
-		/* bold causes light colors */
-		if (attr->bold && code < 8)
-			code += 8;
-		if (code >= TSM_COLOR_NUM)
-			code = TSM_COLOR_FOREGROUND;
-
-		attr->fr = vte->palette[code][0];
-		attr->fg = vte->palette[code][1];
-		attr->fb = vte->palette[code][2];
-	}
-
-	code = attr->bccode;
-	if (code >= 0) {
-		if (code >= TSM_COLOR_NUM)
-			code = TSM_COLOR_BACKGROUND;
-
-		attr->br = vte->palette[code][0];
-		attr->bg = vte->palette[code][1];
-		attr->bb = vte->palette[code][2];
-	}
-
-	code = attr->uccode;
-	if (attr->ucset && code >= 0) {
-		if (code >= TSM_COLOR_NUM)
-			code = TSM_COLOR_FOREGROUND;
-
-		attr->ur = vte->palette[code][0];
-		attr->ug = vte->palette[code][1];
-		attr->ub = vte->palette[code][2];
-	}
+	attr->fg.code = TSM_COLOR_FOREGROUND;
+	attr->fg_kind = CELL_COLOR_CODE;
+	attr->bg.code = TSM_COLOR_BACKGROUND;
+	attr->bg_kind = CELL_COLOR_CODE;
 }
 
-static void copy_fcolor(struct tsm_screen_attr *dest,
-			const struct tsm_screen_attr *src)
-{
-	dest->fccode = src->fccode;
-	dest->fr = src->fr;
-	dest->fg = src->fg;
-	dest->fb = src->fb;
-}
-
-static void copy_bcolor(struct tsm_screen_attr *dest,
-			const struct tsm_screen_attr *src)
-{
-	dest->bccode = src->bccode;
-	dest->br = src->br;
-	dest->bg = src->bg;
-	dest->bb = src->bb;
-}
-
-static void set_underline(struct tsm_screen_attr *attr,
+static void set_underline(struct cell_attr *attr,
 			  enum tsm_underline_style style)
 {
 	attr->underline_style = style;
@@ -516,20 +461,20 @@ static void set_underline(struct tsm_screen_attr *attr,
 }
 
 /* SGR 59: the underline takes the foreground colour again */
-static void clear_ucolor(struct tsm_screen_attr *attr)
+static void clear_ucolor(struct cell_attr *attr)
 {
+	memset(&attr->ul, 0, sizeof(attr->ul));
+	attr->ul_kind = CELL_COLOR_CODE;
 	attr->ucset = 0;
-	attr->uccode = 0;
-	attr->ur = 0;
-	attr->ug = 0;
-	attr->ub = 0;
 }
 
 /* SGR 0: everything SGR sets returns to its default */
-static void reset_sgr(struct tsm_vte *vte, struct tsm_screen_attr *attr)
+static void reset_sgr(struct tsm_vte *vte, struct cell_attr *attr)
 {
-	copy_fcolor(attr, &vte->def_attr);
-	copy_bcolor(attr, &vte->def_attr);
+	attr->fg = vte->def_attr.fg;
+	attr->fg_kind = vte->def_attr.fg_kind;
+	attr->bg = vte->def_attr.bg;
+	attr->bg_kind = vte->def_attr.bg_kind;
 	attr->bold = 0;
 	attr->italic = 0;
 	attr->inverse = 0;
@@ -569,9 +514,8 @@ int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
 	vte->mouse_data = NULL;
 	vte->custom_palette_storage = NULL;
 	vte->palette = get_palette(vte);
-	vte->def_attr.fccode = TSM_COLOR_FOREGROUND;
-	vte->def_attr.bccode = TSM_COLOR_BACKGROUND;
-	to_rgb(vte, &vte->def_attr);
+	screen_set_palette(vte->con, vte->palette);
+	set_default_colors(&vte->def_attr);
 
 	ret = tsm_utf8_mach_new(&vte->mach);
 	if (ret)
@@ -659,13 +603,11 @@ void tsm_vte_set_led_cb(struct tsm_vte *vte, tsm_vte_led_cb led_cb, void *led_da
 static int vte_update_palette(struct tsm_vte *vte)
 {
 	vte->palette = get_palette(vte);
-	vte->def_attr.fccode = TSM_COLOR_FOREGROUND;
-	vte->def_attr.bccode = TSM_COLOR_BACKGROUND;
+	screen_set_palette(vte->con, vte->palette);
+	set_default_colors(&vte->def_attr);
+	vte->cattr = vte->def_attr;
 
-	to_rgb(vte, &vte->def_attr);
-	memcpy(&vte->cattr, &vte->def_attr, sizeof(vte->cattr));
-
-	tsm_screen_set_def_attr(vte->con, &vte->def_attr);
+	screen_set_def_cell_attr(vte->con, &vte->def_attr);
 	tsm_screen_erase_screen(vte->con, false);
 
 	return 0;
@@ -719,7 +661,7 @@ void tsm_vte_get_def_attr(struct tsm_vte *vte, struct tsm_screen_attr *out)
 	if (!vte || !out)
 		return;
 
-	memcpy(out, &vte->def_attr, sizeof(*out));
+	cell_attr_resolve(vte->palette, &vte->def_attr, out);
 }
 
 SHL_EXPORT
@@ -823,8 +765,7 @@ static void vte_write_debug(struct tsm_vte *vte, const char *u8, size_t len,
 /* write to console */
 static void write_console(struct tsm_vte *vte, tsm_symbol_t sym)
 {
-	to_rgb(vte, &vte->cattr);
-	tsm_screen_write(vte->con, sym, &vte->cattr);
+	screen_write_char(vte->con, sym, &vte->cattr);
 }
 
 static void reset_state(struct tsm_vte *vte)
@@ -858,9 +799,8 @@ static void restore_state(struct tsm_vte *vte)
 	tsm_screen_move_to(vte->con, vte->saved_state.cursor_x,
 			       vte->saved_state.cursor_y);
 	vte->cattr = vte->saved_state.cattr;
-	to_rgb(vte, &vte->cattr);
 	if (vte->flags & TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE)
-		tsm_screen_set_def_attr(vte->con, &vte->cattr);
+		screen_set_def_cell_attr(vte->con, &vte->cattr);
 	vte->gl = vte->saved_state.gl;
 	vte->gr = vte->saved_state.gr;
 	tsm_screen_set_cursor_style(vte->con, vte->saved_state.cursor_style);
@@ -919,9 +859,8 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	vte->mouse_last_col = 0;
 	vte->mouse_last_row = 0;
 
-	memcpy(&vte->cattr, &vte->def_attr, sizeof(vte->cattr));
-	to_rgb(vte, &vte->cattr);
-	tsm_screen_set_def_attr(vte->con, &vte->def_attr);
+	vte->cattr = vte->def_attr;
+	screen_set_def_cell_attr(vte->con, &vte->def_attr);
 
 	reset_state(vte);
 }
@@ -1346,57 +1285,35 @@ static void do_esc(struct tsm_vte *vte, uint32_t data)
 	}
 }
 
-static void palette_rgb(struct tsm_vte *vte, int code, uint8_t *cr,
-			uint8_t *cg, uint8_t *cb)
-{
-	*cr = vte->palette[code][0];
-	*cg = vte->palette[code][1];
-	*cb = vte->palette[code][2];
-}
-
-static void cube_rgb(int code, uint8_t *cr, uint8_t *cg, uint8_t *cb)
-{
-	static const uint8_t bval[6] = { 0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff };
-	code -= 16;
-	*cb = bval[code % 6];
-	code /= 6;
-	*cg = bval[code % 6];
-	code /= 6;
-	*cr = bval[code % 6];
-}
-
-static void greyscale_rgb(int code, uint8_t *cr, uint8_t *cg, uint8_t *cb)
-{
-	uint8_t lightness = (code - 232) * 10 + 8;
-	*cr = *cg = *cb = lightness;
-}
-
-static void lookup_color(struct tsm_vte *vte, int color, uint8_t *cr,
-			 uint8_t *cg, uint8_t *cb)
-{
-	/* OSC-4 / SGR color indices are untrusted; an out-of-range (or
-	 * unsigned-overflow-negative) index would wild-read palette[]/bval[]. */
-	if (color < 0 || color > 255) {
-		*cr = *cg = *cb = 0;
-		return;
-	}
-	if (color < 16) {
-		palette_rgb(vte, color, cr, cg, cb);
-	} else if (color < 232) {
-		cube_rgb(color, cr, cg, cb);
-	} else {
-		greyscale_rgb(color, cr, cg, cb);
-	}
-}
-
-/* An SGR colour as struct tsm_screen_attr keeps it: a palette code, or -1
- * with RGB components. */
+/* An SGR colour as a cell keeps it, unresolved */
 struct sgr_color {
-	int8_t code;
-	uint8_t r;
-	uint8_t g;
-	uint8_t b;
+	unsigned int kind;	/* enum cell_color_kind */
+	struct cell_color c;
 };
+
+static void sgr_rgb(struct sgr_color *out, uint8_t r, uint8_t g, uint8_t b)
+{
+	out->kind = CELL_COLOR_RGB;
+	out->c.code = -1;
+	out->c.rgb[0] = r;
+	out->c.rgb[1] = g;
+	out->c.rgb[2] = b;
+}
+
+/* one of the 256 colours: the 16 base colours stay palette codes, so the
+ * palette and bold apply when the cell is drawn */
+static void sgr_index(struct sgr_color *out, int index)
+{
+	memset(&out->c, 0, sizeof(out->c));
+	if (index < 16) {
+		out->kind = CELL_COLOR_CODE;
+		out->c.code = index;
+	} else {
+		out->kind = CELL_COLOR_INDEX;
+		out->c.code = -1;
+		out->c.rgb[0] = index;
+	}
+}
 
 /*
  * Read the colour that SGR 38, 48 or 58 at argument @i selects. The forms are
@@ -1437,10 +1354,7 @@ static int sgr_color(struct tsm_vte *vte, unsigned int i, struct sgr_color *out)
 		b = sub[2] < 0 ? 0 : sub[2];
 		if (r > 255 || g > 255 || b > 255)
 			return -1;
-		out->code = -1;
-		out->r = r;
-		out->g = g;
-		out->b = b;
+		sgr_rgb(out, r, g, b);
 		return 0;
 	} else if (nsubs[0]) {
 		return -1;
@@ -1451,24 +1365,17 @@ static int sgr_color(struct tsm_vte *vte, unsigned int i, struct sgr_color *out)
 	} else if (nargs >= 4 && arg[1] == 2 &&
 		   arg[2] >= 0 && arg[3] >= 0 && arg[4] >= 0 &&
 		   !nsubs[1] && !nsubs[2] && !nsubs[3] && !nsubs[4]) {
-		out->code = -1;
-		out->r = arg[2];
-		out->g = arg[3];
-		out->b = arg[4];
+		sgr_rgb(out, arg[2], arg[3], arg[4]);
 		return 4;
 	} else {
 		return -1;
 	}
 
-	/* the 16 base colours stay codes, so bold can brighten them; the
-	 * rest of the 256 are resolved here */
-	if (index < 16) {
-		out->code = index;
-		out->r = out->g = out->b = 0;
-	} else {
-		out->code = -1;
-		lookup_color(vte, index, &out->r, &out->g, &out->b);
-	}
+	/* upstream draws a semicolon index above 255 black */
+	if (index > 255)
+		sgr_rgb(out, 0, 0, 0);
+	else
+		sgr_index(out, index);
 	return used;
 }
 
@@ -1575,107 +1482,33 @@ static void csi_attribute(struct tsm_vte *vte)
 		case 29:
 			vte->cattr.strike = 0;
 			break;
-		case 30:
-			vte->cattr.fccode = TSM_COLOR_BLACK;
-			break;
-		case 31:
-			vte->cattr.fccode = TSM_COLOR_RED;
-			break;
-		case 32:
-			vte->cattr.fccode = TSM_COLOR_GREEN;
-			break;
-		case 33:
-			vte->cattr.fccode = TSM_COLOR_YELLOW;
-			break;
-		case 34:
-			vte->cattr.fccode = TSM_COLOR_BLUE;
-			break;
-		case 35:
-			vte->cattr.fccode = TSM_COLOR_MAGENTA;
-			break;
-		case 36:
-			vte->cattr.fccode = TSM_COLOR_CYAN;
-			break;
-		case 37:
-			vte->cattr.fccode = TSM_COLOR_LIGHT_GREY;
+		case 30 ... 37:
+			sgr_index(&color, vte->csi_argv[i] - 30);
+			vte->cattr.fg = color.c;
+			vte->cattr.fg_kind = color.kind;
 			break;
 		case 39:
-			copy_fcolor(&vte->cattr, &vte->def_attr);
+			vte->cattr.fg = vte->def_attr.fg;
+			vte->cattr.fg_kind = vte->def_attr.fg_kind;
 			break;
-		case 40:
-			vte->cattr.bccode = TSM_COLOR_BLACK;
-			break;
-		case 41:
-			vte->cattr.bccode = TSM_COLOR_RED;
-			break;
-		case 42:
-			vte->cattr.bccode = TSM_COLOR_GREEN;
-			break;
-		case 43:
-			vte->cattr.bccode = TSM_COLOR_YELLOW;
-			break;
-		case 44:
-			vte->cattr.bccode = TSM_COLOR_BLUE;
-			break;
-		case 45:
-			vte->cattr.bccode = TSM_COLOR_MAGENTA;
-			break;
-		case 46:
-			vte->cattr.bccode = TSM_COLOR_CYAN;
-			break;
-		case 47:
-			vte->cattr.bccode = TSM_COLOR_LIGHT_GREY;
+		case 40 ... 47:
+			sgr_index(&color, vte->csi_argv[i] - 40);
+			vte->cattr.bg = color.c;
+			vte->cattr.bg_kind = color.kind;
 			break;
 		case 49:
-			copy_bcolor(&vte->cattr, &vte->def_attr);
+			vte->cattr.bg = vte->def_attr.bg;
+			vte->cattr.bg_kind = vte->def_attr.bg_kind;
 			break;
-		case 90:
-			vte->cattr.fccode = TSM_COLOR_DARK_GREY;
+		case 90 ... 97:
+			sgr_index(&color, vte->csi_argv[i] - 90 + 8);
+			vte->cattr.fg = color.c;
+			vte->cattr.fg_kind = color.kind;
 			break;
-		case 91:
-			vte->cattr.fccode = TSM_COLOR_LIGHT_RED;
-			break;
-		case 92:
-			vte->cattr.fccode = TSM_COLOR_LIGHT_GREEN;
-			break;
-		case 93:
-			vte->cattr.fccode = TSM_COLOR_LIGHT_YELLOW;
-			break;
-		case 94:
-			vte->cattr.fccode = TSM_COLOR_LIGHT_BLUE;
-			break;
-		case 95:
-			vte->cattr.fccode = TSM_COLOR_LIGHT_MAGENTA;
-			break;
-		case 96:
-			vte->cattr.fccode = TSM_COLOR_LIGHT_CYAN;
-			break;
-		case 97:
-			vte->cattr.fccode = TSM_COLOR_WHITE;
-			break;
-		case 100:
-			vte->cattr.bccode = TSM_COLOR_DARK_GREY;
-			break;
-		case 101:
-			vte->cattr.bccode = TSM_COLOR_LIGHT_RED;
-			break;
-		case 102:
-			vte->cattr.bccode = TSM_COLOR_LIGHT_GREEN;
-			break;
-		case 103:
-			vte->cattr.bccode = TSM_COLOR_LIGHT_YELLOW;
-			break;
-		case 104:
-			vte->cattr.bccode = TSM_COLOR_LIGHT_BLUE;
-			break;
-		case 105:
-			vte->cattr.bccode = TSM_COLOR_LIGHT_MAGENTA;
-			break;
-		case 106:
-			vte->cattr.bccode = TSM_COLOR_LIGHT_CYAN;
-			break;
-		case 107:
-			vte->cattr.bccode = TSM_COLOR_WHITE;
+		case 100 ... 107:
+			sgr_index(&color, vte->csi_argv[i] - 100 + 8);
+			vte->cattr.bg = color.c;
+			vte->cattr.bg_kind = color.kind;
 			break;
 		case 38:
 		case 48:
@@ -1687,21 +1520,15 @@ static void csi_attribute(struct tsm_vte *vte)
 				break;
 			}
 			if (vte->csi_argv[i] == 38) {
-				vte->cattr.fccode = color.code;
-				vte->cattr.fr = color.r;
-				vte->cattr.fg = color.g;
-				vte->cattr.fb = color.b;
+				vte->cattr.fg = color.c;
+				vte->cattr.fg_kind = color.kind;
 			} else if (vte->csi_argv[i] == 48) {
-				vte->cattr.bccode = color.code;
-				vte->cattr.br = color.r;
-				vte->cattr.bg = color.g;
-				vte->cattr.bb = color.b;
+				vte->cattr.bg = color.c;
+				vte->cattr.bg_kind = color.kind;
 			} else {
+				vte->cattr.ul = color.c;
+				vte->cattr.ul_kind = color.kind;
 				vte->cattr.ucset = 1;
-				vte->cattr.uccode = color.code;
-				vte->cattr.ur = color.r;
-				vte->cattr.ug = color.g;
-				vte->cattr.ub = color.b;
 			}
 			i += used;
 			break;
@@ -1714,9 +1541,8 @@ static void csi_attribute(struct tsm_vte *vte)
 		}
 	}
 
-	to_rgb(vte, &vte->cattr);
 	if (vte->flags & TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE)
-		tsm_screen_set_def_attr(vte->con, &vte->cattr);
+		screen_set_def_cell_attr(vte->con, &vte->cattr);
 }
 
 static void csi_soft_reset(struct tsm_vte *vte)
@@ -2441,7 +2267,7 @@ static void do_osc_4(struct tsm_vte *vte, const char *data, const char *end_seq)
 			c++;
 			// handle rgb value query
 			snprintf(buf, sizeof(buf), "4;%u", code);
-			lookup_color(vte, code, &cr, &cg, &cb);
+			tsm_color_table_rgb(vte->palette, code, &cr, &cg, &cb);
 			vte_write_xcolor(vte, buf, end_seq, cr, cg, cb);
 		} else {
 			// parsing of new rgb value to assign to code would go
@@ -2458,6 +2284,8 @@ static void do_osc_4(struct tsm_vte *vte, const char *data, const char *end_seq)
 
 static bool do_osc_internal(struct tsm_vte *vte, const char *end_seq)
 {
+	struct tsm_screen_attr def;
+
 	// OSC 4, 10, and 11 query or change the RGB values of color numbers in
 	// the foreground/background (SGR 38 & 48), 3-bit (SGR 30-37 & 40-47),
 	// 4-bit (SGR 90-97 & 100-107), and 256-color (SGR 38;5 & 48;5) indexed
@@ -2468,15 +2296,13 @@ static bool do_osc_internal(struct tsm_vte *vte, const char *end_seq)
 		return true;
 	}
 	if (!strncmp(vte->osc_arg, "10;?", 4)) {
-		vte_write_xcolor(vte, "10", end_seq,
-				 vte->def_attr.fr, vte->def_attr.fg,
-				 vte->def_attr.fb);
+		cell_attr_resolve(vte->palette, &vte->def_attr, &def);
+		vte_write_xcolor(vte, "10", end_seq, def.fr, def.fg, def.fb);
 		return true;
 	}
 	if (!strncmp(vte->osc_arg, "11;?", 4)) {
-		vte_write_xcolor(vte, "11", end_seq,
-				 vte->def_attr.br, vte->def_attr.bg,
-				 vte->def_attr.bb);
+		cell_attr_resolve(vte->palette, &vte->def_attr, &def);
+		vte_write_xcolor(vte, "11", end_seq, def.br, def.bg, def.bb);
 		return true;
 	}
 	return false;

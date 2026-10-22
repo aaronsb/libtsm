@@ -138,7 +138,7 @@ START_TEST(test_screen_resize_alt_colors)
 	struct tsm_screen *screen;
 	struct line *line;
 	int r, y, x;
-	struct tsm_screen_attr *attr;
+	struct tsm_screen_attr attr;
 	struct tsm_screen_attr new_attr;
 
 	r = tsm_screen_new(&screen, NULL, NULL);
@@ -164,10 +164,10 @@ START_TEST(test_screen_resize_alt_colors)
 	for (y = 0; y < screen->size_y; y++) {
 		line = screen->lines[y];
 		for (x = 0; x < screen->size_x; x++) {
-			attr = &line->cells[x].attr;
-			ck_assert_int_eq(attr->br, 255);
-			ck_assert_int_eq(attr->bg, 0);
-			ck_assert_int_eq(attr->bb, 0);
+			cell_attr_resolve(screen->palette, &line->cells[x].attr, &attr);
+			ck_assert_int_eq(attr.br, 255);
+			ck_assert_int_eq(attr.bg, 0);
+			ck_assert_int_eq(attr.bb, 0);
 		}
 	}
 
@@ -182,10 +182,10 @@ START_TEST(test_screen_resize_alt_colors)
 	for (y = 0; y < screen->size_y; y++) {
 		line = screen->lines[y];
 		for (x = 0; x < screen->size_x; x++) {
-			attr = &line->cells[x].attr;
-			ck_assert_int_eq(attr->br, 0);
-			ck_assert_int_eq(attr->bg, 0);
-			ck_assert_int_eq(attr->bb, 0);
+			cell_attr_resolve(screen->palette, &line->cells[x].attr, &attr);
+			ck_assert_int_eq(attr.br, 0);
+			ck_assert_int_eq(attr.bg, 0);
+			ck_assert_int_eq(attr.bb, 0);
 		}
 	}
 

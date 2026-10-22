@@ -41,6 +41,141 @@
 
 #define LLOG_SUBSYSTEM "tsm-render"
 
+/*
+ * Colour resolution
+ * Cells keep colours as written (struct cell_color). They become RGB here,
+ * when the screen is drawn, through the screen's palette: so a palette change
+ * recolours text already written, and bold brightens the base colours of the
+ * cell it is on.
+ */
+
+static void cube_rgb(int index, uint8_t *r, uint8_t *g, uint8_t *b)
+{
+	static const uint8_t bval[6] = { 0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff };
+
+	index -= 16;
+	*b = bval[index % 6];
+	index /= 6;
+	*g = bval[index % 6];
+	index /= 6;
+	*r = bval[index % 6];
+}
+
+static void greyscale_rgb(int index, uint8_t *r, uint8_t *g, uint8_t *b)
+{
+	*r = *g = *b = (index - 232) * 10 + 8;
+}
+
+void tsm_color_table_rgb(uint8_t (*palette)[3], int index,
+			 uint8_t *r, uint8_t *g, uint8_t *b)
+{
+	/* indices come from untrusted input (SGR, OSC 4); one out of range
+	 * would read past palette[] or bval[] */
+	if (index < 0 || index > 255) {
+		*r = *g = *b = 0;
+	} else if (index < 16) {
+		*r = palette[index][0];
+		*g = palette[index][1];
+		*b = palette[index][2];
+	} else if (index < 232) {
+		cube_rgb(index, r, g, b);
+	} else {
+		greyscale_rgb(index, r, g, b);
+	}
+}
+
+/* @fallback is the palette entry for a code outside it; @bright adds 8 to a
+ * base colour below 8, which is how bold shows on the foreground */
+static void color_resolve(uint8_t (*palette)[3], const struct cell_color *c,
+			  unsigned int kind, int fallback, bool bright,
+			  int8_t *code, uint8_t *r, uint8_t *g, uint8_t *b)
+{
+	int entry;
+
+	switch (kind) {
+	case CELL_COLOR_CODE:
+		*code = c->code;
+		entry = c->code;
+		if (bright && entry >= 0 && entry < 8)
+			entry += 8;
+		if (entry < 0 || entry >= TSM_COLOR_NUM)
+			entry = fallback;
+		*r = palette[entry][0];
+		*g = palette[entry][1];
+		*b = palette[entry][2];
+		break;
+	case CELL_COLOR_INDEX:
+		*code = -1;
+		tsm_color_table_rgb(palette, c->rgb[0], r, g, b);
+		break;
+	default:
+		*code = c->code;
+		*r = c->rgb[0];
+		*g = c->rgb[1];
+		*b = c->rgb[2];
+		break;
+	}
+}
+
+void cell_attr_resolve(uint8_t (*palette)[3], const struct cell_attr *in,
+		       struct tsm_screen_attr *out)
+{
+	memset(out, 0, sizeof(*out));
+	color_resolve(palette, &in->fg, in->fg_kind, TSM_COLOR_FOREGROUND, in->bold,
+		      &out->fccode, &out->fr, &out->fg, &out->fb);
+	color_resolve(palette, &in->bg, in->bg_kind, TSM_COLOR_BACKGROUND, false,
+		      &out->bccode, &out->br, &out->bg, &out->bb);
+	if (in->ucset) {
+		out->ucset = 1;
+		color_resolve(palette, &in->ul, in->ul_kind, TSM_COLOR_FOREGROUND,
+			      false, &out->uccode, &out->ur, &out->ug, &out->ub);
+	}
+	out->bold = in->bold;
+	out->italic = in->italic;
+	out->underline = in->underline;
+	out->inverse = in->inverse;
+	out->protect = in->protect;
+	out->blink = in->blink;
+	out->dim = in->dim;
+	out->underline_style = in->underline_style;
+	out->strike = in->strike;
+}
+
+static void color_from_screen_attr(struct cell_color *c, int8_t code,
+				   uint8_t r, uint8_t g, uint8_t b)
+{
+	c->code = code;
+	c->rgb[0] = r;
+	c->rgb[1] = g;
+	c->rgb[2] = b;
+}
+
+void cell_attr_from_screen_attr(const struct tsm_screen_attr *in,
+				struct cell_attr *out)
+{
+	/* The public struct carries colours already resolved, and the screen
+	 * has always stored and returned them as given, code included. */
+	memset(out, 0, sizeof(*out));
+	color_from_screen_attr(&out->fg, in->fccode, in->fr, in->fg, in->fb);
+	color_from_screen_attr(&out->bg, in->bccode, in->br, in->bg, in->bb);
+	out->fg_kind = CELL_COLOR_RGB;
+	out->bg_kind = CELL_COLOR_RGB;
+	if (in->ucset) {
+		out->ucset = 1;
+		color_from_screen_attr(&out->ul, in->uccode, in->ur, in->ug, in->ub);
+		out->ul_kind = CELL_COLOR_RGB;
+	}
+	out->bold = in->bold;
+	out->italic = in->italic;
+	out->underline = in->underline;
+	out->inverse = in->inverse;
+	out->protect = in->protect;
+	out->blink = in->blink;
+	out->dim = in->dim;
+	out->underline_style = in->underline_style;
+	out->strike = in->strike;
+}
+
 SHL_EXPORT
 tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 			  void *data)
@@ -115,7 +250,7 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 			else
 				cell = &empty;
 
-			memcpy(&attr, &cell->attr, sizeof(attr));
+			cell_attr_resolve(con->palette, &cell->attr, &attr);
 
 			if (con->sel_active) {
 				if (sel_start &&
@@ -202,7 +337,7 @@ static void color_dim(struct tsm_screen_color  *out, const struct tsm_screen_col
 
 /*
  * tsm_screen_draw2 returns a pointer to a table of tsm_screen_cell, one for each cell on the screen.
- * It uses a bit more memory, but should be much faster, as each cell is only 12 bytes.
+ * It uses a bit more memory, but should be much faster, as each cell is only 16 bytes.
  * The caller can read the table, until the next call to tsm_screen_draw2, or until con is destroyed.
  */
 SHL_EXPORT
@@ -212,6 +347,7 @@ const struct tsm_screen_cell *tsm_screen_draw2(struct tsm_screen *con)
 	struct line *line, *next_line = NULL;
 	struct cell *cell, empty;
 	struct tsm_screen_cell *out;
+	struct tsm_screen_attr attr;
 	bool in_sel = false, sel_start = false, sel_end = false;
 	bool inverse = false;
 
@@ -267,35 +403,49 @@ const struct tsm_screen_cell *tsm_screen_draw2(struct tsm_screen *con)
 				cell = &line->cells[j];
 			else
 				cell = &empty;
+			cell_attr_resolve(con->palette, &cell->attr, &attr);
 			out->ch = cell->ch ? cell->ch : ' ';
-			out->attr2.bold = cell->attr.bold;
-			out->attr2.italic = cell->attr.italic;
-			out->attr2.underline = cell->attr.underline;
-			out->attr2.blink = cell->attr.blink;
+			out->attr2.bold = attr.bold;
+			out->attr2.italic = attr.italic;
+			out->attr2.underline = attr.underline;
+			out->attr2.blink = attr.blink;
 
 			if (sel_start && j == con->sel_start.x)
 				in_sel = !in_sel;
 
 			/* Inverse logic, cell attribute, selection, and whole screen inverse */
-			inverse = cell->attr.inverse ^ in_sel ^ (con->flags & TSM_SCREEN_INVERSE);
+			inverse = attr.inverse ^ in_sel ^ (con->flags & TSM_SCREEN_INVERSE);
 
 			if (inverse) {
-				out->fg.r = cell->attr.br;
-				out->fg.g = cell->attr.bg;
-				out->fg.b = cell->attr.bb;
-				out->bg.r = cell->attr.fr;
-				out->bg.g = cell->attr.fg;
-				out->bg.b = cell->attr.fb;
+				out->fg.r = attr.br;
+				out->fg.g = attr.bg;
+				out->fg.b = attr.bb;
+				out->bg.r = attr.fr;
+				out->bg.g = attr.fg;
+				out->bg.b = attr.fb;
 			} else {
-				out->fg.r = cell->attr.fr;
-				out->fg.g = cell->attr.fg;
-				out->fg.b = cell->attr.fb;
-				out->bg.r = cell->attr.br;
-				out->bg.g = cell->attr.bg;
-				out->bg.b = cell->attr.bb;
+				out->fg.r = attr.fr;
+				out->fg.g = attr.fg;
+				out->fg.b = attr.fb;
+				out->bg.r = attr.br;
+				out->bg.g = attr.bg;
+				out->bg.b = attr.bb;
 			}
-			if (cell->attr.dim)
+			if (attr.dim)
 				color_dim(&out->fg, &out->fg, &out->bg);
+
+			/* A set underline colour is exact: reverse video does not
+			 * swap it and dim does not touch it. A default one is the
+			 * foreground as drawn, dim included (the kitty underlines
+			 * doc, ADR-102). */
+			out->ul_set = attr.ucset;
+			if (attr.ucset) {
+				out->ul.r = attr.ur;
+				out->ul.g = attr.ug;
+				out->ul.b = attr.ub;
+			} else {
+				out->ul = out->fg;
+			}
 
 			if (sel_end && j == con->sel_end.x)
 				in_sel = !in_sel;
