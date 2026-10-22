@@ -488,7 +488,10 @@ tsm_symbol_t tsm_symbol_append(struct tsm_symbol_table *tbl,
 	}
 	c->refs = 0;
 	c->key = TSM_CLUSTER_BASE + slot;
-	c->gen = ++tbl->gen;
+	/* 0 means no cluster, so the counter skips it when it wraps */
+	if (!++tbl->gen)
+		++tbl->gen;
+	c->gen = tbl->gen;
 	c->len = len;
 	memcpy(c->cps, buf.cps, len * sizeof(c->cps[0]));
 	if (shl_htable_insert(&tbl->index, c, hash_cluster(c, tbl))) {
