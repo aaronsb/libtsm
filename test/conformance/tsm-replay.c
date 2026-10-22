@@ -461,7 +461,7 @@ static void print_frame_cell(const struct tsm_frame_cell *c)
 static void dump_frame(struct tsm_screen *screen, struct tsm_vte *vte)
 {
 	const struct tsm_frame *f = tsm_screen_frame(screen);
-	const struct tsm_frame_cell *line, *c;
+	const struct tsm_frame_cell *c;
 	struct tsm_frame_cell def;
 	struct tsm_screen_attr attr;
 	unsigned int row, x, last, start, changed = 0;
@@ -487,7 +487,7 @@ static void dump_frame(struct tsm_screen *screen, struct tsm_vte *vte)
 	       def.fg.r, def.fg.g, def.fg.b, def.bg.r, def.bg.g, def.bg.b);
 
 	for (i = 0; i < (size_t)f->cols * f->rows; i++)
-		if (f->cells[i].flags & TSM_FRAME_CHANGED)
+		if (tsm_frame_cell_at(f, i % f->cols, i / f->cols)->flags & TSM_FRAME_CHANGED)
 			changed++;
 	printf("changed %u\n", changed);
 
@@ -497,15 +497,16 @@ static void dump_frame(struct tsm_screen *screen, struct tsm_vte *vte)
 		print_frame_cell(&f->cursor.cell);
 	putchar('\n');
 
+	/* cells are cell_size apart, which a later libtsm may grow */
+#define CELL(x) tsm_frame_cell_at(f, (x), row)
 	for (row = 0; row < f->rows; row++) {
-		line = &f->cells[row * f->cols];
 		last = 0;
 		for (x = 0; x < f->cols; x++)
-			if (line[x].key && line[x].key != ' ')
+			if (CELL(x)->key && CELL(x)->key != ' ')
 				last = x + 1;
 		printf("row %u |", row);
 		for (x = 0; x < last; x++) {
-			c = &line[x];
+			c = CELL(x);
 			if (!c->width)
 				continue;
 			if (!c->key) {
@@ -527,15 +528,16 @@ static void dump_frame(struct tsm_screen *screen, struct tsm_vte *vte)
 
 		for (x = 0; x < f->cols; x = start) {
 			start = x + 1;
-			if (frame_cell_equal(&line[x], &def))
+			if (frame_cell_equal(CELL(x), &def))
 				continue;
-			while (start < f->cols && frame_cell_equal(&line[start], &line[x]))
+			while (start < f->cols && frame_cell_equal(CELL(start), CELL(x)))
 				start++;
 			printf("cells %u %u-%u", row, x, start - 1);
-			print_frame_cell(&line[x]);
+			print_frame_cell(CELL(x));
 			putchar('\n');
 		}
 	}
+#undef CELL
 }
 #endif
 

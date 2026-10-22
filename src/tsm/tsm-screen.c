@@ -719,8 +719,10 @@ int tsm_screen_resize(struct tsm_screen *con, unsigned int x,
 		}
 	}
 
+	/* every cell now sits in a differently shaped screen and is redrawn */
 	screen_seg_reset(con);
 	screen_inc_age(con);
+	con->age = con->age_cnt;
 
 	/* xterm destroys margins on resize, so do we */
 	con->margin_top = 0;

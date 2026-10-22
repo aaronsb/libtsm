@@ -981,14 +981,15 @@ static unsigned int frame_count_changed(const struct tsm_frame *f)
 	unsigned int i, n = 0;
 
 	for (i = 0; i < f->cols * f->rows; i++)
-		if (f->cells[i].flags & TSM_FRAME_CHANGED)
+		if (tsm_frame_cell_at(f, i % f->cols, i / f->cols)->flags &
+		    TSM_FRAME_CHANGED)
 			n++;
 	return n;
 }
 
 static bool frame_changed(const struct tsm_frame *f, unsigned int x, unsigned int y)
 {
-	return f->cells[y * f->cols + x].flags & TSM_FRAME_CHANGED;
+	return tsm_frame_cell_at(f, x, y)->flags & TSM_FRAME_CHANGED;
 }
 
 /* a cluster's key stays the same across frames while its cell is untouched,
@@ -1204,6 +1205,212 @@ START_TEST(test_vte_frame_colors)
 }
 END_TEST
 
+/* a resize flags every cell of the next frame, whatever changed shape */
+START_TEST(test_vte_frame_resize)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 4);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "abc");
+	tsm_screen_frame(screen);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	/* wider, same height */
+	r = tsm_screen_resize(screen, 12, 4);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(f->cols, 12);
+	ck_assert_uint_eq(frame_count_changed(f), 48);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	/* shorter, same width */
+	r = tsm_screen_resize(screen, 12, 3);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 36);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* with scrollback in view, the cursor draws on the row that shows its line,
+ * or not at all, and a move flags its cells where they show */
+START_TEST(test_vte_frame_cursor_scrollback)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 4);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_set_max_sb(screen, 100);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* lines 5-8 on screen, the cursor after "8" on the last row */
+	input_str(vte, "1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n7\r\n8");
+	f = tsm_screen_frame(screen);
+	ck_assert(f->cursor.visible);
+	ck_assert_uint_eq(f->cursor.x, 1);
+	ck_assert_uint_eq(f->cursor.y, 3);
+
+	/* two lines up: rows 2 and 3 show the screen's first two lines, and
+	 * the cursor's line is out of view */
+	tsm_screen_sb_up(screen, 2);
+	tsm_screen_frame(screen);
+	f = tsm_screen_frame(screen);
+	ck_assert(!f->cursor.visible);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	/* to the screen's second line: row 3 */
+	input_str(vte, "\e[2;5H");
+	f = tsm_screen_frame(screen);
+	ck_assert(f->cursor.visible);
+	ck_assert_uint_eq(f->cursor.x, 4);
+	ck_assert_uint_eq(f->cursor.y, 3);
+	ck_assert(frame_changed(f, 4, 3));
+	ck_assert_uint_eq(frame_count_changed(f), 1);
+
+	/* along that line: the old cell and the new */
+	input_str(vte, "\e[2;8H");
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(f->cursor.x, 7);
+	ck_assert_uint_eq(f->cursor.y, 3);
+	ck_assert(frame_changed(f, 4, 3) && frame_changed(f, 7, 3));
+	ck_assert_uint_eq(frame_count_changed(f), 2);
+
+	/* back to the live screen: line 2 is row 1 again */
+	tsm_screen_sb_reset(screen);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(f->cursor.y, 1);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* at the pending-wrap column the cursor draws on the last cell */
+START_TEST(test_vte_frame_cursor_pending_wrap)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 2);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "0123456789");
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 10);
+	f = tsm_screen_frame(screen);
+	ck_assert(f->cursor.visible);
+	ck_assert_uint_eq(f->cursor.x, 9);
+	ck_assert_uint_eq(f->cursor.y, 0);
+	ck_assert(f->cursor.cell.key == '9');
+
+	/* leaving it flags the last cell */
+	input_str(vte, "\r");
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(f->cursor.x, 0);
+	ck_assert(frame_changed(f, 9, 0) && frame_changed(f, 0, 0));
+	ck_assert_uint_eq(frame_count_changed(f), 2);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* on the trailing half of a wide character the cursor covers the character
+ * from its leading cell, and leaving flags both halves */
+START_TEST(test_vte_frame_cursor_trailing_half)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 2);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "\xe4\xb8\xad\e[1;2H");
+	f = tsm_screen_frame(screen);
+	ck_assert(f->cursor.visible);
+	ck_assert_uint_eq(f->cursor.x, 0);
+	ck_assert(f->cursor.cell.key == 0x4e2d);
+	ck_assert_uint_eq(f->cursor.cell.width, 2);
+
+	input_str(vte, "\e[2;1H");
+	f = tsm_screen_frame(screen);
+	ck_assert(frame_changed(f, 0, 0) && frame_changed(f, 1, 0));
+	ck_assert(frame_changed(f, 0, 1));
+	ck_assert_uint_eq(frame_count_changed(f), 3);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* SGR 7 and DECSCNM toggle each other, as tsm_screen_draw applies them */
+START_TEST(test_vte_frame_inverse_screen)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	const struct tsm_frame_cell *c;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 2);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_set_palette(vte, "legacy");
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "\e[7mR\e[0mN\e[?5h");
+	f = tsm_screen_frame(screen);
+
+	/* reverse video on a reverse-video screen: normal colours */
+	c = tsm_frame_cell_at(f, 0, 0);
+	ck_assert(!(c->flags & TSM_FRAME_INVERSE));
+	ck_assert_uint_eq(c->fg.r, 229);
+	ck_assert_uint_eq(c->bg.r, 0);
+	/* a plain cell on it: inverse */
+	c = tsm_frame_cell_at(f, 1, 0);
+	ck_assert(c->flags & TSM_FRAME_INVERSE);
+	ck_assert_uint_eq(c->fg.r, 0);
+	ck_assert_uint_eq(c->bg.r, 229);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -1227,6 +1434,11 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_frame_changed)
 	TEST(test_vte_frame_width)
 	TEST(test_vte_frame_colors)
+	TEST(test_vte_frame_resize)
+	TEST(test_vte_frame_cursor_scrollback)
+	TEST(test_vte_frame_cursor_pending_wrap)
+	TEST(test_vte_frame_cursor_trailing_half)
+	TEST(test_vte_frame_inverse_screen)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(bell)

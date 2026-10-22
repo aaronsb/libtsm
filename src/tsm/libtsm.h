@@ -378,9 +378,9 @@ const struct tsm_screen_cell *tsm_screen_draw2(struct tsm_screen *con);
 #define TSM_FRAME_BOLD		0x0001
 #define TSM_FRAME_ITALIC	0x0002
 #define TSM_FRAME_DIM		0x0004	/* already applied to fg */
-#define TSM_FRAME_BLINK		0x0008
-#define TSM_FRAME_INVERSE	0x0010	/* the cell, selection and screen inverse
-					   combined; already applied to fg and bg */
+#define TSM_FRAME_BLINK		0x0008	/* the renderer runs the blink phase */
+#define TSM_FRAME_INVERSE	0x0010	/* already applied to fg and bg; see
+					   tsm_screen_frame */
 #define TSM_FRAME_PROTECT	0x0020
 #define TSM_FRAME_STRIKE	0x0040
 #define TSM_FRAME_UL_SET	0x0080	/* ul was set by SGR 58 */
@@ -404,17 +404,30 @@ struct tsm_frame_cell {
 	struct tsm_screen_color bg;	/* resolved, after inverse */
 	struct tsm_screen_color ul;	/* underline colour: as set (UL_SET),
 					   else fg as drawn */
-	uint8_t width;			/* 0 for a trailing half, else 1 or 2 */
+	/*
+	 * 0 for a trailing half, which always follows a cell of width 2; else
+	 * 1 or 2. A width-2 cell in the last column has no trailing half and
+	 * is cut at the margin.
+	 */
+	uint8_t width;
 	uint8_t underline;		/* enum tsm_underline_style */
+	uint8_t reserved0;		/* 0 */
 	uint16_t flags;			/* TSM_FRAME_* */
+	uint16_t reserved1;		/* 0 */
 };
 
 struct tsm_frame_cursor {
-	unsigned int x;			/* as tsm_screen_get_cursor_x/y */
+	/*
+	 * Where the cursor draws: the visible row that shows the cursor's line,
+	 * which differs from tsm_screen_get_cursor_y while scrollback is shown;
+	 * the last column at the pending-wrap position; and the leading cell
+	 * when the cursor is on the trailing half of a wide character.
+	 */
+	unsigned int x;
 	unsigned int y;
 	enum tsm_screen_cursor_style style;
-	/* not hidden by TSM_SCREEN_HIDE_CURSOR, and inside the screen; a
-	 * renderer applies its own blinking */
+	/* not hidden by TSM_SCREEN_HIDE_CURSOR, and its line is in view; the
+	 * renderer runs the blink phase */
 	bool visible;
 	/*
 	 * The cell under the cursor as the cursor draws it: a block swaps fg
@@ -429,16 +442,40 @@ struct tsm_frame_cursor {
 struct tsm_frame {
 	unsigned int cols;
 	unsigned int rows;
-	const struct tsm_frame_cell *cells;	/* rows * cols, row by row */
+	/*
+	 * rows * cols cells, row by row, each cell_size bytes apart: index with
+	 * cell_size, not sizeof, so a later libtsm can grow the cell without
+	 * breaking a caller built against this header.
+	 */
+	size_t cell_size;
+	const struct tsm_frame_cell *cells;
 	struct tsm_frame_cursor cursor;
 };
+
+/* cell @x, @y of @frame */
+static inline const struct tsm_frame_cell *
+tsm_frame_cell_at(const struct tsm_frame *frame, unsigned int x, unsigned int y)
+{
+	return (const struct tsm_frame_cell *)((const char *)frame->cells +
+		((size_t)y * frame->cols + x) * frame->cell_size);
+}
 
 /*
  * Resolves the visible screen into a frame and returns it. The frame belongs
  * to the screen and stays valid until the next call or until the screen is
- * resized or freed. TSM_FRAME_CHANGED marks the cells whose content, colours,
- * attributes or cursor state changed since the previous call (all of them on
- * the first call), from the screen's age.
+ * resized or freed.
+ *
+ * TSM_FRAME_CHANGED marks the cells whose content, colours, attributes or
+ * cursor state changed since the previous call, from the screen's age; every
+ * cell on the first call and after a resize. Both halves of a wide character
+ * carry it together.
+ *
+ * Inverse is the cell's SGR 7, the selection and the screen's DECSCNM, each
+ * toggling the others, as tsm_screen_draw applies it: a reverse-video cell on
+ * a reverse-video screen draws in its normal colours. (tsm_screen_draw2
+ * instead makes every cell inverse on a DECSCNM screen.)
+ *
+ * SGR 8 (conceal) is not parsed, so no cell is concealed.
  */
 const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con);
 

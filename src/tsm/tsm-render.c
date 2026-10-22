@@ -563,13 +563,29 @@ static void frame_cursor_cell(struct tsm_frame_cursor *cur)
 	}
 }
 
+/* a wide character's two halves draw as one: when either changed, both are
+ * flagged */
+static void frame_pair_row(struct tsm_frame_cell *row, unsigned int cols)
+{
+	unsigned int j;
+	uint16_t changed;
+
+	for (j = 1; j < cols; ++j) {
+		if (row[j].width || row[j - 1].width != 2)
+			continue;
+		changed = (row[j - 1].flags | row[j].flags) & TSM_FRAME_CHANGED;
+		row[j - 1].flags |= changed;
+		row[j].flags |= changed;
+	}
+}
+
 SHL_EXPORT
 const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
 {
-	unsigned int i, j, k, n;
+	unsigned int i, j, k, n, cur_x, cur_y, cur_row;
 	struct line *line, *next_line;
 	struct cell *cell, empty;
-	struct tsm_frame_cell *out, *cells;
+	struct tsm_frame_cell *out, *cells, *row;
 	struct tsm_frame_cursor *cur;
 	bool in_sel = false, sel_start = false, sel_end = false, inverse;
 	bool all_changed;
@@ -587,9 +603,19 @@ const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
 		con->frame_cells_count = n;
 	}
 
+	/* a frame of another shape has no cell in common with this one */
 	since = con->frame_age;
-	all_changed = con->age_reset || !since;
+	all_changed = con->age_reset || !since ||
+		      con->frame.cols != con->size_x ||
+		      con->frame.rows != con->size_y;
 	screen_cell_init(con, &empty);
+
+	/* the cursor sits on lines[cur_y], wherever the view shows it; at the
+	 * pending-wrap column it draws on the last cell, as tsm_screen_draw
+	 * places it */
+	cur_x = con->cursor_x < con->size_x ? con->cursor_x : con->size_x - 1;
+	cur_y = con->cursor_y < con->size_y ? con->cursor_y : con->size_y - 1;
+	cur_row = con->size_y;
 
 	k = 0;
 	next_line = con->sb.pos;
@@ -611,6 +637,8 @@ const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
 			line = next_line;
 			next_line = shl_dlist_next(next_line, &con->sb.list, list);
 		} else {
+			if (k == cur_y)
+				cur_row = i;
 			line = con->lines[k];
 			k++;
 		}
@@ -620,8 +648,9 @@ const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
 			sel_end = (con->sel_end.line == line);
 		}
 
+		row = &con->frame_cells[i * con->size_x];
 		for (j = 0; j < con->size_x; ++j) {
-			out = &con->frame_cells[i * con->size_x + j];
+			out = &row[j];
 			if (j < line->size) {
 				cell = &line->cells[j];
 				age = cell->age;
@@ -647,23 +676,30 @@ const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
 			if (sel_end && j == con->sel_end.x)
 				in_sel = !in_sel;
 		}
+		frame_pair_row(row, con->size_x);
 	}
 
 	con->frame.cols = con->size_x;
 	con->frame.rows = con->size_y;
+	con->frame.cell_size = sizeof(struct tsm_frame_cell);
 	con->frame.cells = con->frame_cells;
 
+	/* on the trailing half of a wide character, the cursor covers the
+	 * character, from its leading cell */
 	cur = &con->frame.cursor;
 	memset(cur, 0, sizeof(*cur));
-	cur->x = con->cursor_x;
-	cur->y = con->cursor_y;
 	cur->style = con->cstyle;
 	cur->visible = !(con->flags & TSM_SCREEN_HIDE_CURSOR) &&
-		       cur->x < con->size_x && cur->y < con->size_y;
+		       cur_row < con->size_y;
 	if (cur->visible) {
-		cur->cell = con->frame_cells[cur->y * con->size_x + cur->x];
+		row = &con->frame_cells[cur_row * con->size_x];
+		if (cur_x && !row[cur_x].width && row[cur_x - 1].width == 2)
+			--cur_x;
+		cur->cell = row[cur_x];
 		frame_cursor_cell(cur);
 	}
+	cur->x = cur_x;
+	cur->y = cur->visible ? cur_row : cur_y;
 
 	/* later changes take a newer age than this frame */
 	con->frame_age = con->age_cnt;
