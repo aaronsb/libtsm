@@ -681,6 +681,116 @@ START_TEST(test_vte_draw2_underline_color)
 }
 END_TEST
 
+/* A set underline colour given as a palette code is not brightened by bold;
+ * bold-as-bright is for the foreground. */
+START_TEST(test_vte_underline_color_not_bright)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_screen_cell *cells;
+	const char *input = "\e[1;4;58;5;1mX";
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_set_palette(vte, "legacy");
+	ck_assert_int_eq(r, 0);
+	tsm_vte_input(vte, input, strlen(input));
+
+	/* legacy red 205,0,0, not light red 255,0,0 */
+	cells = tsm_screen_draw2(screen);
+	ck_assert_ptr_ne(cells, NULL);
+	ck_assert_uint_eq(cells[0].attr2.bold, 1);
+	ck_assert_uint_eq(cells[0].ul_set, 1);
+	ck_assert_uint_eq(cells[0].ul.r, 205);
+	ck_assert_uint_eq(cells[0].ul.g, 0);
+	ck_assert_uint_eq(cells[0].ul.b, 0);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* A set underline colour given as a palette code follows a palette change,
+ * like any colour kept as written. */
+START_TEST(test_vte_underline_color_follows_palette)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_screen_cell *cells;
+	const char *input = "\e[4;58;5;1mU\e[0m\r\n\n\n";
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_set_max_sb(screen, 10);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_set_palette(vte, "legacy");
+	ck_assert_int_eq(r, 0);
+	tsm_vte_input(vte, input, strlen(input));
+	ck_assert_uint_eq(tsm_screen_sb_get_line_count(screen), 1);
+
+	r = tsm_vte_set_palette(vte, "vga");
+	ck_assert_int_eq(r, 0);
+	tsm_screen_sb_up(screen, 1);
+
+	/* vga red 170,0,0, where legacy drew it 205,0,0 */
+	cells = tsm_screen_draw2(screen);
+	ck_assert_ptr_ne(cells, NULL);
+	ck_assert_uint_eq(cells[0].ch, 'U');
+	ck_assert_uint_eq(cells[0].ul_set, 1);
+	ck_assert_uint_eq(cells[0].ul.r, 170);
+	ck_assert_uint_eq(cells[0].ul.g, 0);
+	ck_assert_uint_eq(cells[0].ul.b, 0);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* Dim leaves a set underline colour exact and dims a default one with the
+ * foreground. */
+START_TEST(test_vte_underline_color_dim)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_screen_cell *cells;
+	const char *input = "\e[2;4;58;2;10;20;30mS\e[59mD";
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_set_palette(vte, "legacy");
+	ck_assert_int_eq(r, 0);
+	tsm_vte_input(vte, input, strlen(input));
+
+	cells = tsm_screen_draw2(screen);
+	ck_assert_ptr_ne(cells, NULL);
+	/* S: set, not dimmed */
+	ck_assert_uint_eq(cells[0].ul_set, 1);
+	ck_assert_uint_eq(cells[0].ul.r, 10);
+	ck_assert_uint_eq(cells[0].ul.g, 20);
+	ck_assert_uint_eq(cells[0].ul.b, 30);
+	/* D: default, dimmed with the foreground: legacy 229 over 0 gives
+	 * 0/2 + 229/2 = 114 */
+	ck_assert_uint_eq(cells[1].ul_set, 0);
+	ck_assert_uint_eq(cells[1].fg.r, 114);
+	ck_assert_uint_eq(cells[1].ul.r, 114);
+	ck_assert_uint_eq(cells[1].ul.g, 114);
+	ck_assert_uint_eq(cells[1].ul.b, 114);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -693,6 +803,9 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_csi_cursor_up_down)
 	TEST(test_vte_palette_recolours_text)
 	TEST(test_vte_draw2_underline_color)
+	TEST(test_vte_underline_color_not_bright)
+	TEST(test_vte_underline_color_follows_palette)
+	TEST(test_vte_underline_color_dim)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(bell)

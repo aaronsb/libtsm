@@ -337,7 +337,7 @@ static void color_dim(struct tsm_screen_color  *out, const struct tsm_screen_col
 
 /*
  * tsm_screen_draw2 returns a pointer to a table of tsm_screen_cell, one for each cell on the screen.
- * It uses a bit more memory, but should be much faster, as each cell is only 12 bytes.
+ * It uses a bit more memory, but should be much faster, as each cell is only 16 bytes.
  * The caller can read the table, until the next call to tsm_screen_draw2, or until con is destroyed.
  */
 SHL_EXPORT
@@ -434,9 +434,10 @@ const struct tsm_screen_cell *tsm_screen_draw2(struct tsm_screen *con)
 			if (attr.dim)
 				color_dim(&out->fg, &out->fg, &out->bg);
 
-			/* A set underline colour stays as set under reverse video;
-			 * a default one is the foreground as drawn (the kitty
-			 * underlines doc, ADR-102). */
+			/* A set underline colour is exact: reverse video does not
+			 * swap it and dim does not touch it. A default one is the
+			 * foreground as drawn, dim included (the kitty underlines
+			 * doc, ADR-102). */
 			out->ul_set = attr.ucset;
 			if (attr.ucset) {
 				out->ul.r = attr.ur;

@@ -224,10 +224,11 @@ struct tsm_screen_cell {
 	struct tsm_screen_color fg;   /* foreground color */
 	struct tsm_screen_color bg;   /* background color */
 	tsm_screen_attr2_t attr2;     /* glyph attributes */
-	struct tsm_screen_color ul;   /* underline color: as set (SGR 58) when
-				         ul_set, else the drawn foreground */
-	uint8_t ul_set;               /* the underline color was set; it does not
-				         swap with reverse video */
+	struct tsm_screen_color ul;   /* underline color: when ul_set, exactly as
+				         set (SGR 58), neither swapped by reverse
+				         video nor dimmed; otherwise the foreground
+				         as drawn, after reverse video and dim */
+	uint8_t ul_set;               /* the underline color was set by SGR 58 */
 };
 
 enum tsm_screen_cursor_style {
@@ -272,6 +273,8 @@ void tsm_screen_sb_reset(struct tsm_screen *con);
 unsigned int tsm_screen_sb_get_line_count(struct tsm_screen *con);
 unsigned int tsm_screen_sb_get_line_pos(struct tsm_screen *con);
 
+/* The colours in @attr are stored as given, so they do not follow palette
+ * changes or bold-as-bright. */
 void tsm_screen_set_def_attr(struct tsm_screen *con,
 			     const struct tsm_screen_attr *attr);
 void tsm_screen_reset(struct tsm_screen *con);
@@ -286,6 +289,8 @@ void tsm_screen_set_tabstop(struct tsm_screen *con);
 void tsm_screen_reset_tabstop(struct tsm_screen *con);
 void tsm_screen_reset_all_tabstops(struct tsm_screen *con);
 
+/* The colours in @attr are stored as given, so they do not follow palette
+ * changes or bold-as-bright. */
 void tsm_screen_write(struct tsm_screen *con, tsm_symbol_t ch,
 		      const struct tsm_screen_attr *attr);
 void tsm_screen_newline(struct tsm_screen *con);
