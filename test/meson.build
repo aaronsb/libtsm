@@ -50,3 +50,11 @@ test(
     find_program('python3'),
     args: [files('conformance/check.py'), tsm_replay, meson.current_source_dir() / 'conformance'],
 )
+# The same corpus through the draw2 view: colours resolved, as a renderer sees
+# them (aaronsb/kmscon#26).
+test(
+    'conformance-draw2',
+    find_program('python3'),
+    args: [files('conformance/check.py'), tsm_replay, meson.current_source_dir() / 'conformance',
+           '--draw2'],
+)

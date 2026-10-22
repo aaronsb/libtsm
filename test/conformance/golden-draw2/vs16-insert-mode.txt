@@ -1,0 +1,6 @@
+size 8x2
+cursor 2,0
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+row 0 |❤ abc|
+row 1 ||
