@@ -1,0 +1,4 @@
+# Cases whose golden comes from a fork commit, one name per line, each with
+# the change of behaviour it judges. Every case in cases.list not named here
+# judges behaviour the fork preserves, and its golden comes from upstream
+# v4.8.0. make-golden.sh writes one set or the other, chosen by REF.

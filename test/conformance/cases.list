@@ -3,6 +3,16 @@
 sgr-basic 80 24
 sgr-extended-color 80 24
 sgr-underline-extended 80 24
+sgr-color-forms-fg 80 24
+sgr-color-forms-bg 80 24
+sgr-color-forms-ul 80 24
+sgr-underline-styles 80 24
+sgr-strike 80 24
+sgr-underline-color-reset 80 24
+sgr-subparam-unknown 80 24
+sgr-58-semicolon-no-blink 80 24
+sgr-subparam-overflow 80 24
+csi-subparam-non-sgr 80 24
 cursor-motion 80 24
 erase 80 24
 erase-display-above 20 6
