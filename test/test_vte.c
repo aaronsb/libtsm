@@ -976,6 +976,227 @@ START_TEST(test_vte_draw_id_cluster_reuse)
 }
 END_TEST
 
+static unsigned int frame_count_changed(const struct tsm_frame *f)
+{
+	unsigned int i, n = 0;
+
+	for (i = 0; i < f->cols * f->rows; i++)
+		if (f->cells[i].flags & TSM_FRAME_CHANGED)
+			n++;
+	return n;
+}
+
+static bool frame_changed(const struct tsm_frame *f, unsigned int x, unsigned int y)
+{
+	return f->cells[y * f->cols + x].flags & TSM_FRAME_CHANGED;
+}
+
+/* a cluster's key stays the same across frames while its cell is untouched,
+ * and reads back as its codepoints */
+START_TEST(test_vte_frame_cluster_key)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	const uint32_t *cps;
+	uint64_t key;
+	size_t len;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 3);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "e\xcc\x81");
+	f = tsm_screen_frame(screen);
+	ck_assert_ptr_ne(f, NULL);
+	key = f->cells[0].key;
+	ck_assert_uint_ge(key & 0xffffffffu, TSM_FRAME_CLUSTER_KEY);
+	ck_assert_uint_ne(key >> 32, 0);
+	cps = tsm_screen_frame_cluster(screen, key, &len);
+	ck_assert_ptr_ne(cps, NULL);
+	ck_assert_uint_eq(len, 2);
+	ck_assert_uint_eq(cps[0], 'e');
+	ck_assert_uint_eq(cps[1], 0x301);
+	ck_assert_ptr_eq(tsm_screen_frame_cluster(screen, 'e', &len), NULL);
+
+	/* elsewhere on the screen */
+	input_str(vte, "\e[3;5Hy");
+	f = tsm_screen_frame(screen);
+	ck_assert(f->cells[0].key == key);
+	ck_assert(!frame_changed(f, 0, 0));
+
+	/* gone: its key no longer reads */
+	input_str(vte, "\e[1;1H\e[K");
+	ck_assert_ptr_eq(tsm_screen_frame_cluster(screen, key, &len), NULL);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* the changed flag follows the screen's age: a frame with nothing new marks
+ * nothing; a print marks its cell and the cursor's old and new cells; a
+ * cursor move marks the two cursor cells; erase, scroll, palette and
+ * selection mark what they touch */
+START_TEST(test_vte_frame_changed)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 4);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "ab");
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 40);	/* the first frame */
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	/* a print at 5,1: its cell, and the cursor cells at 2,0 and 6,1 */
+	input_str(vte, "\e[2;6Hz");
+	f = tsm_screen_frame(screen);
+	ck_assert(frame_changed(f, 5, 1));
+	ck_assert(frame_changed(f, 2, 0));
+	ck_assert(frame_changed(f, 6, 1));
+	ck_assert_uint_eq(frame_count_changed(f), 3);
+
+	/* a cursor move: the two cursor cells */
+	input_str(vte, "\e[4;1H");
+	f = tsm_screen_frame(screen);
+	ck_assert(frame_changed(f, 6, 1));
+	ck_assert(frame_changed(f, 0, 3));
+	ck_assert_uint_eq(frame_count_changed(f), 2);
+
+	/* a cursor style change: the cursor cell */
+	input_str(vte, "\e[4 q");
+	f = tsm_screen_frame(screen);
+	ck_assert(frame_changed(f, 0, 3));
+	ck_assert_uint_eq(frame_count_changed(f), 1);
+
+	/* an erase, a scroll, a palette change and a selection reach their cells */
+	input_str(vte, "\e[1;1H\e[K");
+	f = tsm_screen_frame(screen);
+	ck_assert(frame_changed(f, 0, 0) && frame_changed(f, 1, 0));
+	input_str(vte, "\e[S");
+	f = tsm_screen_frame(screen);
+	ck_assert(frame_changed(f, 5, 0));
+	r = tsm_vte_set_palette(vte, "vga");
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+	tsm_screen_selection_start(screen, 1, 1);
+	f = tsm_screen_frame(screen);
+	ck_assert(frame_changed(f, 1, 1));
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* width comes from the cell: a VS16-widened cluster is two wide, and its
+ * trailing half zero wide with no glyph */
+START_TEST(test_vte_frame_width)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 2);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "\xe2\x9d\xa4\xef\xb8\x8f" "a");	/* U+2764 U+FE0F a */
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_ge(f->cells[0].key & 0xffffffffu, TSM_FRAME_CLUSTER_KEY);
+	ck_assert_uint_eq(f->cells[0].width, 2);
+	ck_assert_uint_eq(f->cells[1].width, 0);
+	ck_assert(f->cells[1].key == 0);
+	ck_assert(f->cells[2].key == 'a');
+	ck_assert_uint_eq(f->cells[2].width, 1);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* colours: a default underline follows the foreground as drawn, through
+ * reverse video and in the block cursor; a set one stays; style and strike
+ * come through */
+START_TEST(test_vte_frame_colors)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	const struct tsm_frame_cell *c;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 2);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_set_palette(vte, "legacy");
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "\e[7;4:3mR\e[58;2;1;2;3mS\e[0;9mT\e[0m\e[2;1H");
+	f = tsm_screen_frame(screen);
+
+	/* R: reverse, default underline is the swapped fg, the default bg */
+	c = &f->cells[0];
+	ck_assert(c->flags & TSM_FRAME_INVERSE);
+	ck_assert_uint_eq(c->fg.r, 0);
+	ck_assert_uint_eq(c->bg.r, 229);
+	ck_assert_uint_eq(c->ul.r, 0);
+	ck_assert(!(c->flags & TSM_FRAME_UL_SET));
+	ck_assert_uint_eq(c->underline, TSM_UNDERLINE_CURLY);
+	/* S: a set underline stays under reverse video */
+	c = &f->cells[1];
+	ck_assert(c->flags & TSM_FRAME_UL_SET);
+	ck_assert_uint_eq(c->ul.r, 1);
+	ck_assert_uint_eq(c->ul.g, 2);
+	ck_assert_uint_eq(c->ul.b, 3);
+	/* T: strike */
+	ck_assert(f->cells[2].flags & TSM_FRAME_STRIKE);
+	ck_assert_uint_eq(f->cells[2].underline, TSM_UNDERLINE_NONE);
+
+	/* the default block cursor swaps the cell's colours, and its default
+	 * underline follows the swapped fg */
+	ck_assert(f->cursor.visible);
+	ck_assert_uint_eq(f->cursor.x, 0);
+	ck_assert_uint_eq(f->cursor.y, 1);
+	ck_assert_uint_eq(f->cursor.cell.fg.r, 0);
+	ck_assert_uint_eq(f->cursor.cell.bg.r, 229);
+	ck_assert_uint_eq(f->cursor.cell.ul.r, 0);
+
+	/* an underline cursor toggles a single underline */
+	input_str(vte, "\e[4 q");
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(f->cursor.style, TSM_SCREEN_CURSOR_UNDERLINE_STEADY);
+	ck_assert_uint_eq(f->cursor.cell.underline, TSM_UNDERLINE_SINGLE);
+	ck_assert_uint_eq(f->cursor.cell.fg.r, 229);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -995,6 +1216,10 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_cluster_release)
 	TEST(test_vte_width_method_resets)
 	TEST(test_vte_draw_id_cluster_reuse)
+	TEST(test_vte_frame_cluster_key)
+	TEST(test_vte_frame_changed)
+	TEST(test_vte_frame_width)
+	TEST(test_vte_frame_colors)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(bell)

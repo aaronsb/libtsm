@@ -263,6 +263,12 @@ struct tsm_screen {
 	/* draw2 interface */
 	struct tsm_screen_cell *cells;
 	unsigned int cells_count;
+
+	/* frame interface */
+	struct tsm_frame frame;
+	struct tsm_frame_cell *frame_cells;
+	unsigned int frame_cells_count;
+	tsm_age_t frame_age;			/* age_cnt when the last frame was made */
 };
 
 void screen_cell_init(struct tsm_screen *con, struct cell *cell);

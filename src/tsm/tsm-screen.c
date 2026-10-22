@@ -590,6 +590,7 @@ void tsm_screen_unref(struct tsm_screen *con)
 	free(con->tab_ruler);
 	tsm_symbol_table_unref(con->sym_table);
 	free(con->cells);
+	free(con->frame_cells);
 	free(con);
 }
 
@@ -1955,6 +1956,11 @@ void tsm_screen_set_cursor_style(struct tsm_screen *con, enum tsm_screen_cursor_
 	if (!con)
 		return;
 
+	/* the cursor cell draws differently, so it counts as changed */
+	if (con->cstyle != type) {
+		screen_inc_age(con);
+		get_cursor_cell(con)->age = con->age_cnt;
+	}
 	con->cstyle = type;
 }
 

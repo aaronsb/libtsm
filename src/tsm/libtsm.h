@@ -364,7 +364,92 @@ int tsm_screen_selection_copy(struct tsm_screen *con, char **out);
 tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 			  void *data);
 
+/* Deprecated: use tsm_screen_frame, which carries width, cluster keys, every
+ * attribute and the cursor. Kept until kmscon has moved to it. */
 const struct tsm_screen_cell *tsm_screen_draw2(struct tsm_screen *con);
+
+/*
+ * The frame: what a renderer draws, cell by cell (ADR-102 in aaronsb/kmscon).
+ * Defined when tsm_screen_frame and its structs exist.
+ */
+#define TSM_SCREEN_FRAME 1
+
+/* struct tsm_frame_cell flags */
+#define TSM_FRAME_BOLD		0x0001
+#define TSM_FRAME_ITALIC	0x0002
+#define TSM_FRAME_DIM		0x0004	/* already applied to fg */
+#define TSM_FRAME_BLINK		0x0008
+#define TSM_FRAME_INVERSE	0x0010	/* the cell, selection and screen inverse
+					   combined; already applied to fg and bg */
+#define TSM_FRAME_PROTECT	0x0020
+#define TSM_FRAME_STRIKE	0x0040
+#define TSM_FRAME_UL_SET	0x0080	/* ul was set by SGR 58 */
+#define TSM_FRAME_CHANGED	0x0100	/* differs from the previous frame */
+
+/* a key below this is a codepoint; at or above it, a cluster */
+#define TSM_FRAME_CLUSTER_KEY	(1U << 21)
+
+struct tsm_frame_cell {
+	/*
+	 * The glyph: 0 for no glyph (an empty cell or the trailing half of a
+	 * wide one), a codepoint below TSM_FRAME_CLUSTER_KEY, or a cluster.
+	 * A cluster key holds the cluster's symbol in its low 32 bits and a
+	 * generation in its high 32, so it stays the same while any cell holds
+	 * the cluster and never names two different clusters: a glyph cache
+	 * can key on it. Read a cluster's codepoints with
+	 * tsm_screen_frame_cluster.
+	 */
+	uint64_t key;
+	struct tsm_screen_color fg;	/* resolved, after inverse and dim */
+	struct tsm_screen_color bg;	/* resolved, after inverse */
+	struct tsm_screen_color ul;	/* underline colour: as set (UL_SET),
+					   else fg as drawn */
+	uint8_t width;			/* 0 for a trailing half, else 1 or 2 */
+	uint8_t underline;		/* enum tsm_underline_style */
+	uint16_t flags;			/* TSM_FRAME_* */
+};
+
+struct tsm_frame_cursor {
+	unsigned int x;			/* as tsm_screen_get_cursor_x/y */
+	unsigned int y;
+	enum tsm_screen_cursor_style style;
+	/* not hidden by TSM_SCREEN_HIDE_CURSOR, and inside the screen; a
+	 * renderer applies its own blinking */
+	bool visible;
+	/*
+	 * The cell under the cursor as the cursor draws it: a block swaps fg
+	 * and bg, an underline cursor toggles a single underline, a bar keeps
+	 * the colours and has no glyph (key 0), for the renderer to draw its
+	 * bar. A default underline colour follows the drawn fg. Valid when
+	 * visible.
+	 */
+	struct tsm_frame_cell cell;
+};
+
+struct tsm_frame {
+	unsigned int cols;
+	unsigned int rows;
+	const struct tsm_frame_cell *cells;	/* rows * cols, row by row */
+	struct tsm_frame_cursor cursor;
+};
+
+/*
+ * Resolves the visible screen into a frame and returns it. The frame belongs
+ * to the screen and stays valid until the next call or until the screen is
+ * resized or freed. TSM_FRAME_CHANGED marks the cells whose content, colours,
+ * attributes or cursor state changed since the previous call (all of them on
+ * the first call), from the screen's age.
+ */
+const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con);
+
+/*
+ * The codepoints of the cluster @key names, and their count in @len. NULL if
+ * @key is a codepoint, 0, or a cluster no cell holds any more. The pointer is
+ * valid until the screen next changes (any input, write, erase, scroll,
+ * resize or reset); a frame does not change the screen.
+ */
+const uint32_t *tsm_screen_frame_cluster(struct tsm_screen *con, uint64_t key,
+					 size_t *len);
 
 enum tsm_screen_cursor_style tsm_screen_get_cursor_style(struct tsm_screen *con);
 void tsm_screen_set_cursor_style(struct tsm_screen *con, enum tsm_screen_cursor_style type);

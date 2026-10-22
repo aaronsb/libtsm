@@ -170,3 +170,9 @@ LIBTSM_4_8_FORK {
 global:
 	tsm_vte_set_width_method;
 } LIBTSM_4_8;
+
+LIBTSM_4_8_FORK2 {
+global:
+	tsm_screen_frame;
+	tsm_screen_frame_cluster;
+} LIBTSM_4_8_FORK;
