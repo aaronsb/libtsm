@@ -1819,6 +1819,78 @@ START_TEST(test_vte_widen_at_margin)
 }
 END_TEST
 
+/* on a narrowed screen, a wide character lies across the margin: a line that
+ * scrolls, IL or DL clears is cleared past the margin too, and a wide
+ * character that wraps from the last column clears both halves of the one
+ * it replaces, so no half comes back when the screen widens */
+START_TEST(test_vte_clear_past_margin)
+{
+	/* the screen mode, the edit, and the widths of both rows after */
+	static const struct {
+		const char *mode, *edit, *row0, *row1;
+	} edits[] = {
+		/* scroll up on the alternate screen */
+		{ "\e[?1049h", "\e[2;1H\n", "111201", "111111" },
+		/* scroll down */
+		{ "", "\e[1;1H\eM", "111111", "111201" },
+		/* IL */
+		{ "", "\e[2;1H\e[L", "111201", "111111" },
+		/* DL */
+		{ "", "\e[1;1H\e[M", "111201", "111111" },
+	};
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	char w[16];
+	unsigned int i;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* both rows hold a wide character at 3-4; the edit recycles one of
+	 * them as an empty line, then both take "xyz" */
+	for (i = 0; i < sizeof(edits) / sizeof(*edits); ++i) {
+		r = tsm_screen_resize(screen, 6, 2);
+		ck_assert_int_eq(r, 0);
+		input_str(vte, "\ec");
+		input_str(vte, edits[i].mode);
+		input_str(vte, "\e[1;1Habc\xe4\xb8\xad\e[2;1Habc\xe4\xb8\xad");
+		r = tsm_screen_resize(screen, 4, 2);
+		ck_assert_int_eq(r, 0);
+		input_str(vte, edits[i].edit);
+		input_str(vte, "\e[1;1Hxyz\e[2;1Hxyz");
+		r = tsm_screen_resize(screen, 6, 2);
+		ck_assert_int_eq(r, 0);
+		f = tsm_screen_frame(screen);
+		frame_widths(f, 0, w);
+		ck_assert_msg(!strcmp(w, edits[i].row0), "edit %u row 0: %s", i, w);
+		frame_widths(f, 1, w);
+		ck_assert_msg(!strcmp(w, edits[i].row1), "edit %u row 1: %s", i, w);
+	}
+
+	/* a wide character in the last column of the narrowed screen */
+	r = tsm_screen_resize(screen, 6, 2);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\ec\e[1;1Habc\xe4\xb8\xad");
+	r = tsm_screen_resize(screen, 4, 2);
+	ck_assert_int_eq(r, 0);
+	input_str(vte, "\e[1;4H\xe4\xb8\x81");
+	r = tsm_screen_resize(screen, 6, 2);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame(screen);
+	frame_widths(f, 0, w);
+	ck_assert_str_eq(w, "111111");
+	frame_widths(f, 1, w);
+	ck_assert_str_eq(w, "201111");
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 /* a wide character's halves are protected together, so an erase that skips
  * protected cells keeps or clears both */
 START_TEST(test_vte_protect_wide)
@@ -1998,6 +2070,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_repeat_last_printed)
 	TEST(test_vte_wide_at_margin)
 	TEST(test_vte_widen_at_margin)
+	TEST(test_vte_clear_past_margin)
 	TEST(test_vte_protect_wide)
 	TEST(test_vte_word_select_space)
 	TEST(test_vte_max_sb_while_viewed)

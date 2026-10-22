@@ -350,7 +350,7 @@ static void screen_scroll_up(struct tsm_screen *con, unsigned int num)
 			link_to_scrollback(con, con->lines[pos]);
 		} else {
 			cache[i] = con->lines[pos];
-			for (j = 0; j < con->size_x; ++j)
+			for (j = 0; j < cache[i]->size; ++j)
 				screen_cell_clear(con, &cache[i]->cells[j]);
 		}
 	}
@@ -389,7 +389,7 @@ static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
 
 	for (i = 0; i < num; ++i) {
 		cache[i] = con->lines[con->margin_bottom - i];
-		for (j = 0; j < con->size_x; ++j)
+		for (j = 0; j < cache[i]->size; ++j)
 			screen_cell_clear(con, &cache[i]->cells[j]);
 	}
 
@@ -1435,6 +1435,8 @@ void screen_write_char(struct tsm_screen *con, tsm_symbol_t ch,
 		} else {
 			line_split_wide(con, con->lines[con->cursor_y],
 					con->cursor_x);
+			line_split_wide(con, con->lines[con->cursor_y],
+					con->cursor_x + 1);
 			screen_cell_clear(con,
 				&con->lines[con->cursor_y]->cells[con->cursor_x]);
 			move_cursor(con, 0, con->cursor_y + 1);
@@ -1730,7 +1732,7 @@ void tsm_screen_insert_lines(struct tsm_screen *con, unsigned int num)
 
 	for (i = 0; i < num; ++i) {
 		cache[i] = con->lines[con->margin_bottom - i];
-		for (j = 0; j < con->size_x; ++j)
+		for (j = 0; j < cache[i]->size; ++j)
 			screen_cell_clear(con, &cache[i]->cells[j]);
 	}
 
@@ -1771,7 +1773,7 @@ void tsm_screen_delete_lines(struct tsm_screen *con, unsigned int num)
 
 	for (i = 0; i < num; ++i) {
 		cache[i] = con->lines[con->cursor_y + i];
-		for (j = 0; j < con->size_x; ++j)
+		for (j = 0; j < cache[i]->size; ++j)
 			screen_cell_clear(con, &cache[i]->cells[j]);
 	}
 
