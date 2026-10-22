@@ -579,8 +579,15 @@ static void frame_pair_row(struct tsm_frame_cell *row, unsigned int cols)
 	}
 }
 
-SHL_EXPORT
-const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
+/*
+ * The frame, with TSM_FRAME_CHANGED relative to @since, which it advances.
+ * The frame buffer is the screen's, whoever calls. Every caller learns of an
+ * age wrap from the epoch. @own is tsm_screen_frame's call, which clears the
+ * age-reset flag as it always has; tsm_screen_draw reads the same flag.
+ */
+static const struct tsm_frame *screen_frame(struct tsm_screen *con,
+					    struct tsm_frame_age *since,
+					    bool own)
 {
 	unsigned int i, j, k, n, cur_x, cur_y, cur_row;
 	struct line *line, *next_line;
@@ -589,10 +596,7 @@ const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
 	struct tsm_frame_cursor *cur;
 	bool in_sel = false, sel_start = false, sel_end = false, inverse;
 	bool all_changed;
-	tsm_age_t since, age;
-
-	if (!con)
-		return NULL;
+	tsm_age_t age;
 
 	n = con->size_x * con->size_y;
 	if (con->frame_cells_count < n) {
@@ -604,8 +608,7 @@ const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
 	}
 
 	/* a frame of another shape has no cell in common with this one */
-	since = con->frame_age;
-	all_changed = con->age_reset || !since ||
+	all_changed = !since->age || since->epoch != con->age_epoch ||
 		      con->frame.cols != con->size_x ||
 		      con->frame.rows != con->size_y;
 	screen_cell_init(con, &empty);
@@ -670,7 +673,7 @@ const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
 			inverse = cell->attr.inverse ^ in_sel ^
 				  !!(con->flags & TSM_SCREEN_INVERSE);
 			frame_resolve(con, cell, inverse, out);
-			if (all_changed || age > since)
+			if (all_changed || age > since->age)
 				out->flags |= TSM_FRAME_CHANGED;
 
 			if (sel_end && j == con->sel_end.x)
@@ -702,11 +705,32 @@ const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
 	cur->y = cur->visible ? cur_row : cur_y;
 
 	/* later changes take a newer age than this frame */
-	con->frame_age = con->age_cnt;
-	con->age_reset = 0;
+	since->age = con->age_cnt;
+	since->epoch = con->age_epoch;
+	if (own)
+		con->age_reset = 0;
 	screen_inc_age(con);
 
 	return &con->frame;
+}
+
+SHL_EXPORT
+const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
+{
+	if (!con)
+		return NULL;
+
+	return screen_frame(con, &con->frame_age, true);
+}
+
+SHL_EXPORT
+const struct tsm_frame *tsm_screen_frame_since(struct tsm_screen *con,
+					       struct tsm_frame_age *since)
+{
+	if (!con || !since)
+		return NULL;
+
+	return screen_frame(con, since, false);
 }
 
 SHL_EXPORT

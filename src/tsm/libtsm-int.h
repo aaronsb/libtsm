@@ -219,6 +219,7 @@ struct tsm_screen {
 	/* ageing */
 	tsm_age_t age_cnt;			/* current age counter */
 	unsigned int age_reset : 1;		/* age-overflow flag */
+	uint32_t age_epoch;			/* times age_cnt has wrapped */
 
 	/* current buffer */
 	unsigned int size_x;			/* width of screen */
@@ -273,7 +274,7 @@ struct tsm_screen {
 	struct tsm_frame frame;
 	struct tsm_frame_cell *frame_cells;
 	unsigned int frame_cells_count;
-	tsm_age_t frame_age;			/* age_cnt when the last frame was made */
+	struct tsm_frame_age frame_age;		/* tsm_screen_frame's own caller age */
 };
 
 void screen_cell_init(struct tsm_screen *con, struct cell *cell);
@@ -290,12 +291,12 @@ unsigned int tsm_screen_get_opts(struct tsm_screen *scr);
 void tsm_screen_repeat_char(struct tsm_screen *con, unsigned int num,
 			    const struct cell_attr *attr);
 
+void screen_age_wrap(struct tsm_screen *con);
+
 static inline void screen_inc_age(struct tsm_screen *con)
 {
-	if (!++con->age_cnt) {
-		con->age_reset = 1;
-		++con->age_cnt;
-	}
+	if (!++con->age_cnt)
+		screen_age_wrap(con);
 }
 
 static inline bool is_in_scrollback(struct selection_pos *sel) {

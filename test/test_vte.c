@@ -1181,6 +1181,214 @@ START_TEST(test_vte_frame_changed)
 }
 END_TEST
 
+/* two callers of one screen, as two displays of one console: each sees a
+ * change once, in its own frame, whichever draws first and whatever lands
+ * between them; tsm_screen_frame is a caller of its own */
+START_TEST(test_vte_frame_since_callers)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	struct tsm_frame_age a = { 0 }, b = { 0 };
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 4);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* a fresh caller draws everything, then nothing while nothing changes */
+	input_str(vte, "ab");
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame_since(screen, &b);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+	f = tsm_screen_frame_since(screen, &b);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	/* a print at 5,1: its cell and the cursor cells at 2,0 and 6,1, for
+	 * each caller */
+	input_str(vte, "\e[2;6Hz");
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert(frame_changed(f, 5, 1));
+	ck_assert(frame_changed(f, 2, 0));
+	ck_assert(frame_changed(f, 6, 1));
+	ck_assert_uint_eq(frame_count_changed(f), 3);
+	f = tsm_screen_frame_since(screen, &b);
+	ck_assert(frame_changed(f, 5, 1));
+	ck_assert(frame_changed(f, 2, 0));
+	ck_assert(frame_changed(f, 6, 1));
+	ck_assert_uint_eq(frame_count_changed(f), 3);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+	f = tsm_screen_frame_since(screen, &b);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	/* b draws first, between a print at 0,0 and a cursor move: a sees
+	 * both, b the move alone */
+	input_str(vte, "\e[1;1Hq");
+	f = tsm_screen_frame_since(screen, &b);
+	ck_assert(frame_changed(f, 0, 0));
+	ck_assert(frame_changed(f, 1, 0));
+	ck_assert(frame_changed(f, 6, 1));
+	ck_assert_uint_eq(frame_count_changed(f), 3);
+	input_str(vte, "\e[4;1H");
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert(frame_changed(f, 0, 0));
+	ck_assert(frame_changed(f, 1, 0));
+	ck_assert(frame_changed(f, 6, 1));
+	ck_assert(frame_changed(f, 0, 3));
+	ck_assert_uint_eq(frame_count_changed(f), 4);
+	f = tsm_screen_frame_since(screen, &b);
+	ck_assert(frame_changed(f, 1, 0));
+	ck_assert(frame_changed(f, 0, 3));
+	ck_assert_uint_eq(frame_count_changed(f), 2);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+	f = tsm_screen_frame_since(screen, &b);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	/* tsm_screen_frame takes nothing from the others, nor they from it:
+	 * its frame has every change since its own previous one */
+	input_str(vte, "\e[4 q");
+	f = tsm_screen_frame(screen);
+	ck_assert(frame_changed(f, 5, 1));
+	ck_assert(frame_changed(f, 0, 0));
+	ck_assert(frame_changed(f, 0, 3));
+	ck_assert_uint_eq(frame_count_changed(f), 6);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert(frame_changed(f, 0, 3));
+	ck_assert_uint_eq(frame_count_changed(f), 1);
+	f = tsm_screen_frame_since(screen, &b);
+	ck_assert(frame_changed(f, 0, 3));
+	ck_assert_uint_eq(frame_count_changed(f), 1);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	/* a selection and a resize move every cell, for every caller */
+	tsm_screen_selection_start(screen, 1, 1);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame_since(screen, &b);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	r = tsm_screen_resize(screen, 12, 4);
+	ck_assert_int_eq(r, 0);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 48);
+	f = tsm_screen_frame_since(screen, &b);
+	ck_assert_uint_eq(frame_count_changed(f), 48);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	/* a zeroed age asks for everything again */
+	memset(&a, 0, sizeof(a));
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 48);
+
+	ck_assert_ptr_eq(tsm_screen_frame_since(NULL, &a), NULL);
+	ck_assert_ptr_eq(tsm_screen_frame_since(screen, NULL), NULL);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
+/* the age counter wraps: an age from before the wrap draws everything once,
+ * however it compares with the ages after it, and an unchanged screen draws
+ * nothing after that */
+START_TEST(test_vte_frame_since_wrap)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	struct tsm_frame_age a = { 0 }, early = { 0 }, idle = { 0 };
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 4);
+	ck_assert_int_eq(r, 0);
+	tsm_screen_set_max_sb(screen, 4);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* early's age is small; a line goes to the scrollback */
+	input_str(vte, "ab\n\n\n\nc");
+	tsm_screen_frame_since(screen, &early);
+	tsm_screen_frame_since(screen, &a);
+	tsm_screen_frame_since(screen, &idle);
+	tsm_screen_frame(screen);
+
+	/* the counter, after many changes, just short of wrapping: a sees
+	 * a change near the top of the range and takes an age there */
+	screen->age_cnt = (tsm_age_t)-4;
+	input_str(vte, "\e[2;6Hz");
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert(frame_changed(f, 5, 1));
+	ck_assert_uint_eq(frame_count_changed(f), 3);
+	ck_assert_uint_eq(screen->age_epoch, 0);
+
+	/* the counter wraps, and climbs past early's age */
+	input_str(vte, "\e[3;1Hdddddddddddddddddddd");
+	ck_assert_uint_eq(screen->age_epoch, 1);
+	ck_assert_uint_gt(screen->age_cnt, early.age);
+	ck_assert_uint_lt(screen->age_cnt, a.age);
+
+	/* every age from before the wrap draws everything, once */
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame_since(screen, &early);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+	f = tsm_screen_frame_since(screen, &early);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	/* content from before the wrap, in the scrollback too, is older than
+	 * any frame after it */
+	tsm_screen_sb_up(screen, 1);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+	tsm_screen_sb_reset(screen);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+	f = tsm_screen_frame_since(screen, &early);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+
+	/* a change after the wrap reaches each caller once */
+	input_str(vte, "\e[4;5Hx");
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert(frame_changed(f, 4, 3));
+	ck_assert_uint_eq(frame_count_changed(f), 3);
+	f = tsm_screen_frame_since(screen, &early);
+	ck_assert(frame_changed(f, 4, 3));
+	ck_assert_uint_eq(frame_count_changed(f), 3);
+
+	/* a caller that drew nothing across the wrap draws everything */
+	f = tsm_screen_frame_since(screen, &idle);
+	ck_assert_uint_eq(frame_count_changed(f), 40);
+	f = tsm_screen_frame_since(screen, &idle);
+	ck_assert_uint_eq(frame_count_changed(f), 0);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 /* width comes from the cell: a VS16-widened cluster is two wide, and its
  * trailing half zero wide with no glyph */
 START_TEST(test_vte_frame_width)
@@ -2275,6 +2483,8 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_draw_id_cluster_reuse)
 	TEST(test_vte_frame_cluster_key)
 	TEST(test_vte_frame_changed)
+	TEST(test_vte_frame_since_callers)
+	TEST(test_vte_frame_since_wrap)
 	TEST(test_vte_frame_width)
 	TEST(test_vte_frame_colors)
 	TEST(test_vte_frame_resize)

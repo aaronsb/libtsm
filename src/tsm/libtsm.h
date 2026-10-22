@@ -462,13 +462,16 @@ tsm_frame_cell_at(const struct tsm_frame *frame, unsigned int x, unsigned int y)
 
 /*
  * Resolves the visible screen into a frame and returns it. The frame belongs
- * to the screen and stays valid until the next call or until the screen is
- * resized or freed.
+ * to the screen and stays valid until the next tsm_screen_frame or
+ * tsm_screen_frame_since call on the screen, by any caller, or until the
+ * screen is resized or freed.
  *
  * TSM_FRAME_CHANGED marks the cells whose content, colours, attributes or
- * cursor state changed since the previous call, from the screen's age; every
- * cell on the first call and after a resize. Both halves of a wide character
- * carry it together.
+ * cursor state changed since the previous tsm_screen_frame call, from the
+ * screen's age; every cell on the first call and after a resize. Both halves
+ * of a wide character carry it together. The screen keeps one such age, so
+ * a screen drawn by more than one caller, such as one console shown on
+ * several displays, uses tsm_screen_frame_since instead.
  *
  * Inverse is the cell's SGR 7, the selection and the screen's DECSCNM, each
  * toggling the others, as tsm_screen_draw applies it: a reverse-video cell on
@@ -478,6 +481,40 @@ tsm_frame_cell_at(const struct tsm_frame *frame, unsigned int x, unsigned int y)
  * SGR 8 (conceal) is not parsed, so no cell is concealed.
  */
 const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con);
+
+/*
+ * Defined when tsm_screen_frame_since and struct tsm_frame_age exist.
+ */
+#define TSM_SCREEN_FRAME_SINCE 1
+
+/*
+ * One caller's place in a screen's history, for tsm_screen_frame_since. Each
+ * caller that draws the screen keeps its own, zeroed before its first frame,
+ * and passes it to each of its calls. The fields are the library's: a caller
+ * neither reads nor sets them, beyond zeroing them to ask for a full frame.
+ */
+struct tsm_frame_age {
+	tsm_age_t age;		/* the screen's age at this caller's last frame;
+				   0 before its first */
+	uint32_t epoch;		/* how often the screen's age had wrapped then */
+};
+
+/*
+ * tsm_screen_frame for one of several callers: TSM_FRAME_CHANGED marks the
+ * cells that changed since this caller's previous frame, as @since records
+ * it, and @since is advanced to this frame. Another caller's frame, or
+ * tsm_screen_frame, leaves @since and so this caller's changes as they are.
+ *
+ * Every cell is changed when @since is zeroed, after a resize, and on the
+ * first frame after the screen's age counter wraps, which @since records.
+ *
+ * The frame is the same buffer tsm_screen_frame returns, shared by every
+ * caller: a caller reads its frame before the next frame call on the screen,
+ * its own or any other caller's, and copies what it keeps. Returns NULL, with
+ * @since unchanged, when @con or @since is NULL or memory runs out.
+ */
+const struct tsm_frame *tsm_screen_frame_since(struct tsm_screen *con,
+					       struct tsm_frame_age *since);
 
 /*
  * The codepoints of the cluster @key names, and their count in @len. NULL if
