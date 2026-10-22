@@ -19,9 +19,10 @@ Indic_Conjunct_Break, the cell width (0, 1 or 2) and whether the codepoint is a
 base of an emoji-style variation sequence (it takes VS16). It is a sorted list
 of runs, each entry (first codepoint << 11) | properties, for a binary search.
 
-Width: 0 for General_Category Mn, Me and Cf (except U+00AD SOFT HYPHEN), for
-Hangul medial vowels and final consonants (Grapheme_Cluster_Break V and T), and
-for controls; 2 for East_Asian_Width W or F, or Emoji_Presentation; else 1.
+Width: 0 for General_Category Mn, Me and Cf (except U+00AD SOFT HYPHEN and
+Grapheme_Cluster_Break Prepend), for Hangul medial vowels and final consonants
+(Grapheme_Cluster_Break V and T), and for controls; 2 for East_Asian_Width W or
+F, or Emoji_Presentation; else 1.
 
 SPDX-License-Identifier: MIT
 """
@@ -139,8 +140,10 @@ def build(cache):
 
     props = []
     v_t = (GCB.index("V"), GCB.index("T"))
+    prepend = GCB.index("Prepend")
     for cp in range(NCP):
-        if gc_zero[cp] or gcb[cp] in v_t:
+        # a prepended concatenation mark (Cf) starts a cluster, so it has width
+        if (gc_zero[cp] and gcb[cp] != prepend) or gcb[cp] in v_t:
             width = 0
         elif eaw_wide[cp] or epres[cp]:
             width = 2
