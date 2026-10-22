@@ -63,6 +63,9 @@ tsm_symbol_t tsm_symbol_make(uint32_t ucs4);
  * own; @sym itself once it holds TSM_CLUSTER_MAX codepoints */
 tsm_symbol_t tsm_symbol_append(struct tsm_symbol_table *tbl,
 			       tsm_symbol_t sym, uint32_t ucs4);
+/* a number that differs between clusters that held the same key at different
+ * times; 0 for a codepoint */
+uint32_t tsm_symbol_generation(struct tsm_symbol_table *tbl, tsm_symbol_t sym);
 void tsm_symbol_ref(struct tsm_symbol_table *tbl, tsm_symbol_t sym);
 void tsm_symbol_unref(struct tsm_symbol_table *tbl, tsm_symbol_t sym);
 const uint32_t *tsm_symbol_get(struct tsm_symbol_table *tbl,

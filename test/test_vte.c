@@ -927,6 +927,55 @@ START_TEST(test_vte_width_method_resets)
 }
 END_TEST
 
+static uint64_t first_id;
+
+static int id_draw_cb(struct tsm_screen *con, uint64_t id, const uint32_t *ch,
+		      size_t len, unsigned int width, unsigned int posx,
+		      unsigned int posy, const struct tsm_screen_attr *attr,
+		      tsm_age_t age, void *data)
+{
+	UNUSED(con);
+	UNUSED(ch);
+	UNUSED(len);
+	UNUSED(width);
+	UNUSED(attr);
+	UNUSED(age);
+	UNUSED(data);
+	if (!posx && !posy)
+		first_id = id;
+	return 0;
+}
+
+/* a cluster key reused for different content gets a different draw id, so a
+ * glyph cache keyed by id never shows the old cluster */
+START_TEST(test_vte_draw_id_cluster_reuse)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	uint64_t old_id;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	input_str(vte, "e\xcc\x81");
+	tsm_screen_draw(screen, id_draw_cb, NULL);
+	old_id = first_id;
+	ck_assert_uint_ge(old_id & TSM_UCS4_MAX, TSM_CLUSTER_BASE);
+
+	/* the key is freed, then taken by a different cluster */
+	input_str(vte, "\e[2K\ra\xcc\x80");
+	tsm_screen_draw(screen, id_draw_cb, NULL);
+	ck_assert_uint_eq(first_id & TSM_UCS4_MAX, old_id & TSM_UCS4_MAX);
+	ck_assert(first_id != old_id);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -945,6 +994,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_draw2_cluster_base)
 	TEST(test_vte_cluster_release)
 	TEST(test_vte_width_method_resets)
+	TEST(test_vte_draw_id_cluster_reuse)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(bell)

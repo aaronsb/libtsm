@@ -291,8 +291,13 @@ tsm_age_t tsm_screen_draw(struct tsm_screen *con, tsm_screen_draw_cb draw_cb,
 					age = con->age;
 			}
 
-			/* Encode attributes into the id to avoid caching problems */
+			/* Encode attributes into the id to avoid caching problems.
+			 * A cluster's key is reused once its cells are gone, so
+			 * its generation goes in too: an id never names two
+			 * different clusters. */
 			id = cell->ch;
+			id |= (uint64_t)(tsm_symbol_generation(con->sym_table, cell->ch) &
+					 0xfffffff) << (TSM_UCS4_MAX_BITS + 5);
 			if (attr.bold)
 				id |= 1ULL << TSM_UCS4_MAX_BITS;
 			if (attr.italic)

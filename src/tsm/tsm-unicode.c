@@ -188,6 +188,7 @@ const tsm_symbol_t tsm_symbol_default = 0;
 struct cluster {
 	uint32_t refs;
 	tsm_symbol_t key;
+	uint32_t gen;			/* tells apart clusters that share a key over time */
 	uint32_t len;
 	uint32_t cps[];
 };
@@ -196,6 +197,7 @@ struct cluster {
 struct cluster_buf {
 	uint32_t refs;
 	tsm_symbol_t key;
+	uint32_t gen;
 	uint32_t len;
 	uint32_t cps[TSM_CLUSTER_MAX];
 };
@@ -208,6 +210,7 @@ struct tsm_symbol_table {
 	uint32_t *free;			/* free slots, reused before new ones */
 	uint32_t nfree, free_cap;
 	unsigned int count;
+	uint32_t gen;			/* clusters made so far */
 	struct shl_htable index;	/* clusters by content */
 };
 
@@ -485,6 +488,7 @@ tsm_symbol_t tsm_symbol_append(struct tsm_symbol_table *tbl,
 	}
 	c->refs = 0;
 	c->key = TSM_CLUSTER_BASE + slot;
+	c->gen = ++tbl->gen;
 	c->len = len;
 	memcpy(c->cps, buf.cps, len * sizeof(c->cps[0]));
 	if (shl_htable_insert(&tbl->index, c, hash_cluster(c, tbl))) {
@@ -495,6 +499,13 @@ tsm_symbol_t tsm_symbol_append(struct tsm_symbol_table *tbl,
 	tbl->slots[slot] = c;
 	++tbl->count;
 	return c->key;
+}
+
+uint32_t tsm_symbol_generation(struct tsm_symbol_table *tbl, tsm_symbol_t sym)
+{
+	struct cluster *c = cluster_of(tbl, sym);
+
+	return c ? c->gen : 0;
 }
 
 void tsm_symbol_ref(struct tsm_symbol_table *tbl, tsm_symbol_t sym)

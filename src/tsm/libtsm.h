@@ -256,6 +256,14 @@ enum tsm_screen_cursor_style {
 	TSM_SCREEN_CURSOR_VBAR_STEADY		= 6,
 };
 
+/*
+ * Called by tsm_screen_draw for every cell. @ch and @len are the cell's
+ * codepoints: one, or a whole grapheme cluster. @id identifies what the cell
+ * shows, for a glyph cache: its low 31 bits are the cell's symbol, then five
+ * attribute bits, then, for a cluster, a generation. A symbol of 2^21 or more
+ * names a cluster only while some cell holds it; the key is reused after, and
+ * the generation keeps the id from naming a different cluster.
+ */
 typedef int (*tsm_screen_draw_cb) (struct tsm_screen *con,
 				   uint64_t id,
 				   const uint32_t *ch,
