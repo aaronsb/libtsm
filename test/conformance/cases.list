@@ -37,6 +37,9 @@ mode-2027-resets 80 24
 combining-after-move 80 24
 cluster-reuse-erase 80 24
 cluster-max 80 24
+prepend-width 80 24
+vs16-insert-mode 8 2
+insert-wide-one-column 1 3
 alt-screen 20 4
 replies 80 24
 dec-graphics 80 24

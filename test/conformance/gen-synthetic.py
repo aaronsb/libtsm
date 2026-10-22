@@ -337,6 +337,27 @@ def _():
             CSI + "1;2H" + CSI + "K" + "é")
 
 
+@case("prepend-width")
+def _():
+    # A prepended concatenation mark (U+0600) starts a cluster with width, and
+    # the digit after it joins it, mid-line and at the start of a line.
+    return "x\u06001|" + "\r\n" + "\u06001|"
+
+
+@case("vs16-insert-mode", 8, 2)
+def _():
+    # VS16 widening in insert mode moves the rest of the line right instead
+    # of overwriting the cell after the cluster.
+    return "abc" + CSI + "1G" + CSI + "4h" + HEART + VS16 + CSI + "4l"
+
+
+@case("insert-wide-one-column", 1, 3)
+def _():
+    # Insert mode on a one-column screen: a wide character and a VS16
+    # cluster are written cut at the margin, without shifting the line.
+    return CSI + "4h" + "\u4e2d" + "\r\n" + HEART + VS16
+
+
 @case("cluster-max")
 def _():
     # A cluster of 33 codepoints keeps its first 32.
