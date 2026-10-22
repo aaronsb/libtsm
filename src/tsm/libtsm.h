@@ -735,6 +735,21 @@ int tsm_vte_set_palette(struct tsm_vte *vte, const char *palette_name);
 int tsm_vte_set_custom_palette(struct tsm_vte *vte, uint8_t (*palette)[3]);
 
 /*
+ * Writes to @rgb the colour of entry @index of the 256-colour table in use:
+ * 0-15 from the palette tsm_vte_set_palette chose, 16-231 the colour cube,
+ * 232-255 the grey ramp. This is the colour SGR 38;5;@index draws and OSC 4
+ * reports. A renderer uses it to resolve a colour its own configuration names
+ * by index, so that colour follows the palette.
+ * Defined when tsm_vte_get_palette_color exists.
+ *
+ * @retval 0 on success.
+ * @retval -EINVAL if vte or rgb is NULL, or @index is above 255.
+ */
+#define TSM_VTE_GET_PALETTE_COLOR 1
+int tsm_vte_get_palette_color(struct tsm_vte *vte, unsigned int index,
+			      uint8_t rgb[3]);
+
+/*
  * The width method the terminal starts with, and returns to on a hard (RIS)
  * or soft (DECSTR) reset. DEC private mode 2027 switches it while the
  * terminal runs: set is TSM_WIDTH_UNICODE, reset TSM_WIDTH_WCWIDTH.

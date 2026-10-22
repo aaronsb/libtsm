@@ -164,6 +164,74 @@ START_TEST(test_vte_custom_palette)
 }
 END_TEST
 
+/* the 256-colour table in use, read back: 0-15 follow the palette chosen,
+ * named or custom; 16-255 are the cube and the grey ramp; past 255 is refused */
+START_TEST(test_vte_get_palette_color)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	uint8_t rgb[3];
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* the default palette is legacy */
+	r = tsm_vte_get_palette_color(vte, TSM_COLOR_RED, rgb);
+	ck_assert_int_eq(r, 0);
+	ck_assert_uint_eq(rgb[0], 205);
+	ck_assert_uint_eq(rgb[1], 0);
+	ck_assert_uint_eq(rgb[2], 0);
+
+	r = tsm_vte_set_palette(vte, "vga");
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_get_palette_color(vte, TSM_COLOR_YELLOW, rgb);
+	ck_assert_int_eq(r, 0);
+	ck_assert_uint_eq(rgb[0], 170);
+	ck_assert_uint_eq(rgb[1], 85);
+	ck_assert_uint_eq(rgb[2], 0);
+
+	r = tsm_vte_set_custom_palette(vte, test_palette);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_set_palette(vte, "custom");
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_get_palette_color(vte, TSM_COLOR_LIGHT_BLUE, rgb);
+	ck_assert_int_eq(r, 0);
+	ck_assert_uint_eq(rgb[0], 12);
+	ck_assert_uint_eq(rgb[1], 30);
+	ck_assert_uint_eq(rgb[2], 48);
+
+	/* the cube and the grey ramp do not depend on the palette */
+	r = tsm_vte_get_palette_color(vte, 196, rgb);
+	ck_assert_int_eq(r, 0);
+	ck_assert_uint_eq(rgb[0], 255);
+	ck_assert_uint_eq(rgb[1], 0);
+	ck_assert_uint_eq(rgb[2], 0);
+	r = tsm_vte_get_palette_color(vte, 255, rgb);
+	ck_assert_int_eq(r, 0);
+	ck_assert_uint_eq(rgb[0], 238);
+	ck_assert_uint_eq(rgb[1], 238);
+	ck_assert_uint_eq(rgb[2], 238);
+
+	/* refused, and @rgb left alone */
+	rgb[0] = rgb[1] = rgb[2] = 7;
+	r = tsm_vte_get_palette_color(vte, 256, rgb);
+	ck_assert_int_eq(r, -EINVAL);
+	ck_assert_uint_eq(rgb[0], 7);
+	ck_assert_uint_eq(rgb[1], 7);
+	ck_assert_uint_eq(rgb[2], 7);
+	r = tsm_vte_get_palette_color(NULL, 1, rgb);
+	ck_assert_int_eq(r, -EINVAL);
+	r = tsm_vte_get_palette_color(vte, 1, NULL);
+	ck_assert_int_eq(r, -EINVAL);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 static bool write_cb_called = false;
 
 static void checking_write_cb(struct tsm_vte *vte, const char *u8, size_t len, void *data)
@@ -1501,6 +1569,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
 	TEST(test_vte_custom_palette)
+	TEST(test_vte_get_palette_color)
 	TEST(test_vte_osc_query)
 	TEST(test_vte_osc4)
 	TEST(test_vte_backspace_key)
