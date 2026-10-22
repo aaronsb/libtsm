@@ -403,6 +403,20 @@ static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
 	       cache, num * sizeof(struct line*));
 }
 
+/*
+ * A wide character whose halves lie on both sides of the boundary before cell
+ * @x of @line goes whole: an edit on one side would leave half a character.
+ */
+static void line_split_wide(struct tsm_screen *con, struct line *line,
+			    unsigned int x)
+{
+	if (!x || x >= con->size_x || line->cells[x].width ||
+	    line->cells[x - 1].width != 2)
+		return;
+	screen_cell_clear(con, &line->cells[x - 1]);
+	screen_cell_clear(con, &line->cells[x]);
+}
+
 static void screen_write(struct tsm_screen *con, unsigned int x,
 			  unsigned int y, tsm_symbol_t ch, unsigned int len,
 			  const struct cell_attr *attr)
@@ -419,6 +433,15 @@ static void screen_write(struct tsm_screen *con, unsigned int x,
 	}
 
 	line = con->lines[y];
+
+	/* a wide character the write cuts goes whole: at @x, and where the
+	 * write ends or, in insert mode, where the margin cuts the cells it
+	 * moves */
+	line_split_wide(con, line, x);
+	if (!(con->flags & TSM_SCREEN_INSERT_MODE))
+		line_split_wide(con, line, x + len);
+	else if (len < con->size_x)
+		line_split_wide(con, line, con->size_x - len);
 
 	/* len may exceed a screen narrower than a wide cell */
 	if ((con->flags & TSM_SCREEN_INSERT_MODE) &&
@@ -476,6 +499,13 @@ static void screen_erase_region(struct tsm_screen *con,
 			to = x_to;
 		else
 			to = con->size_x - 1;
+		/* a wide character cut by the region goes whole */
+		if (x_from && !line->cells[x_from].width &&
+		    line->cells[x_from - 1].width == 2)
+			--x_from;
+		if (to + 1 < con->size_x && line->cells[to].width == 2 &&
+		    !line->cells[to + 1].width)
+			++to;
 		for ( ; x_from <= to; ++x_from) {
 			if (protect && line->cells[x_from].attr.protect)
 				continue;
@@ -1731,6 +1761,11 @@ void tsm_screen_insert_chars(struct tsm_screen *con, unsigned int num)
 		num = max;
 	mv = max - num;
 
+	/* a wide character at the insertion point or at the margin's cut goes
+	 * whole */
+	line_split_wide(con, con->lines[con->cursor_y], con->cursor_x);
+	line_split_wide(con, con->lines[con->cursor_y], con->cursor_x + mv);
+
 	cells = con->lines[con->cursor_y]->cells;
 	/* the cells pushed past the margin go; the vacated ones are copies */
 	for (i = 0; i < num; ++i)
@@ -1802,6 +1837,10 @@ void tsm_screen_delete_chars(struct tsm_screen *con, unsigned int num)
 	if (num > max)
 		num = max;
 	mv = max - num;
+
+	/* a wide character at either end of the deleted cells goes whole */
+	line_split_wide(con, con->lines[con->cursor_y], con->cursor_x);
+	line_split_wide(con, con->lines[con->cursor_y], con->cursor_x + num);
 
 	cells = con->lines[con->cursor_y]->cells;
 	/* the deleted cells go; the vacated ones at the end are copies */

@@ -1305,6 +1305,92 @@ START_TEST(test_vte_frame_cursor_scrollback)
 }
 END_TEST
 
+/* an erase or a write that cuts a wide character takes both its halves, and
+ * both are flagged */
+START_TEST(test_vte_frame_wide_cut)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_frame *f;
+	const struct tsm_frame_cell *c0, *c1;
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_screen_resize(screen, 10, 2);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+
+	/* ECH on the leading half, then on the trailing half */
+	input_str(vte, "\xe4\xb8\xadZ");		/* U+4E2D, Z */
+	tsm_screen_frame(screen);
+	input_str(vte, "\e[1;1H\e[X");
+	f = tsm_screen_frame(screen);
+	c0 = tsm_frame_cell_at(f, 0, 0);
+	c1 = tsm_frame_cell_at(f, 1, 0);
+	ck_assert(c0->key == 0 && c0->width == 1);
+	ck_assert(c1->key == 0 && c1->width == 1);
+	ck_assert(frame_changed(f, 0, 0) && frame_changed(f, 1, 0));
+	ck_assert(!frame_changed(f, 2, 0));
+	ck_assert(tsm_frame_cell_at(f, 2, 0)->key == 'Z');
+
+	input_str(vte, "\e[1;1H\xe4\xb8\xad\e[1;2H\e[X");
+	f = tsm_screen_frame(screen);
+	c0 = tsm_frame_cell_at(f, 0, 0);
+	c1 = tsm_frame_cell_at(f, 1, 0);
+	ck_assert(c0->key == 0 && c0->width == 1);
+	ck_assert(c1->key == 0 && c1->width == 1);
+	ck_assert(frame_changed(f, 0, 0) && frame_changed(f, 1, 0));
+
+	/* a narrow character over the leading half, then over the trailing */
+	input_str(vte, "\e[1;1H\xe4\xb8\xad\e[1;1Ha");
+	f = tsm_screen_frame(screen);
+	c0 = tsm_frame_cell_at(f, 0, 0);
+	c1 = tsm_frame_cell_at(f, 1, 0);
+	ck_assert(c0->key == 'a' && c0->width == 1);
+	ck_assert(c1->key == 0 && c1->width == 1);
+	ck_assert(frame_changed(f, 1, 0));
+
+	input_str(vte, "\e[1;1H\xe4\xb8\xad\e[1;2Hb");
+	f = tsm_screen_frame(screen);
+	c0 = tsm_frame_cell_at(f, 0, 0);
+	c1 = tsm_frame_cell_at(f, 1, 0);
+	ck_assert(c0->key == 0 && c0->width == 1);
+	ck_assert(c1->key == 'b' && c1->width == 1);
+	ck_assert(frame_changed(f, 0, 0) && frame_changed(f, 1, 0));
+
+	/* ICH and DCH on the trailing half */
+	input_str(vte, "\e[2J\e[1;1H\xe4\xb8\xadZ\e[1;2H\e[@");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 0);
+	ck_assert_uint_eq(tsm_frame_cell_at(f, 0, 0)->width, 1);
+	ck_assert(tsm_frame_cell_at(f, 1, 0)->key == 0);
+	ck_assert_uint_eq(tsm_frame_cell_at(f, 1, 0)->width, 1);
+	ck_assert(tsm_frame_cell_at(f, 2, 0)->key == 0);
+	ck_assert_uint_eq(tsm_frame_cell_at(f, 2, 0)->width, 1);
+	ck_assert(tsm_frame_cell_at(f, 3, 0)->key == 'Z');
+
+	input_str(vte, "\e[2J\e[1;1H\xe4\xb8\xadZ\e[1;2H\e[P");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 0);
+	ck_assert_uint_eq(tsm_frame_cell_at(f, 0, 0)->width, 1);
+	ck_assert(tsm_frame_cell_at(f, 1, 0)->key == 'Z');
+	ck_assert_uint_eq(tsm_frame_cell_at(f, 1, 0)->width, 1);
+
+	/* insert mode pushes a wide character across the margin: it goes */
+	input_str(vte, "\e[2J\e[1;1Habcdefgh\xe4\xb8\xad\e[1;1H\e[4hx\e[4l");
+	f = tsm_screen_frame(screen);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->key == 'x');
+	ck_assert(tsm_frame_cell_at(f, 8, 0)->key == 'h');
+	ck_assert(tsm_frame_cell_at(f, 9, 0)->key == 0);
+	ck_assert_uint_eq(tsm_frame_cell_at(f, 9, 0)->width, 1);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 /* at the pending-wrap column the cursor draws on the last cell */
 START_TEST(test_vte_frame_cursor_pending_wrap)
 {
@@ -1436,6 +1522,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_frame_colors)
 	TEST(test_vte_frame_resize)
 	TEST(test_vte_frame_cursor_scrollback)
+	TEST(test_vte_frame_wide_cut)
 	TEST(test_vte_frame_cursor_pending_wrap)
 	TEST(test_vte_frame_cursor_trailing_half)
 	TEST(test_vte_frame_inverse_screen)
