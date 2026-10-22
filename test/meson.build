@@ -33,7 +33,10 @@ test('htable', test_htable)
 test('screen', test_screen)
 test('selection', test_selection)
 test('symbol', test_symbol)
-test('valgrind', test_valgrind)
+# In a build with -Db_sanitize=address, LeakSanitizer must catch the leak
+# test_valgrind makes on purpose: a pass there means leak checking is off.
+test('valgrind', test_valgrind,
+     should_fail: get_option('b_sanitize').contains('address'))
 test('vte_mouse', test_vte_mouse)
 test('vte', test_vte)
 

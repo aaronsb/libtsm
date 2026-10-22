@@ -23,16 +23,22 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-/* Dummy which just leaks memory. Used to verify valgrind memcheck. */
+/*
+ * Dummy which just leaks memory. Used to verify valgrind memcheck, and as the
+ * positive control of a sanitized build, where LeakSanitizer must fail it.
+ * The pointer goes through a volatile, so an optimizing build keeps the
+ * malloc, and is then overwritten, so no copy of it stays reachable.
+ */
 
 #include "test_common.h"
 
+static void *volatile leaked;
+
 START_TEST(test_valgrind)
 {
-	void *p;
-
-	p = malloc(0x100);
-	ck_assert_ptr_ne(p, NULL);
+	leaked = malloc(0x100);
+	ck_assert_ptr_ne(leaked, NULL);
+	leaked = NULL;
 }
 END_TEST
 

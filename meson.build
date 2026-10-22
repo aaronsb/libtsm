@@ -14,6 +14,17 @@ project(
     ],
 )
 
+# meson test --setup asan, in a build configured with
+# -Db_sanitize=address,undefined (make asan): leak checking on explicitly,
+# and any sanitizer report fails its test.
+add_test_setup(
+    'asan',
+    env: [
+        'ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:abort_on_error=1:print_summary=1',
+        'UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_summary=1:print_stacktrace=1',
+    ],
+)
+
 add_project_arguments(
     '-ffast-math',
     '-fno-strict-aliasing',
