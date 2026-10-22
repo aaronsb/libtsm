@@ -1,0 +1,62 @@
+size 80x24
+cursor 25,4
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 25,4 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |plain bold dim italic underline blink inverse conceal strike|
+cells 0 6-9 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 bold
+cells 0 11-13 w=1 fg=#727272 bg=#000000 ul=#727272 dim
+cells 0 15-20 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 italic
+cells 0 22-30 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=single
+cells 0 32-36 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 blink
+cells 0 38-44 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 0 54-59 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 strike
+row 1 |fg30 fg31 fg32 fg33 fg34 fg35 fg36 fg37|
+cells 1 0-3 w=1 fg=#000000 bg=#000000 ul=#000000
+cells 1 5-8 w=1 fg=#cd0000 bg=#000000 ul=#cd0000
+cells 1 10-13 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+cells 1 15-18 w=1 fg=#cdcd00 bg=#000000 ul=#cdcd00
+cells 1 20-23 w=1 fg=#0000ee bg=#000000 ul=#0000ee
+cells 1 25-28 w=1 fg=#cd00cd bg=#000000 ul=#cd00cd
+cells 1 30-33 w=1 fg=#00cdcd bg=#000000 ul=#00cdcd
+row 2 |bg40 bg41 bg42 bg43 bg44 bg45 bg46 bg47|
+cells 2 5-8 w=1 fg=#e5e5e5 bg=#cd0000 ul=#e5e5e5
+cells 2 10-13 w=1 fg=#e5e5e5 bg=#00cd00 ul=#e5e5e5
+cells 2 15-18 w=1 fg=#e5e5e5 bg=#cdcd00 ul=#e5e5e5
+cells 2 20-23 w=1 fg=#e5e5e5 bg=#0000ee ul=#e5e5e5
+cells 2 25-28 w=1 fg=#e5e5e5 bg=#cd00cd ul=#e5e5e5
+cells 2 30-33 w=1 fg=#e5e5e5 bg=#00cdcd ul=#e5e5e5
+cells 2 35-38 w=1 fg=#e5e5e5 bg=#e5e5e5 ul=#e5e5e5
+row 3 |hi90 hi91 hi92 hi93 hi94 hi95 hi96 hi97|
+cells 3 0-3 w=1 fg=#7f7f7f bg=#000000 ul=#7f7f7f
+cells 3 5-8 w=1 fg=#ff0000 bg=#000000 ul=#ff0000
+cells 3 10-13 w=1 fg=#00ff00 bg=#000000 ul=#00ff00
+cells 3 15-18 w=1 fg=#ffff00 bg=#000000 ul=#ffff00
+cells 3 20-23 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff
+cells 3 25-28 w=1 fg=#ff00ff bg=#000000 ul=#ff00ff
+cells 3 30-33 w=1 fg=#00ffff bg=#000000 ul=#00ffff
+cells 3 35-38 w=1 fg=#ffffff bg=#000000 ul=#ffffff
+row 4 |combinednoboldnouldefault|
+cells 4 0-7 w=1 fg=#ff0000 bg=#00cd00 ul=#ff0000 underline=single bold
+cells 4 8-13 w=1 fg=#cd0000 bg=#00cd00 ul=#cd0000 underline=single
+cells 4 14-17 w=1 fg=#cd0000 bg=#00cd00 ul=#cd0000
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 ||

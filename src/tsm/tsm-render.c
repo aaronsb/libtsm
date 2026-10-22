@@ -463,3 +463,266 @@ const struct tsm_screen_cell *tsm_screen_draw2(struct tsm_screen *con)
 	}
 	return con->cells;
 }
+
+/*
+ * The frame (ADR-102): every visible cell resolved for a renderer, with its
+ * glyph key, width, colours after inverse and dim, underline colour and style,
+ * attribute bits and whether it changed since the previous frame, plus the
+ * cursor and the cell it draws.
+ */
+
+_Static_assert(TSM_FRAME_CLUSTER_KEY == TSM_CLUSTER_BASE,
+	       "the public cluster key bound is the symbol table's");
+
+static uint64_t frame_key(struct tsm_screen *con, const struct cell *cell)
+{
+	if (!cell->width || !cell->ch)
+		return 0;
+	if (cell->ch < TSM_CLUSTER_BASE)
+		return cell->ch;
+	return (uint64_t)cell->ch |
+	       (uint64_t)tsm_symbol_generation(con->sym_table, cell->ch) << 32;
+}
+
+static void frame_resolve(struct tsm_screen *con, const struct cell *cell,
+			  bool inverse, struct tsm_frame_cell *out)
+{
+	struct tsm_screen_attr attr;
+	struct tsm_screen_color fg, bg;
+
+	cell_attr_resolve(con->palette, &cell->attr, &attr);
+	memset(out, 0, sizeof(*out));
+	out->key = frame_key(con, cell);
+	out->width = cell->width;
+
+	fg.r = attr.fr;
+	fg.g = attr.fg;
+	fg.b = attr.fb;
+	bg.r = attr.br;
+	bg.g = attr.bg;
+	bg.b = attr.bb;
+	out->fg = inverse ? bg : fg;
+	out->bg = inverse ? fg : bg;
+	if (attr.dim)
+		color_dim(&out->fg, &out->fg, &out->bg);
+
+	/* a set underline colour is exact; a default one is fg as drawn */
+	if (attr.ucset) {
+		out->ul.r = attr.ur;
+		out->ul.g = attr.ug;
+		out->ul.b = attr.ub;
+		out->flags |= TSM_FRAME_UL_SET;
+	} else {
+		out->ul = out->fg;
+	}
+
+	/* a cell written through the public API may carry only the bit */
+	if (attr.underline)
+		out->underline = attr.underline_style ? attr.underline_style :
+				 TSM_UNDERLINE_SINGLE;
+
+	if (attr.bold)
+		out->flags |= TSM_FRAME_BOLD;
+	if (attr.italic)
+		out->flags |= TSM_FRAME_ITALIC;
+	if (attr.dim)
+		out->flags |= TSM_FRAME_DIM;
+	if (attr.blink)
+		out->flags |= TSM_FRAME_BLINK;
+	if (inverse)
+		out->flags |= TSM_FRAME_INVERSE;
+	if (attr.protect)
+		out->flags |= TSM_FRAME_PROTECT;
+	if (attr.strike)
+		out->flags |= TSM_FRAME_STRIKE;
+}
+
+/* the cell under the cursor as the cursor draws it, as kmscon has drawn it */
+static void frame_cursor_cell(struct tsm_frame_cursor *cur)
+{
+	struct tsm_screen_color swap;
+
+	switch (cur->style) {
+	case TSM_SCREEN_CURSOR_UNDERLINE_BLINK:
+	case TSM_SCREEN_CURSOR_UNDERLINE_STEADY:
+		cur->cell.underline = cur->cell.underline ? TSM_UNDERLINE_NONE :
+				      TSM_UNDERLINE_SINGLE;
+		break;
+	case TSM_SCREEN_CURSOR_VBAR_BLINK:
+	case TSM_SCREEN_CURSOR_VBAR_STEADY:
+		cur->cell.key = 0;
+		break;
+	default:
+		/* the default cursor and the blocks */
+		swap = cur->cell.fg;
+		cur->cell.fg = cur->cell.bg;
+		cur->cell.bg = swap;
+		if (!(cur->cell.flags & TSM_FRAME_UL_SET))
+			cur->cell.ul = cur->cell.fg;
+		break;
+	}
+}
+
+/* a wide character's two halves draw as one: when either changed, both are
+ * flagged */
+static void frame_pair_row(struct tsm_frame_cell *row, unsigned int cols)
+{
+	unsigned int j;
+	uint16_t changed;
+
+	for (j = 1; j < cols; ++j) {
+		if (row[j].width || row[j - 1].width != 2)
+			continue;
+		changed = (row[j - 1].flags | row[j].flags) & TSM_FRAME_CHANGED;
+		row[j - 1].flags |= changed;
+		row[j].flags |= changed;
+	}
+}
+
+SHL_EXPORT
+const struct tsm_frame *tsm_screen_frame(struct tsm_screen *con)
+{
+	unsigned int i, j, k, n, cur_x, cur_y, cur_row;
+	struct line *line, *next_line;
+	struct cell *cell, empty;
+	struct tsm_frame_cell *out, *cells, *row;
+	struct tsm_frame_cursor *cur;
+	bool in_sel = false, sel_start = false, sel_end = false, inverse;
+	bool all_changed;
+	tsm_age_t since, age;
+
+	if (!con)
+		return NULL;
+
+	n = con->size_x * con->size_y;
+	if (con->frame_cells_count < n) {
+		cells = realloc(con->frame_cells, n * sizeof(*cells));
+		if (!cells)
+			return NULL;
+		con->frame_cells = cells;
+		con->frame_cells_count = n;
+	}
+
+	/* a frame of another shape has no cell in common with this one */
+	since = con->frame_age;
+	all_changed = con->age_reset || !since ||
+		      con->frame.cols != con->size_x ||
+		      con->frame.rows != con->size_y;
+	screen_cell_init(con, &empty);
+
+	/* the cursor sits on lines[cur_y], wherever the view shows it; at the
+	 * pending-wrap column it draws on the last cell, as tsm_screen_draw
+	 * places it */
+	cur_x = con->cursor_x < con->size_x ? con->cursor_x : con->size_x - 1;
+	cur_y = con->cursor_y < con->size_y ? con->cursor_y : con->size_y - 1;
+	cur_row = con->size_y;
+
+	k = 0;
+	next_line = con->sb.pos;
+
+	if (con->sel_active) {
+		if (!con->sel_start.line && con->sel_end.line)
+			in_sel = true;
+
+		if (is_in_scrollback(&con->sel_start) &&
+		    (!con->sb.pos || con->sel_start.line->sb_id < con->sb.pos->sb_id))
+			in_sel = !in_sel;
+		if (is_in_scrollback(&con->sel_end) &&
+		    (!con->sb.pos || con->sel_end.line->sb_id < con->sb.pos->sb_id))
+			in_sel = !in_sel;
+	}
+
+	for (i = 0; i < con->size_y; ++i) {
+		if (next_line) {
+			line = next_line;
+			next_line = shl_dlist_next(next_line, &con->sb.list, list);
+		} else {
+			if (k == cur_y)
+				cur_row = i;
+			line = con->lines[k];
+			k++;
+		}
+
+		if (con->sel_active) {
+			sel_start = (con->sel_start.line == line);
+			sel_end = (con->sel_end.line == line);
+		}
+
+		row = &con->frame_cells[i * con->size_x];
+		for (j = 0; j < con->size_x; ++j) {
+			out = &row[j];
+			if (j < line->size) {
+				cell = &line->cells[j];
+				age = cell->age;
+			} else {
+				/* past a scrollback line made narrower */
+				cell = &empty;
+				age = 0;
+			}
+			if (line->age > age)
+				age = line->age;
+			if (con->age > age)
+				age = con->age;
+
+			if (sel_start && j == con->sel_start.x)
+				in_sel = !in_sel;
+
+			inverse = cell->attr.inverse ^ in_sel ^
+				  !!(con->flags & TSM_SCREEN_INVERSE);
+			frame_resolve(con, cell, inverse, out);
+			if (all_changed || age > since)
+				out->flags |= TSM_FRAME_CHANGED;
+
+			if (sel_end && j == con->sel_end.x)
+				in_sel = !in_sel;
+		}
+		frame_pair_row(row, con->size_x);
+	}
+
+	con->frame.cols = con->size_x;
+	con->frame.rows = con->size_y;
+	con->frame.cell_size = sizeof(struct tsm_frame_cell);
+	con->frame.cells = con->frame_cells;
+
+	/* on the trailing half of a wide character, the cursor covers the
+	 * character, from its leading cell */
+	cur = &con->frame.cursor;
+	memset(cur, 0, sizeof(*cur));
+	cur->style = con->cstyle;
+	cur->visible = !(con->flags & TSM_SCREEN_HIDE_CURSOR) &&
+		       cur_row < con->size_y;
+	if (cur->visible) {
+		row = &con->frame_cells[cur_row * con->size_x];
+		if (cur_x && !row[cur_x].width && row[cur_x - 1].width == 2)
+			--cur_x;
+		cur->cell = row[cur_x];
+		frame_cursor_cell(cur);
+	}
+	cur->x = cur_x;
+	cur->y = cur->visible ? cur_row : cur_y;
+
+	/* later changes take a newer age than this frame */
+	con->frame_age = con->age_cnt;
+	con->age_reset = 0;
+	screen_inc_age(con);
+
+	return &con->frame;
+}
+
+SHL_EXPORT
+const uint32_t *tsm_screen_frame_cluster(struct tsm_screen *con, uint64_t key,
+					 size_t *len)
+{
+	tsm_symbol_t sym = (tsm_symbol_t)key;
+	const uint32_t *cps;
+
+	if (len)
+		*len = 0;
+	if (!con || key < TSM_CLUSTER_BASE || (key >> 32) == 0)
+		return NULL;
+	if (tsm_symbol_generation(con->sym_table, sym) != (uint32_t)(key >> 32))
+		return NULL;
+
+	cps = tsm_symbol_get(con->sym_table, &sym, len);
+	return cps;
+}

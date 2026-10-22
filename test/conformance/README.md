@@ -10,6 +10,7 @@ Tier 1 of the kmscon fork's conformance harness (ADR-301 in aaronsb/kmscon). Rec
 | `cases/*.bin`, `cases/*.cuts` | The streams, and checkpoint offsets for recorded programs. |
 | `golden/*.txt` | The expected output for each case. |
 | `golden-draw2/*.txt` | The expected output of every case through the draw2 view, all fork-sourced (below). |
+| `golden-frame/*.txt` | The same through the frame view, all fork-sourced (below). |
 | `gen-synthetic.py` | Writes the synthetic streams, one area of terminal behaviour each. |
 | `record-programs.py` | Records real programs (shell, less, vim, tmux) in a pseudo-terminal of fixed size with scripted keys. |
 | `check.py` | Replays every case and compares it with its golden; `--update` rewrites goldens. |
@@ -44,6 +45,10 @@ Upstream `v4.8.0`, as its goldens recorded before the fork changed these cases, 
 `tsm-replay --draw2` prints each screen through `tsm_screen_draw2`, the cells a renderer such as kmscon reads, in place of `tsm_screen_draw`. Colours appear resolved to RGB through the palette, with bold-as-bright, reverse video, dim and the underline colour applied, so tier 1 judges what the screen looks like as well as what it holds (aaronsb/kmscon#26). The view pins the `legacy` palette and prints it with its default colours. Rows show the codepoint each cell carries, and `cells` lines show runs that differ from the default cell. The header of `tsm-replay.c` gives the format.
 
 The meson test `conformance-draw2` runs every case through this view and compares it with `golden-draw2/`. Only the fork's libtsm has the view, so that whole set is fork-sourced: a fork `REF` writes all of it, and `REF=v4.8.0` none. The view is a separate set of files, not a section added to `golden/`, so every file still has one source. A section in `golden/` would have mixed upstream output with fork output in one file, and every upstream-sourced golden would have needed a fork run as well.
+
+## The frame view
+
+`tsm-replay --frame` prints each screen through `tsm_screen_frame`, the call that replaces draw2 (ADR-102 step 4). It shows what draw2 cannot: each cell's width, underline style, strike, dim, protect and inverse as applied. It also shows the cursor and the cell it draws, and how many cells the frame flagged as changed since the previous checkpoint. Rows print whole clusters, read back through `tsm_screen_frame_cluster`. The meson test `conformance-frame` compares the corpus with `golden-frame/`, which is fork-sourced like `golden-draw2/`. The draw2 view and its goldens stay until draw2 is removed.
 
 ## Pinned dev image
 

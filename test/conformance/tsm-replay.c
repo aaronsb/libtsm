@@ -7,7 +7,7 @@
  * screen model, unless the change is meant to alter it. Only the public API is
  * used, so the tool builds against any libtsm, including upstream releases.
  *
- * Usage: tsm-replay [--draw2] COLS ROWS FILE [CUTS]
+ * Usage: tsm-replay [--draw2 | --frame] COLS ROWS FILE [CUTS]
  *
  * CUTS, if given, is a file of byte offsets into FILE, one per line, in
  * increasing order. The screen state is printed at each offset (and at the end
@@ -51,6 +51,23 @@
  *                              the default cell: default fg and bg, underline
  *                              in the foreground, no flags; FLAG is bold,
  *                              italic, underline or blink)
+ *
+ * --frame prints the screen through tsm_screen_frame, the call that replaces
+ * draw2 (TSM_SCREEN_FRAME; exits 2 without it), with the same palette:
+ *   palette NAME fg=#rrggbb bg=#rrggbb
+ *   changed N                 (cells flagged changed since the previous frame;
+ *                              the first frame of a run flags all of them)
+ *   frame-cursor X,Y STYLE visible|hidden[ KEY...]
+ *                             (the cursor; when visible, the cell it draws, as
+ *                              in a cells line)
+ *   row N |TEXT|              (as the default view: a cluster prints all its
+ *                              codepoints, a trailing half nothing)
+ *   cells N A-B w=W fg=#rrggbb bg=#rrggbb ul=#rrggbb KEY...
+ *                             (a run of cells that differs from the default
+ *                              cell: width 1, default fg and bg, underline in
+ *                              the foreground, no attributes; KEY is ulset,
+ *                              underline=STYLE, bold, italic, dim, blink,
+ *                              inverse, protect or strike)
  *
  * SPDX-License-Identifier: MIT
  */
@@ -393,8 +410,145 @@ static void dump_draw2(struct tsm_screen *screen, struct tsm_vte *vte)
 }
 #endif
 
+#ifdef TSM_SCREEN_FRAME
+static const char *const underline_names[] = {
+	"none", "single", "double", "curly", "dotted", "dashed",
+};
+
+static const char *cursor_style_name(enum tsm_screen_cursor_style style)
+{
+	static const char *const names[] = {
+		"default", "block-blink", "block-steady", "underline-blink",
+		"underline-steady", "bar-blink", "bar-steady",
+	};
+
+	return (unsigned int)style < sizeof(names) / sizeof(names[0]) ? names[style] : "unknown";
+}
+
+/* a cell's description without its glyph, its position or the changed flag */
+static bool frame_cell_equal(const struct tsm_frame_cell *a, const struct tsm_frame_cell *b)
+{
+	return color_equal(&a->fg, &b->fg) && color_equal(&a->bg, &b->bg) &&
+	       color_equal(&a->ul, &b->ul) && a->width == b->width &&
+	       a->underline == b->underline &&
+	       (a->flags & ~TSM_FRAME_CHANGED) == (b->flags & ~TSM_FRAME_CHANGED);
+}
+
+static void print_frame_cell(const struct tsm_frame_cell *c)
+{
+	static const struct {
+		uint16_t bit;
+		const char *name;
+	} flags[] = {
+		{ TSM_FRAME_BOLD, "bold" }, { TSM_FRAME_ITALIC, "italic" },
+		{ TSM_FRAME_DIM, "dim" }, { TSM_FRAME_BLINK, "blink" },
+		{ TSM_FRAME_INVERSE, "inverse" }, { TSM_FRAME_PROTECT, "protect" },
+		{ TSM_FRAME_STRIKE, "strike" },
+	};
+	size_t i;
+
+	printf(" w=%u fg=#%02x%02x%02x bg=#%02x%02x%02x ul=#%02x%02x%02x", c->width,
+	       c->fg.r, c->fg.g, c->fg.b, c->bg.r, c->bg.g, c->bg.b, c->ul.r, c->ul.g, c->ul.b);
+	if (c->flags & TSM_FRAME_UL_SET)
+		printf(" ulset");
+	if (c->underline)
+		printf(" underline=%s", c->underline < 6 ? underline_names[c->underline] : "unknown");
+	for (i = 0; i < sizeof(flags) / sizeof(flags[0]); i++)
+		if (c->flags & flags[i].bit)
+			printf(" %s", flags[i].name);
+}
+
+static void dump_frame(struct tsm_screen *screen, struct tsm_vte *vte)
+{
+	const struct tsm_frame *f = tsm_screen_frame(screen);
+	const struct tsm_frame_cell *c;
+	struct tsm_frame_cell def;
+	struct tsm_screen_attr attr;
+	unsigned int row, x, last, start, changed = 0;
+	const uint32_t *cps;
+	size_t len, i;
+
+	if (!f) {
+		fprintf(stderr, "tsm-replay: tsm_screen_frame failed\n");
+		exit(2);
+	}
+
+	tsm_vte_get_def_attr(vte, &attr);
+	memset(&def, 0, sizeof(def));
+	def.width = 1;
+	def.fg.r = attr.fr;
+	def.fg.g = attr.fg;
+	def.fg.b = attr.fb;
+	def.bg.r = attr.br;
+	def.bg.g = attr.bg;
+	def.bg.b = attr.bb;
+	def.ul = def.fg;
+	printf("palette %s fg=#%02x%02x%02x bg=#%02x%02x%02x\n", DRAW2_PALETTE,
+	       def.fg.r, def.fg.g, def.fg.b, def.bg.r, def.bg.g, def.bg.b);
+
+	for (i = 0; i < (size_t)f->cols * f->rows; i++)
+		if (tsm_frame_cell_at(f, i % f->cols, i / f->cols)->flags & TSM_FRAME_CHANGED)
+			changed++;
+	printf("changed %u\n", changed);
+
+	printf("frame-cursor %u,%u %s %s", f->cursor.x, f->cursor.y,
+	       cursor_style_name(f->cursor.style), f->cursor.visible ? "visible" : "hidden");
+	if (f->cursor.visible)
+		print_frame_cell(&f->cursor.cell);
+	putchar('\n');
+
+	/* cells are cell_size apart, which a later libtsm may grow */
+#define CELL(x) tsm_frame_cell_at(f, (x), row)
+	for (row = 0; row < f->rows; row++) {
+		last = 0;
+		for (x = 0; x < f->cols; x++)
+			if (CELL(x)->key && CELL(x)->key != ' ')
+				last = x + 1;
+		printf("row %u |", row);
+		for (x = 0; x < last; x++) {
+			c = CELL(x);
+			if (!c->width)
+				continue;
+			if (!c->key) {
+				putchar(' ');
+			} else if (c->key < TSM_FRAME_CLUSTER_KEY) {
+				put_utf8((uint32_t)c->key);
+			} else {
+				cps = tsm_screen_frame_cluster(screen, c->key, &len);
+				if (!cps) {
+					fprintf(stderr, "tsm-replay: cluster key %llx does not read\n",
+						(unsigned long long)c->key);
+					exit(3);
+				}
+				for (i = 0; i < len; i++)
+					put_utf8(cps[i]);
+			}
+		}
+		printf("|\n");
+
+		for (x = 0; x < f->cols; x = start) {
+			start = x + 1;
+			if (frame_cell_equal(CELL(x), &def))
+				continue;
+			while (start < f->cols && frame_cell_equal(CELL(start), CELL(x)))
+				start++;
+			printf("cells %u %u-%u", row, x, start - 1);
+			print_frame_cell(CELL(x));
+			putchar('\n');
+		}
+	}
+#undef CELL
+}
+#endif
+
+enum view {
+	VIEW_DRAW,
+	VIEW_DRAW2,
+	VIEW_FRAME,
+};
+
 static void dump(struct tsm_screen *screen, struct tsm_vte *vte, struct grid *grid,
-		 struct reply *reply, bool draw2)
+		 struct reply *reply, enum view view)
 {
 	unsigned int flags = tsm_screen_get_flags(screen);
 	unsigned int row;
@@ -412,14 +566,19 @@ static void dump(struct tsm_screen *screen, struct tsm_vte *vte, struct grid *gr
 	}
 
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
-	if (draw2) {
+	if (view == VIEW_DRAW2) {
 		dump_draw2(screen, vte);
 		return;
 	}
-#else
-	(void)vte;
-	(void)draw2;
 #endif
+#ifdef TSM_SCREEN_FRAME
+	if (view == VIEW_FRAME) {
+		dump_frame(screen, vte);
+		return;
+	}
+#endif
+	(void)vte;
+	(void)view;
 
 	/* The cursor is reported above; keep draw from painting it into a cell. */
 	memset(grid->cells, 0, (size_t)grid->cols * grid->rows * sizeof(*grid->cells));
@@ -471,20 +630,29 @@ int main(int argc, char **argv)
 	unsigned char *data;
 	size_t len, pos = 0, ncuts = 0, i;
 	size_t *cuts = NULL;
-	bool draw2 = false;
+	enum view view = VIEW_DRAW;
 
 	if (argc > 1 && !strcmp(argv[1], "--draw2")) {
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
-		draw2 = true;
+		view = VIEW_DRAW2;
 		argv++;
 		argc--;
 #else
 		fprintf(stderr, "tsm-replay: --draw2 needs the fork's libtsm\n");
 		return 2;
 #endif
+	} else if (argc > 1 && !strcmp(argv[1], "--frame")) {
+#ifdef TSM_SCREEN_FRAME
+		view = VIEW_FRAME;
+		argv++;
+		argc--;
+#else
+		fprintf(stderr, "tsm-replay: --frame needs the fork's libtsm\n");
+		return 2;
+#endif
 	}
 	if (argc != 4 && argc != 5) {
-		fprintf(stderr, "usage: tsm-replay [--draw2] COLS ROWS FILE [CUTS]\n");
+		fprintf(stderr, "usage: tsm-replay [--draw2 | --frame] COLS ROWS FILE [CUTS]\n");
 		return 2;
 	}
 	grid.cols = (unsigned int)strtoul(argv[1], NULL, 10);
@@ -503,7 +671,7 @@ int main(int argc, char **argv)
 		return 2;
 	}
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
-	if (draw2 && tsm_vte_set_palette(vte, DRAW2_PALETTE) < 0) {
+	if (view != VIEW_DRAW && tsm_vte_set_palette(vte, DRAW2_PALETTE) < 0) {
 		fprintf(stderr, "tsm-replay: cannot set palette %s\n", DRAW2_PALETTE);
 		return 2;
 	}
@@ -516,12 +684,12 @@ int main(int argc, char **argv)
 		tsm_vte_input(vte, (const char *)data + pos, cuts[i] - pos);
 		pos = cuts[i];
 		printf("checkpoint %zu\n", pos);
-		dump(screen, vte, &grid, &reply, draw2);
+		dump(screen, vte, &grid, &reply, view);
 	}
 	tsm_vte_input(vte, (const char *)data + pos, len - pos);
 	if (ncuts)
 		printf("checkpoint %zu\n", len);
-	dump(screen, vte, &grid, &reply, draw2);
+	dump(screen, vte, &grid, &reply, view);
 
 	tsm_vte_unref(vte);
 	tsm_screen_unref(screen);

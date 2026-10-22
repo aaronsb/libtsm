@@ -1,0 +1,1109 @@
+checkpoint 1545
+size 80x24
+cursor 9,23
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 9,23 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |  1  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 0 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 1 |  2  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 1 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 2 |  3  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 2 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 3 |  4  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 3 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 4 |  5  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 4 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 5 |  6  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 5 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 6 |  7  The quick brown fox jumps over the lazy dog. 漢字|
+cells 6 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 7 |  8  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 7 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 8 |  9  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 8 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 9 | 10  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 9 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 10 | 11  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 10 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 11 | 12  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 11 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 12 | 13  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 12 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 13 | 14  The quick brown fox jumps over the lazy dog. 漢字|
+cells 13 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 14 | 15  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 14 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 15 | 16  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 15 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 16 | 17  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 16 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 17 | 18  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 17 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 18 | 19  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 18 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 19 | 20  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 19 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 20 | 21  The quick brown fox jumps over the lazy dog. 漢字|
+cells 20 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 21 | 22  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 21 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 22 | 23  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 22 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 23 |notes.txt|
+cells 23 0-8 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+checkpoint 3049
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 1,23 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 | 24  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 0 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 1 | 25  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 1 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 2 | 26  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 2 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 3 | 27  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 3 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 4 | 28  The quick brown fox jumps over the lazy dog. 漢字|
+cells 4 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 5 | 29  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 5 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 6 | 30  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 6 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 7 | 31  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 7 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 8 | 32  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 8 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 9 | 33  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 9 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 10 | 34  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 10 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 11 | 35  The quick brown fox jumps over the lazy dog. 漢字|
+cells 11 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 12 | 36  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 12 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 13 | 37  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 13 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 14 | 38  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 14 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 15 | 39  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 15 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 16 | 40  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 16 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 17 | 41  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 17 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 18 | 42  The quick brown fox jumps over the lazy dog. 漢字|
+cells 18 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 19 | 43  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 19 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 20 | 44  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 20 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 21 | 45  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 21 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 22 | 46  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 22 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 23 |:|
+checkpoint 4557
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 1,23 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 | 47  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 0 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 1 | 48  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 1 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 2 | 49  The quick brown fox jumps over the lazy dog. 漢字|
+cells 2 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 3 | 50  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 3 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 4 | 51  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 4 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 5 | 52  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 5 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 6 | 53  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 6 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 7 | 54  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 7 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 8 | 55  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 8 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 9 | 56  The quick brown fox jumps over the lazy dog. 漢字|
+cells 9 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 10 | 57  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 10 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 11 | 58  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 11 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 12 | 59  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 12 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 13 | 60  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 13 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 14 | 61  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 14 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 15 | 62  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 15 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 16 | 63  The quick brown fox jumps over the lazy dog. 漢字|
+cells 16 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 17 | 64  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 17 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 18 | 65  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 18 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 19 | 66  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 19 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 20 | 67  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 20 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 21 | 68  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 21 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 22 | 69  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 22 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 23 |:|
+checkpoint 6187
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 1,23 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 | 24  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 0 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 1 | 25  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 1 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 2 | 26  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 2 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 3 | 27  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 3 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 4 | 28  The quick brown fox jumps over the lazy dog. 漢字|
+cells 4 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 5 | 29  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 5 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 6 | 30  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 6 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 7 | 31  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 7 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 8 | 32  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 8 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 9 | 33  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 9 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 10 | 34  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 10 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 11 | 35  The quick brown fox jumps over the lazy dog. 漢字|
+cells 11 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 12 | 36  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 12 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 13 | 37  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 13 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 14 | 38  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 14 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 15 | 39  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 15 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 16 | 40  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 16 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 17 | 41  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 17 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 18 | 42  The quick brown fox jumps over the lazy dog. 漢字|
+cells 18 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 19 | 43  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 19 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 20 | 44  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 20 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 21 | 45  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 21 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 22 | 46  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 22 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 23 |:|
+checkpoint 9877
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 1,23 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 | 24  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 0 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 0 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 1 | 25  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 1 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 1 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 2 | 26  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 2 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 2 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 3 | 27  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 3 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 3 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 4 | 28  The quick brown fox jumps over the lazy dog. 漢字|
+cells 4 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 4 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 5 | 29  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 5 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 5 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 6 | 30  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 6 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 6 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 7 | 31  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 7 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 7 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 8 | 32  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 8 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 8 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 9 | 33  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 9 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 9 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 10 | 34  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 10 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 10 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 11 | 35  The quick brown fox jumps over the lazy dog. 漢字|
+cells 11 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 11 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 12 | 36  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 12 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 12 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 13 | 37  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 13 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 13 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 14 | 38  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 14 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 14 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 15 | 39  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 15 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 15 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 16 | 40  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 16 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 16 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 17 | 41  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 17 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 17 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 18 | 42  The quick brown fox jumps over the lazy dog. 漢字|
+cells 18 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 18 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 19 | 43  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 19 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 19 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 20 | 44  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 20 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 20 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 21 | 45  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 21 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 21 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 22 | 46  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 22 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 22 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 23 |:|
+checkpoint 9966
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 1,23 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 | 25  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 0 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 0 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 1 | 26  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 1 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 1 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 2 | 27  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 2 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 2 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 3 | 28  The quick brown fox jumps over the lazy dog. 漢字|
+cells 3 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 3 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 4 | 29  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 4 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 4 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 5 | 30  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 5 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 5 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 6 | 31  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 6 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 6 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 7 | 32  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 7 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 7 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 8 | 33  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 8 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 8 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 9 | 34  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 9 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 9 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 10 | 35  The quick brown fox jumps over the lazy dog. 漢字|
+cells 10 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 10 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 11 | 36  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 11 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 11 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 12 | 37  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 12 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 12 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 13 | 38  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 13 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 13 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 14 | 39  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 14 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 14 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 15 | 40  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 15 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 15 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 16 | 41  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 16 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 16 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 17 | 42  The quick brown fox jumps over the lazy dog. 漢字|
+cells 17 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 17 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 18 | 43  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 18 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 18 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 19 | 44  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 19 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 19 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 20 | 45  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 20 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 20 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 21 | 46  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 21 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 21 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 22 | 47  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 22 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 22 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 23 |:|
+checkpoint 11700
+size 80x24
+cursor 5,23
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 5,23 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 | 98  The quick brown fox jumps over the lazy dog. 漢字|
+cells 0 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 0 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 1 | 99  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 1 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 1 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 2 |100  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 2 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 2 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 3 |101  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 3 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 3 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 4 |102  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 4 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 4 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 5 |103  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 5 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 5 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 6 |104  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 6 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 6 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 7 |105  The quick brown fox jumps over the lazy dog. 漢字|
+cells 7 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 7 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 8 |106  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 8 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 8 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 9 |107  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 9 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 9 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 10 |108  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 10 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 10 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 11 |109  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 11 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 11 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 12 |110  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 12 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 12 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 13 |111  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 13 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 13 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 14 |112  The quick brown fox jumps over the lazy dog. 漢字|
+cells 14 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 14 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 15 |113  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 15 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 15 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 16 |114  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 16 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 16 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 17 |115  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 17 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 17 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 18 |116  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 18 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 18 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 19 |117  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 19 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 19 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 20 |118  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 20 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 20 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 21 |119  The quick brown fox jumps over the lazy dog. 漢字|
+cells 21 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 21 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 22 |120  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 22 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 22 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 23 |(END)|
+cells 23 0-4 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+checkpoint 13540
+size 80x24
+cursor 1,23
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 1,23 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |  1  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 0 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 0 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 0 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 1 |  2  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 1 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 1 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 2 |  3  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 2 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 2 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 2 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 3 |  4  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 3 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 3 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 3 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 4 |  5  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 4 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 4 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 4 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 5 |  6  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 5 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 5 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 5 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 6 |  7  The quick brown fox jumps over the lazy dog. 漢字|
+cells 6 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 6 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 6 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 7 |  8  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 7 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 7 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 7 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 8 |  9  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 8 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 8 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 8 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 9 | 10  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 9 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 9 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 9 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 10 | 11  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 10 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 10 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 10 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 11 | 12  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 11 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 11 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 11 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 12 | 13  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 12 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 12 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 12 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 13 | 14  The quick brown fox jumps over the lazy dog. 漢字|
+cells 13 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 13 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 13 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 14 | 15  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 14 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 14 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 14 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 15 | 16  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 15 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 15 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 15 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 16 | 17  The quick brown fox jumps over the lazy dog. 漢字 ***|
+cells 16 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 16 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 16 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 17 | 18  The quick brown fox jumps over the lazy dog. 漢字 ****|
+cells 17 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 17 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 17 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 18 | 19  The quick brown fox jumps over the lazy dog. 漢字 *****|
+cells 18 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 18 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 18 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 19 | 20  The quick brown fox jumps over the lazy dog. 漢字 ******|
+cells 19 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 19 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 19 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 20 | 21  The quick brown fox jumps over the lazy dog. 漢字|
+cells 20 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 20 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 20 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 21 | 22  The quick brown fox jumps over the lazy dog. 漢字 *|
+cells 21 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 21 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 21 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 22 | 23  The quick brown fox jumps over the lazy dog. 漢字 **|
+cells 22 21-23 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+cells 22 50-50 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 51-51 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 52-52 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 22 53-53 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 23 |:|
+checkpoint 13572
+size 80x24
+cursor 0,0
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 ||

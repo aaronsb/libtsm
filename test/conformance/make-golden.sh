@@ -14,8 +14,9 @@
 # fork-sourced ones. Neither run touches the other set, and any other REF is
 # refused, as is a listed name that is not in cases.list.
 #
-# golden-draw2/ holds every case through tsm-replay's draw2 view, which only
-# the fork's libtsm has: a fork REF writes all of it, the upstream REF none.
+# golden-draw2/ and golden-frame/ hold every case through tsm-replay's draw2
+# and frame views, which only the fork's libtsm has: a fork REF writes all of
+# them, the upstream REF none.
 #
 # Usage: test/conformance/make-golden.sh [REF]
 # Run from the repository root, inside the dev container (see Makefile).
@@ -80,10 +81,13 @@ python3 "$HERE/check.py" "$WORK/build/tsm-replay" "$WORK/cases" --update
 echo "$SET goldens from libtsm $REF ($(git rev-parse --short "$REF"))"
 
 if [ "$FORK" = 1 ]; then
-	mkdir -p "$HERE/golden-draw2" "$WORK/all"
+	mkdir -p "$WORK/all"
 	ln -s "$HERE/cases" "$WORK/all/cases"
-	ln -s "$HERE/golden-draw2" "$WORK/all/golden-draw2"
 	cp "$HERE/cases.list" "$WORK/all/cases.list"
-	python3 "$HERE/check.py" "$WORK/build/tsm-replay" "$WORK/all" --draw2 --update
-	echo "draw2 goldens from libtsm $REF ($(git rev-parse --short "$REF"))"
+	for view in draw2 frame; do
+		mkdir -p "$HERE/golden-$view"
+		ln -s "$HERE/golden-$view" "$WORK/all/golden-$view"
+		python3 "$HERE/check.py" "$WORK/build/tsm-replay" "$WORK/all" --$view --update
+		echo "$view goldens from libtsm $REF ($(git rev-parse --short "$REF"))"
+	done
 fi

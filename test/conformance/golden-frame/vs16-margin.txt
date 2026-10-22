@@ -1,0 +1,12 @@
+size 10x4
+cursor 3,1
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 40
+frame-cursor 3,1 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |012345678|
+row 1 |❤️x|
+cells 1 0-0 w=2 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+cells 1 1-1 w=0 fg=#e5e5e5 bg=#000000 ul=#e5e5e5
+row 2 ||
+row 3 ||

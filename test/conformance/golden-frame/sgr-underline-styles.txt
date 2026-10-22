@@ -1,0 +1,41 @@
+size 80x24
+cursor 55,0
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 55,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |s0 s1 s2 s3 s4 s5 s9 plain dbl21 curlyoff24 curlysingle|
+cells 0 3-4 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=single
+cells 0 6-7 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=double
+cells 0 9-10 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=curly
+cells 0 12-13 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=dotted
+cells 0 15-16 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=dashed
+cells 0 18-19 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=single
+cells 0 21-25 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=single
+cells 0 27-31 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=double
+cells 0 33-37 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=curly
+cells 0 44-48 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=curly
+cells 0 49-54 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline=single
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 ||

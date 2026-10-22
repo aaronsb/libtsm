@@ -175,3 +175,9 @@ LIBTSM_4_8_FORK_PALETTE {
 global:
 	tsm_vte_get_palette_color;
 } LIBTSM_4_8_FORK;
+
+LIBTSM_4_8_FORK2 {
+global:
+	tsm_screen_frame;
+	tsm_screen_frame_cluster;
+} LIBTSM_4_8_FORK;

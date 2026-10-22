@@ -41,6 +41,10 @@ image: ## Build the dev image
 test: image ## Build, then run unit tests and the conformance replay
 	$(RUN) sh -c '[ -f $(BUILD)/build.ninja ] || meson setup $(BUILD); meson compile -C $(BUILD) && meson test -C $(BUILD) --print-errorlogs'
 
+.PHONY: asan
+asan: image ## Build with ASan and UBSan into fork/build-asan and run every suite (leak control must fail)
+	$(RUN) sh -c '[ -f $(BUILD)-asan/build.ninja ] || meson setup $(BUILD)-asan -Db_sanitize=address,undefined; meson compile -C $(BUILD)-asan && meson test -C $(BUILD)-asan --setup asan --print-errorlogs'
+
 .PHONY: cases
 cases: ## Rewrite the synthetic streams (list printed for cases.list)
 	python3 $(CONF)/gen-synthetic.py $(CONF)/cases

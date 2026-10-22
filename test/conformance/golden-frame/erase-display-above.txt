@@ -1,0 +1,12 @@
+size 20x6
+cursor 9,2
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 120
+frame-cursor 9,2 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 |          klmnopqrst|
+row 3 |abcdefghijklmnopqrst|
+row 4 |abcdefghijklmnopqrst|
+row 5 |abcdefghijklmnopqrst|

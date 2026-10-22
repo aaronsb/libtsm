@@ -1,0 +1,30 @@
+size 80x24
+cursor 3,1
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 3,1 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |I|
+row 1 | KL|
+row 2 |          B|
+row 3 ||
+row 4 |         A|
+row 5 |F          E    D  G|
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 |                    HJ|
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 ||
