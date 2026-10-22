@@ -1,0 +1,324 @@
+checkpoint 944
+size 80x24
+cursor 13,0
+flags AUTO_WRAP|ALTERNATE
+reply 1b5b3f36303b313b363b393b3135631b5b3e313b313b30631b5d31303b7267623a653565352f653565352f653565351b5c1b5d31313b7267623a303030302f303030302f303030301b5c1b5b383b32343b383074
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 13,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |user@host:~$|
+cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 |[0] 0:bash*                                       "f2d99ca42293" 04:00 21-Oct-26|
+cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 4-10 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
+cells 23 11-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+checkpoint 1014
+size 80x24
+cursor 13,2
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 40
+frame-cursor 13,2 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |user@host:~$ echo left pane|
+cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 1 |left pane|
+row 2 |user@host:~$|
+cells 2 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 2 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 |[0] 0:bash*                                       "f2d99ca42293" 04:00 21-Oct-26|
+cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 4-10 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
+cells 23 11-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+checkpoint 2475
+size 80x24
+cursor 54,0
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 54,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |user@host:~$ echo left pane             │user@host:~$|
+cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+cells 0 41-49 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 0 51-51 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 1 |left pane                               │|
+row 2 |user@host:~$                            │|
+cells 2 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 2 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 3 |                                        │|
+row 4 |                                        │|
+row 5 |                                        │|
+row 6 |                                        │|
+row 7 |                                        │|
+row 8 |                                        │|
+row 9 |                                        │|
+row 10 |                                        │|
+row 11 |                                        │|
+row 12 |                                        │|
+cells 12 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 13 |                                        │|
+cells 13 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 14 |                                        │|
+cells 14 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 15 |                                        │|
+cells 15 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 16 |                                        │|
+cells 16 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 17 |                                        │|
+cells 17 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 18 |                                        │|
+cells 18 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 19 |                                        │|
+cells 19 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 20 |                                        │|
+cells 20 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 21 |                                        │|
+cells 21 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 22 |                                        │|
+cells 22 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
+cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 4-8 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
+cells 23 9-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+checkpoint 2557
+size 80x24
+cursor 54,2
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 41
+frame-cursor 54,2 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |user@host:~$ echo left pane             │user@host:~$ echo right pane|
+cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+cells 0 41-49 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 0 51-51 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 1 |left pane                               │right pane|
+row 2 |user@host:~$                            │user@host:~$|
+cells 2 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 2 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+cells 2 41-49 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 2 51-51 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 3 |                                        │|
+row 4 |                                        │|
+row 5 |                                        │|
+row 6 |                                        │|
+row 7 |                                        │|
+row 8 |                                        │|
+row 9 |                                        │|
+row 10 |                                        │|
+row 11 |                                        │|
+row 12 |                                        │|
+cells 12 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 13 |                                        │|
+cells 13 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 14 |                                        │|
+cells 14 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 15 |                                        │|
+cells 15 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 16 |                                        │|
+cells 16 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 17 |                                        │|
+cells 17 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 18 |                                        │|
+cells 18 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 19 |                                        │|
+cells 19 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 20 |                                        │|
+cells 20 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 21 |                                        │|
+cells 21 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 22 |                                        │|
+cells 22 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
+cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 4-8 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
+cells 23 9-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+checkpoint 3878
+size 80x24
+cursor 54,12
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 54,12 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |user@host:~$ echo left pane             │user@host:~$ echo right pane|
+cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+cells 0 41-49 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 0 51-51 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 1 |left pane                               │right pane|
+row 2 |user@host:~$                            │user@host:~$|
+cells 2 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 2 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+cells 2 41-49 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 2 51-51 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 3 |                                        │|
+row 4 |                                        │|
+row 5 |                                        │|
+row 6 |                                        │|
+row 7 |                                        │|
+row 8 |                                        │|
+row 9 |                                        │|
+row 10 |                                        │|
+row 11 |                                        ├───────────────────────────────────────|
+cells 11 40-79 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 12 |                                        │user@host:~$|
+cells 12 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+cells 12 41-49 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 12 51-51 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 13 |                                        │|
+cells 13 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 14 |                                        │|
+cells 14 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 15 |                                        │|
+cells 15 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 16 |                                        │|
+cells 16 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 17 |                                        │|
+cells 17 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 18 |                                        │|
+cells 18 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 19 |                                        │|
+cells 19 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 20 |                                        │|
+cells 20 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 21 |                                        │|
+cells 21 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 22 |                                        │|
+cells 22 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
+cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 4-8 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
+cells 23 9-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+checkpoint 3981
+size 80x24
+cursor 54,18
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 32
+frame-cursor 54,18 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |user@host:~$ echo left pane             │user@host:~$ echo right pane|
+cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+cells 0 41-49 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 0 51-51 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 1 |left pane                               │right pane|
+row 2 |user@host:~$                            │user@host:~$|
+cells 2 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 2 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+cells 2 41-49 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 2 51-51 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 3 |                                        │|
+row 4 |                                        │|
+row 5 |                                        │|
+row 6 |                                        │|
+row 7 |                                        │|
+row 8 |                                        │|
+row 9 |                                        │|
+row 10 |                                        │|
+row 11 |                                        ├───────────────────────────────────────|
+cells 11 40-79 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 12 |                                        │user@host:~$ seq 1 5|
+cells 12 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+cells 12 41-49 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 12 51-51 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 13 |                                        │1|
+cells 13 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 14 |                                        │2|
+cells 14 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 15 |                                        │3|
+cells 15 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 16 |                                        │4|
+cells 16 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 17 |                                        │5|
+cells 17 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 18 |                                        │user@host:~$|
+cells 18 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+cells 18 41-49 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
+cells 18 51-51 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
+row 19 |                                        │|
+cells 19 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 20 |                                        │|
+cells 20 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 21 |                                        │|
+cells 21 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 22 |                                        │|
+cells 22 40-40 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+row 23 |[0] 0:sh*                                         "f2d99ca42293" 04:00 21-Oct-26|
+cells 23 0-3 w=1 fg=#000000 bg=#00cd00 ul=#000000
+cells 23 4-8 w=1 fg=#000000 bg=#00cd00 ul=#000000 underline=single
+cells 23 9-79 w=1 fg=#000000 bg=#00cd00 ul=#000000
+checkpoint 4165
+size 80x24
+cursor 0,1
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 0,1 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |[server exited]|
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 ||
