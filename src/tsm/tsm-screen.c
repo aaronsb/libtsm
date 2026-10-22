@@ -420,8 +420,9 @@ static void screen_write(struct tsm_screen *con, unsigned int x,
 
 	line = con->lines[y];
 
+	/* len may exceed a screen narrower than a wide cell */
 	if ((con->flags & TSM_SCREEN_INSERT_MODE) &&
-	    (int)x < ((int)con->size_x - len)) {
+	    len < con->size_x && x < con->size_x - len) {
 		line->age = con->age_cnt;
 		/* the cells pushed past the margin go; the vacated ones are
 		 * copies, overwritten below */
