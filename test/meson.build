@@ -80,6 +80,26 @@ if get_option('fuzz')
     )
 endif
 
+# Sixel through the vte (fuzz/fuzz-vte-sixel.c): the parser, decoder, budget
+# and placements together, built the same two ways.
+fuzz_vte_sixel_replay = executable(
+    'fuzz-vte-sixel-replay',
+    'fuzz/fuzz-vte-sixel.c',
+    dependencies: [libtsm_test_dep],
+    c_args: ['-DFUZZ_REPLAY'],
+)
+test('fuzz-vte-sixel-seeds', fuzz_vte_sixel_replay,
+     args: [meson.current_source_dir() / 'fuzz' / 'vte-sixel-seeds'])
+if get_option('fuzz')
+    executable(
+        'fuzz-vte-sixel',
+        'fuzz/fuzz-vte-sixel.c',
+        dependencies: [libtsm_test_dep],
+        c_args: ['-fsanitize=fuzzer'],
+        link_args: ['-fsanitize=fuzzer'],
+    )
+endif
+
 
 # Conformance replay (ADR-301 tier 1 in the kmscon fork): every recorded
 # stream in conformance/ must reproduce its golden screen state.

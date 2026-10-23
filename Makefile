@@ -7,7 +7,7 @@
 #   make cases         rewrite the synthetic streams from gen-synthetic.py
 #   make record        re-record the real-program streams (record-programs.py)
 #   make golden        rewrite the goldens from upstream libtsm REF (default v4.8.0)
-#   make fuzz          fuzz the sixel decoder for FUZZ_TIME seconds (ASan, UBSan)
+#   make fuzz          fuzz FUZZ_TARGET (sixel, vte-sixel) for FUZZ_TIME seconds (ASan, UBSan)
 #   make clean         remove fork/build
 #
 # A rewritten golden is a change to the judge: commit it on its own, with the
@@ -21,7 +21,9 @@ DEV_ARCHIVE := 2026/10/21
 
 IMAGE ?= libtsm-dev
 FUZZ_IMAGE ?= libtsm-fuzz
-# make fuzz: seconds per run, and parallel workers
+# make fuzz: the target (sixel, the decoder; vte-sixel, sixel through the
+# vte), seconds per run, and parallel workers
+FUZZ_TARGET ?= sixel
 FUZZ_TIME ?= 600
 FUZZ_JOBS ?= 4
 BUILD := fork/build
@@ -57,17 +59,18 @@ test: image ## Build, then run unit tests and the conformance replay
 asan: image ## Build with ASan and UBSan into fork/build-asan and run every suite (leak control must fail)
 	$(RUN) sh -c '[ -f $(BUILD)-asan/build.ninja ] || meson setup $(BUILD)-asan -Db_sanitize=address,undefined; meson compile -C $(BUILD)-asan && meson test -C $(BUILD)-asan --setup asan --print-errorlogs'
 
-# libFuzzer with ASan and UBSan over the seed corpus (test/fuzz/sixel-seeds);
-# what it finds goes to fork/build-fuzz/sixel-corpus, crashes to
-# fork/build-fuzz/crash-*. ADR-103 runs it for a fixed budget before a change
-# to the decoder lands.
+# libFuzzer with ASan and UBSan over a target's seed corpus
+# (test/fuzz/<target>-seeds); what it finds goes to
+# fork/build-fuzz/<target>-corpus, crashes to fork/build-fuzz/crash-*.
+# ADR-103 runs it for a fixed budget before a change to the sixel path lands.
 .PHONY: fuzz
-fuzz: image-fuzz ## Fuzz the sixel decoder (FUZZ_TIME seconds, FUZZ_JOBS workers)
+fuzz: image-fuzz ## Fuzz FUZZ_TARGET (sixel or vte-sixel) for FUZZ_TIME seconds, FUZZ_JOBS workers
 	$(RUN_FUZZ) sh -c '[ -f $(BUILD)-fuzz/build.ninja ] || CC=clang meson setup $(BUILD)-fuzz -Dfuzz=true \
-		-Db_sanitize=address,undefined -Db_lundef=false; meson compile -C $(BUILD)-fuzz test/fuzz-sixel && \
-		mkdir -p $(BUILD)-fuzz/sixel-corpus && cd $(BUILD)-fuzz && \
-		UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ./test/fuzz-sixel -max_total_time=$(FUZZ_TIME) \
-		-jobs=$(FUZZ_JOBS) -workers=$(FUZZ_JOBS) -print_final_stats=1 sixel-corpus ../../test/fuzz/sixel-seeds'
+		-Db_sanitize=address,undefined -Db_lundef=false; meson compile -C $(BUILD)-fuzz test/fuzz-$(FUZZ_TARGET) && \
+		mkdir -p $(BUILD)-fuzz/$(FUZZ_TARGET)-corpus && cd $(BUILD)-fuzz && \
+		UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ./test/fuzz-$(FUZZ_TARGET) -max_total_time=$(FUZZ_TIME) \
+		-jobs=$(FUZZ_JOBS) -workers=$(FUZZ_JOBS) -print_final_stats=1 $(FUZZ_TARGET)-corpus \
+		../../test/fuzz/$(FUZZ_TARGET)-seeds'
 
 .PHONY: cases
 cases: ## Rewrite the synthetic streams (list printed for cases.list)
