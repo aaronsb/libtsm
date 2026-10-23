@@ -82,8 +82,13 @@
  *                              or kitty; changed only in the --frame view)
  *   image M WxH digest HEX    (FNV-1a of the pixels, each as A, R, G, B)
  *
- * There, too, the stream may hold test commands, which no protocol has yet
- * (ADR-103 step 3a): an APC "ESC _ tsm-test;CMD;KEY=VALUE... ESC \" runs CMD
+ * Against a libtsm that declares TSM_VTE_SIXEL, sixel is on, so a stream's
+ * sixel strings make placements and DA1 replies with attribute 4.
+ *
+ * There, too, the stream may hold test commands, for what no protocol makes
+ * yet (kitty images, ADR-103 step 4a) and for the host's side of the screen
+ * (cell size, limits, resize, scrolling the view): an APC
+ * "ESC _ tsm-test;CMD;KEY=VALUE... ESC \" runs CMD
  * through libtsm's public and test-only calls in place of being fed to the
  * vte. Elsewhere it reaches the vte, which ignores it. A command that fails
  * prints "test CMD error N" (a negative errno) where it ran. CMD and its keys:
@@ -939,6 +944,10 @@ int main(int argc, char **argv)
 #ifdef TSM_SCREEN_IMAGES
 	/* no host budget here: Ghostty's per-screen default as the limit */
 	tsm_screen_set_image_limit(screen, (size_t)320 * 1000 * 1000);
+#endif
+#ifdef TSM_VTE_SIXEL
+	/* paid for from that limit */
+	tsm_vte_set_sixel(vte, true);
 #endif
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
 	if (view != VIEW_DRAW && tsm_vte_set_palette(vte, DRAW2_PALETTE) < 0) {
