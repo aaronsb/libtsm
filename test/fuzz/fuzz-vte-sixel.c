@@ -19,7 +19,8 @@
  *    TSM_SCREEN_IMAGE_OVERHEAD;
  *  - freeing the vte and the screen gives every byte back.
  *
- * Input: byte 0 picks the screen size and cell size, byte 1 the
+ * Input: byte 0 picks the screen size, cell size, scrollback and budget,
+ * byte 1 the
  * max-graphic-size, the register settings, and how the stream is fed
  * (whole, or in chunks through tsm_vte_input_bounded); the rest is the
  * stream.
@@ -42,15 +43,17 @@
 		__LINE__, #x); abort(); } } while (0)
 
 /* The host's budget: small enough to be reached often, and to keep runs
- * fast. */
-#define BUDGET ((size_t)1 << 20)
+ * fast; byte 0 picks a smaller one, which a single picture and its pieces
+ * reach. */
+static const size_t budgets[4] = { (size_t)1 << 20, 1188, 4096, 65536 };
+static size_t budget;
 static size_t held;
 
 static int reserve(struct tsm_screen *con, size_t bytes, void *data)
 {
 	(void)data;
 	/* a host evicts across its screens; this one has one */
-	while (held + bytes > BUDGET)
+	while (held + bytes > budget)
 		if (!tsm_screen_image_evict(con))
 			return -ENOSPC;
 	held += bytes;
@@ -123,6 +126,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	size -= 2;
 
 	held = 0;
+	budget = budgets[a >> 5 & 3];
 	check(tsm_screen_new(&screen, NULL, NULL) == 0);
 	check(tsm_screen_resize(screen, sizes[a & 3].cols, sizes[a & 3].rows) == 0);
 	check(tsm_screen_set_cell_size(screen, cells[a >> 2 & 3].w,

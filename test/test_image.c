@@ -344,6 +344,42 @@ START_TEST(test_image_store_cap)
 END_TEST
 
 /*
+ * A kitty id transmitted again while a cut piece still owes its charge: what
+ * is owed is settled first, which may evict the old image, and the new one
+ * then stands alone rather than replacing a freed one.
+ */
+START_TEST(test_image_replace_while_owed)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct tsm_screen_attr attr = { 0 };
+	uint64_t key;
+
+	setup(&screen, &vte);
+	tsm_vte_set_sixel(vte, true);
+	tsm_screen_set_image_limit(screen, COST(4, 4) + COST(24, 6));
+	make_image(screen, 4, 4, TSM_IMAGE_KITTY, 7, false, 0xff0000ff);
+	input_str(vte, "\e[1;1H\eP0;0q!24~\e\\");
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
+			  COST(4, 4) + COST(24, 6));
+
+	/* a write over the middle cell, by the host outside an input call */
+	tsm_screen_move_to(screen, 1, 0);
+	tsm_screen_write(screen, 'X', &attr);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(4, 4) +
+			  COST(24, 6) + TSM_SCREEN_PLACEMENT_OVERHEAD);
+
+	/* the piece's charge evicts the unplaced kitty image before id 7 is
+	 * looked up; the new id 7 then has no room beside the placed sixel */
+	ck_assert_int_eq(try_image(screen, 4, 4, 7, &key), -ENOSPC);
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen), 1);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
+			  COST(24, 6) + TSM_SCREEN_PLACEMENT_OVERHEAD);
+	teardown(screen, vte);
+}
+END_TEST
+
+/*
  * A placement that reaches from scrollback onto the screen keeps its image;
  * so does an image with one placement in scrollback and one on the screen.
  */
@@ -1356,6 +1392,7 @@ TEST_DEFINE_CASE(store)
 	TEST(test_image_eviction_partly_on_screen)
 	TEST(test_image_lru)
 	TEST(test_image_store_cap)
+	TEST(test_image_replace_while_owed)
 	TEST(test_image_host_budget)
 	TEST(test_image_host_budget_install)
 	TEST(test_image_replace_refused)

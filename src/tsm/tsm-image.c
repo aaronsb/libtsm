@@ -129,10 +129,9 @@ static int budget_reserve(struct tsm_screen *con, size_t bytes, struct tsm_image
 	size_t credit, need, room;
 	int ret = 0;
 
-	/* what pieces owe is asked for first, so the request sees the room
-	 * that is really left */
-	screen_images_settle(con);
-	credit = keep ? keep->bytes : 0;
+	/* only what the budget granted @keep passes on; what its pieces owe
+	 * was never granted */
+	credit = keep ? keep->bytes - keep->owed : 0;
 	need = bytes > credit ? bytes - credit : 0;
 	img->keep = keep;
 	if (img->reserve) {
@@ -157,16 +156,25 @@ static int budget_reserve(struct tsm_screen *con, size_t bytes, struct tsm_image
 	return ret;
 }
 
-/* bytes the images no longer hold: what pieces owed goes first */
 static void budget_release(struct tsm_screen *con, size_t bytes)
 {
-	size_t owed = bytes < con->img.owed ? bytes : con->img.owed;
-
-	con->img.owed -= owed;
-	bytes -= owed;
 	con->img.bytes -= bytes;
 	if (con->img.release && bytes)
 		con->img.release(con, bytes, con->img.budget_data);
+}
+
+/*
+ * @bytes @image no longer holds: what its pieces owed goes first, and only
+ * the rest, which the budget granted, goes back to it.
+ */
+static void image_release(struct tsm_screen *con, struct tsm_image *image,
+			  size_t bytes)
+{
+	size_t owed = bytes < image->owed ? bytes : image->owed;
+
+	image->owed -= owed;
+	con->img.owed -= owed;
+	budget_release(con, bytes - owed);
 }
 
 /*
@@ -275,7 +283,7 @@ static void placement_free(struct tsm_screen *con, struct tsm_placement *p,
 	 * charge back, unless the image is going whole */
 	if (image->placements && !image->dying) {
 		image->bytes -= TSM_SCREEN_PLACEMENT_OVERHEAD;
-		budget_release(con, TSM_SCREEN_PLACEMENT_OVERHEAD);
+		image_release(con, image, TSM_SCREEN_PLACEMENT_OVERHEAD);
 	}
 
 	/* a sixel's image is anonymous: nothing can place it again */
@@ -384,6 +392,7 @@ static void placement_split(struct tsm_screen *con, struct tsm_placement *p,
 			}
 			/* charged now, granted once the event is over */
 			o.image->bytes += TSM_SCREEN_PLACEMENT_OVERHEAD;
+			o.image->owed += TSM_SCREEN_PLACEMENT_OVERHEAD;
 			con->img.owed += TSM_SCREEN_PLACEMENT_OVERHEAD;
 			q->seq = o.seq;
 			q->id = o.id;
@@ -520,7 +529,7 @@ static void image_free(struct tsm_screen *con, struct tsm_image *image)
 	shl_dlist_unlink(&image->list);
 	--image->store->count;
 	slot_release(&con->img, image);
-	budget_release(con, image->bytes);
+	image_release(con, image, image->bytes);
 	free(image->pixels);
 	free(image);
 }
@@ -1246,46 +1255,82 @@ static int placement_make_room(struct tsm_screen *con, struct tsm_image_store *s
 	}
 	if (!image->placements)
 		return 0;
+	screen_images_settle(con);
 	ret = budget_reserve(con, TSM_SCREEN_PLACEMENT_OVERHEAD, NULL, &added);
 	if (!ret)
 		image->bytes += TSM_SCREEN_PLACEMENT_OVERHEAD;
 	return ret;
 }
 
+static int placement_area_cmp(const void *a, const void *b)
+{
+	const struct tsm_placement *p = *(struct tsm_placement *const *)a;
+	const struct tsm_placement *q = *(struct tsm_placement *const *)b;
+	unsigned long long x = (unsigned long long)p->cols * p->rows;
+	unsigned long long y = (unsigned long long)q->cols * q->rows;
+
+	return x < y ? -1 : x > y;
+}
+
 void screen_images_settle(struct tsm_screen *con)
 {
 	struct tsm_image_store *stores[] = { &con->img.main, &con->img.alt };
 	struct tsm_images *img = &con->img;
-	struct tsm_placement *p, *small;
+	struct tsm_placement *p, **small;
 	struct shl_dlist *iter;
-	size_t owed, added;
+	size_t owed, added, n, k, drop = 1;
+	struct tsm_image *image;
 	unsigned int i;
 
 	while (img->owed) {
 		/* asked for as a reservation, which may evict */
 		owed = img->owed;
-		img->owed = 0;
-		if (!budget_reserve(con, owed, NULL, &added))
+		if (!budget_reserve(con, owed, NULL, &added)) {
+			/* evicted images took their pieces' debts with them:
+			 * what was reserved for those goes back */
+			budget_release(con, owed - img->owed);
+			for (i = 0; i < 2; ++i)
+				shl_dlist_for_each(iter, &stores[i]->images) {
+					++img->work;
+					shl_dlist_entry(iter, struct tsm_image, list)->owed = 0;
+				}
+			img->owed = 0;
 			return;
-		img->owed = owed;
+		}
 
-		/* refused: the smallest placement goes, giving back what it
-		 * owed, or its image's bytes when it was the last */
-		small = NULL;
+		/*
+		 * Refused: the smallest placements of images that owe go,
+		 * 1, 2, 4... a round, so the rounds stay few, each sorting the
+		 * candidates once.
+		 */
+		n = 0;
+		for (i = 0; i < 2; ++i)
+			n += stores[i]->nplacements;
+		small = malloc(n * sizeof(*small));
+		if (!small)
+			return;
+		n = 0;
 		for (i = 0; i < 2; ++i) {
 			shl_dlist_for_each(iter, &stores[i]->placements) {
 				++img->work;
 				p = shl_dlist_entry(iter, struct tsm_placement, store_link);
-				if (p->image->hold)
-					continue;
-				if (!small || (unsigned long long)p->cols * p->rows <
-				    (unsigned long long)small->cols * small->rows)
-					small = p;
+				if (p->image->owed && !p->image->hold)
+					small[n++] = p;
 			}
 		}
-		if (!small)
+		qsort(small, n, sizeof(*small), placement_area_cmp);
+		img->work += n;
+		/* a placement goes alone unless it is its image's last, and
+		 * then it had no other piece in the list */
+		for (k = 0; k < n && k < drop && img->owed; ++k) {
+			image = small[k]->image;
+			if (image->owed)
+				placement_free(con, small[k], true);
+		}
+		free(small);
+		if (!n)
 			return;
-		placement_free(con, small, true);
+		drop *= 2;
 	}
 }
 
@@ -1313,6 +1358,9 @@ int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 	    desc->kind > TSM_IMAGE_KITTY ||
 	    (desc->kind == TSM_IMAGE_KITTY && !desc->id))
 		return -EINVAL;
+	/* what pieces owe is asked for first, so what follows sees the room
+	 * really left, and nothing it finds is evicted after */
+	screen_images_settle(con);
 	st = cur_store(con);
 	n = (size_t)desc->width * desc->height;
 	bytes = n * 4 + TSM_SCREEN_IMAGE_OVERHEAD;
@@ -1351,6 +1399,7 @@ int screen_images_reserve(struct tsm_screen *con, size_t bytes)
 {
 	size_t added;
 
+	screen_images_settle(con);
 	return budget_reserve(con, bytes, NULL, &added);
 }
 
@@ -1382,6 +1431,7 @@ int screen_sixel_new(struct tsm_screen *con, unsigned int width, unsigned int he
 		return -EINVAL;
 	}
 	/* room in the store, and the bookkeeping's bytes beside the pixels' */
+	screen_images_settle(con);
 	ret = store_make_room(con, cur_store(con));
 	if (!ret)
 		ret = budget_reserve(con, TSM_SCREEN_IMAGE_OVERHEAD, NULL, &added);

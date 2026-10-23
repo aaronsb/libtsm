@@ -208,7 +208,8 @@ struct tsm_image {
 	unsigned int width;
 	unsigned int height;
 	uint32_t *pixels;		/* premultiplied ARGB32 */
-	size_t bytes;			/* reserved from the budget */
+	size_t bytes;			/* held: granted by the budget, and owed */
+	size_t owed;			/* of those, its pieces' charges not yet granted */
 	uint8_t kind;			/* enum tsm_image_kind */
 	bool opaque;
 	bool transient;

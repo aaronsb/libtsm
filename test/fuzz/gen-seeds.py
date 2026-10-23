@@ -59,6 +59,11 @@ def main():
             f.write(bytes([0, 0, 0x14]) + payload(name + ".six"))
 
     os.makedirs(VTE_OUT, exist_ok=True)
+    # a piece still owed when its picture, in scrollback, is evicted, under
+    # the 1188-byte budget (review of #36)
+    with open(os.path.join(VTE_OUT, "owed-evicted"), "wb") as f:
+        f.write(bytes([0x30, 0x30]) + b"\x1b[1;1H\x1bP0;0q!24~\x1b\\"
+                b"\x1b[1;2HX\x1b[4;1H\n\n\n\n\n")
     for case in sorted(os.listdir(CASES_DIR)):
         if not case.startswith(("six-", "img-")) or not case.endswith(".bin"):
             continue

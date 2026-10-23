@@ -433,7 +433,9 @@ END_TEST
 START_TEST(test_sixel_off_mid_string)
 {
 	/* a picture whose budget goes while it streams is dropped at its end,
-	 * with every byte it held, as sixel is then off */
+	 * with every byte it held, as sixel is then off. The store would
+	 * refuse it too: with no budget, sixel is off, and its overhead cannot
+	 * be reserved, so no public path makes this check the only guard */
 	input("\033P0;1q\"1;1;100;100#1~~~~");
 	ck_assert_uint_gt(tsm_screen_get_image_bytes(screen), 0);
 	tsm_screen_set_image_limit(screen, 0);
@@ -492,10 +494,15 @@ END_TEST
 static size_t host_held;
 static size_t host_budget;
 
+/* a host that evicts from the screen to make room, as kmscon's will */
+static bool host_evicts;
+
 static int host_reserve(struct tsm_screen *con, size_t bytes, void *data)
 {
-	UNUSED(con);
 	UNUSED(data);
+	while (host_evicts && host_held + bytes > host_budget &&
+	       tsm_screen_image_evict(con))
+		;
 	if (host_held + bytes > host_budget)
 		return -ENOSPC;
 	host_held += bytes;
@@ -514,6 +521,7 @@ START_TEST(test_sixel_budget)
 {
 	char buf[4096];
 
+	host_evicts = false;
 	/* the host's budget pays for the picture as it decodes, and the
 	 * store takes the same bytes over */
 	host_held = 0;
@@ -646,6 +654,33 @@ START_TEST(test_sixel_pieces_budget)
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
 			  images * COST(320, 192) +
 			  (size_t)(pieces - images) * TSM_SCREEN_PLACEMENT_OVERHEAD);
+}
+END_TEST
+
+/*
+ * A piece cut from a picture owes its charge until the input call ends; a
+ * picture evicted with a piece still owed gives the host back only what the
+ * host granted.
+ */
+START_TEST(test_sixel_owed_evicted)
+{
+	teardown();
+	setup_size(10, 3);
+	tsm_screen_set_max_sb(screen, 100);
+	host_held = 0;
+	host_evicts = true;
+	host_budget = COST(24, 6) + 100;
+	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve,
+						     host_release, NULL), 0);
+
+	/* one call: the picture, a cut in its middle cell, and enough lines
+	 * to carry it into scrollback, where the piece's charge evicts it */
+	input("\033[1;1H\033P0;0q!24~\033\\\033[1;2HX\033[3;1H\n\n\n\n");
+	ck_assert_uint_eq(host_held, tsm_screen_get_image_bytes(screen));
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen), 0);
+	ck_assert_uint_eq(host_held, 0);
+	ck_assert_int_eq(tsm_screen_set_image_budget(screen, NULL, NULL, NULL), 0);
+	host_evicts = false;
 }
 END_TEST
 
@@ -799,6 +834,7 @@ TEST_DEFINE_CASE(strings)
 	TEST(test_sixel_tiny_many)
 	TEST(test_sixel_pieces_bounded)
 	TEST(test_sixel_pieces_budget)
+	TEST(test_sixel_owed_evicted)
 	TEST(test_sixel_bounded)
 	TEST(test_sixel_split_input)
 TEST_END_CASE
