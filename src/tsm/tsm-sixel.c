@@ -37,9 +37,8 @@
  * The picture is drawn straight into ARGB32, 0 meaning no sixel set the
  * pixel (every register colour is opaque). Its rows are cap_w pixels apart.
  * Raster attributes size it, and reserve its memory, before any sixel; it
- * grows as sixels land outside it. The graphics cursor (x, y) is kept in
- * output pixels: one sixel dot is hs pixels wide and vs pixels tall, from the
- * pixel aspect ratio.
+ * grows as sixels land outside it. One sixel dot is one pixel; the pixel
+ * aspect of P1 and of raster attributes is not applied (see tsm-sixel.h).
  */
 
 #include <errno.h>
@@ -48,8 +47,6 @@
 #include <string.h>
 #include "tsm-sixel.h"
 
-/* The largest scale a pixel aspect ratio gives, 5:1 (P1 = 2) */
-#define SIXEL_SCALE_MAX 5
 /* Parameters saturate here; every use clamps far below it. */
 #define SIXEL_PARAM_MAX (0xffffffu / 10)
 #define SIXEL_PARAMS 5
@@ -82,9 +79,6 @@ struct tsm_sixel {
 
 	bool transparent;
 	bool data_seen;		/* raster attributes count only before data */
-	bool unit;		/* hs and vs both 1 */
-	unsigned int hs;
-	unsigned int vs;
 	unsigned int ra_w;	/* raster extent in output pixels, clamped */
 	unsigned int ra_h;
 
@@ -315,62 +309,15 @@ static void fail(struct tsm_sixel *sixel)
 	sixel->state = SIXEL_FAILED;
 }
 
-/*
- * Sets the pixel scale from a pixel aspect ratio, vertical @pan to horizontal
- * @pad, rounded to whole pixels and capped at SIXEL_SCALE_MAX.
- */
-static void set_aspect(struct tsm_sixel *sixel, unsigned int pan,
-		       unsigned int pad)
-{
-	unsigned int scale;
-
-	if (!pan)
-		pan = 1;
-	if (!pad)
-		pad = 1;
-
-	if (pan >= pad) {
-		scale = (pan + pad / 2) / pad;
-		sixel->hs = 1;
-		sixel->vs = scale > SIXEL_SCALE_MAX ? SIXEL_SCALE_MAX : scale;
-	} else {
-		scale = (pad + pan / 2) / pan;
-		sixel->vs = 1;
-		sixel->hs = scale > SIXEL_SCALE_MAX ? SIXEL_SCALE_MAX : scale;
-	}
-	sixel->unit = sixel->hs == 1 && sixel->vs == 1;
-}
-
 void tsm_sixel_begin(struct tsm_sixel *sixel, int p1, int p2,
 		     struct tsm_sixel_palette *shared)
 {
-	unsigned int pan;
+	(void)p1;
 
 	if (!sixel)
 		return;
 
 	release(sixel);
-
-	/* P1: 0 and 1 give 2:1, 2 gives 5:1, 3 and 4 give 3:1, 5 and 6 give
-	 * 2:1, 7 to 9 give 1:1; omitted or anything else is 0. */
-	switch (p1) {
-	case 2:
-		pan = 5;
-		break;
-	case 3:
-	case 4:
-		pan = 3;
-		break;
-	case 7:
-	case 8:
-	case 9:
-		pan = 1;
-		break;
-	default:
-		pan = 2;
-		break;
-	}
-	set_aspect(sixel, pan, 1);
 
 	sixel->transparent = p2 == 1;
 	if (shared) {
@@ -470,14 +417,14 @@ static bool grow(struct tsm_sixel *sixel, unsigned int need_w,
  */
 static void put(struct tsm_sixel *sixel, unsigned int bits, unsigned int count)
 {
-	unsigned int x0 = sixel->x, x1, y, end, bit, row, col, stride;
+	unsigned int x0 = sixel->x, x1, end, bit, row, col, stride;
 	uint32_t color, *line;
 
 	sixel->data_seen = true;
 	if (sixel->y >= sixel->max_h)
 		return;
 
-	x1 = x0 + min_u(count, sixel->max_w) * sixel->hs;
+	x1 = x0 + min_u(count, sixel->max_w);
 	if (x1 > sixel->max_w)
 		x1 = sixel->max_w;
 	sixel->x = x1;
@@ -488,7 +435,7 @@ static void put(struct tsm_sixel *sixel, unsigned int bits, unsigned int count)
 
 	/* one past the lowest row the top bit set reaches */
 	end = 32 - __builtin_clz(bits);
-	end = min_u(sixel->y + end * sixel->vs, sixel->max_h);
+	end = min_u(sixel->y + end, sixel->max_h);
 	if ((x1 > sixel->cap_w || end > sixel->cap_h) && !grow(sixel, x1, end)) {
 		fail(sixel);
 		return;
@@ -501,12 +448,12 @@ static void put(struct tsm_sixel *sixel, unsigned int bits, unsigned int count)
 	for (bit = 0; bits; ++bit, bits >>= 1) {
 		if (!(bits & 1))
 			continue;
-		y = sixel->y + bit * sixel->vs;
-		for (row = y; row < y + sixel->vs && row < end; ++row) {
-			line = sixel->buf + (size_t)row * stride;
-			for (col = x0; col < x1; ++col)
-				line[col] = color;
-		}
+		row = sixel->y + bit;
+		if (row >= end)
+			break;
+		line = sixel->buf + (size_t)row * stride;
+		for (col = x0; col < x1; ++col)
+			line[col] = color;
 	}
 }
 
@@ -519,7 +466,7 @@ static inline void put_masked(uint32_t *p, unsigned int bit, uint32_t color)
 }
 
 /*
- * put() for one sixel at 1:1 inside the grid, the bulk of every encoder's
+ * put() for one sixel inside the grid, the bulk of every encoder's
  * output. Returns false, having done nothing, for put() to handle it.
  */
 static inline bool put_one(struct tsm_sixel *sixel, unsigned int bits)
@@ -527,7 +474,7 @@ static inline bool put_one(struct tsm_sixel *sixel, unsigned int bits)
 	unsigned int x = sixel->x, y = sixel->y, stride = sixel->cap_w, end;
 	uint32_t color, *p;
 
-	if (!sixel->unit || x >= stride || y + 6 > sixel->cap_h)
+	if (x >= stride || y + 6 > sixel->cap_h)
 		return false;
 
 	sixel->data_seen = true;
@@ -567,11 +514,9 @@ static void end_params(struct tsm_sixel *sixel, enum sixel_state state)
 			pal->colors[reg] = rgb_pct(p[2], p[3], p[4]);
 		sixel->color = pal->colors[reg];
 	} else if (state == SIXEL_RASTER && !sixel->data_seen) {
-		set_aspect(sixel, p[0], n >= 2 ? p[1] : 1);
-		sixel->ra_w = n >= 3 ?
-			min_u(min_u(p[2], sixel->max_w) * sixel->hs, sixel->max_w) : 0;
-		sixel->ra_h = n >= 4 ?
-			min_u(min_u(p[3], sixel->max_h) * sixel->vs, sixel->max_h) : 0;
+		/* Pan and Pad are read and not applied */
+		sixel->ra_w = n >= 3 ? min_u(p[2], sixel->max_w) : 0;
+		sixel->ra_h = n >= 4 ? min_u(p[3], sixel->max_h) : 0;
 
 		/* the raster area is reserved now, so a picture that cannot
 		 * fit is refused before it is decoded */
@@ -612,7 +557,7 @@ static void data(struct tsm_sixel *sixel, unsigned char c)
 		break;
 	case '-':
 		sixel->x = 0;
-		sixel->y = min_u(sixel->y + 6 * sixel->vs, sixel->max_h);
+		sixel->y = min_u(sixel->y + 6, sixel->max_h);
 		break;
 	default:
 		/* everything else is ignored */

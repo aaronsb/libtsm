@@ -44,9 +44,10 @@
  * the picture unless the raster attributes cover them, so a picture whose
  * height is not a multiple of six keeps its height (foot does the same).
  *
- * Pixel aspect: Pan:Pad (P1, or raster attributes before the first sixel) is
- * a ratio, DEC STD 070's vertical to horizontal shape of a pixel, rounded to
- * whole pixels and capped at 5:1. "2;2 is 1:1, where foot scales each axis.
+ * Pixel aspect: one sixel dot is one pixel. The aspect ratio P1 selects and
+ * raster attributes' Pan;Pad are read and not applied, as xterm (411, run
+ * with -ti vt340), WezTerm (MIT) and mlterm (BSD) do; foot (MIT) is the one
+ * surveyed terminal that scales by them. Ph;Pv still size the picture.
  *
  * Memory: every byte the picture holds is asked of the reserve callback
  * first. Raster attributes reserve width * height * 4 before any sixel, so a
@@ -118,8 +119,8 @@ int tsm_sixel_new(struct tsm_sixel **out, const struct tsm_sixel_limits *limits)
 void tsm_sixel_free(struct tsm_sixel *sixel);
 
 /*
- * Starts an image from the DCS parameters; -1 is an omitted parameter. P3 is
- * ignored, as xterm ignores it. @shared is the shared register table (mode
+ * Starts an image from the DCS parameters; -1 is an omitted parameter. P1
+ * (pixel aspect) is ignored, see above, and P3 as xterm ignores it. @shared is the shared register table (mode
  * 1070 reset), or NULL for registers private to this image; a shared table
  * must stay alive until tsm_sixel_finish() or tsm_sixel_abort(). An image
  * still in progress is discarded.

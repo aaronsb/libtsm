@@ -184,32 +184,26 @@ START_TEST(test_sixel_all_sixels)
 {
 	struct tsm_sixel *s = new_decoder(0, 0, 0);
 	struct tsm_sixel_image img;
-	char data[256];
-	unsigned int c, k, x, y, i, scale;
+	char data[512];
+	unsigned int c, k, x, i;
 	size_t len;
 
 	/* every sixel value over a band of register 1: bit k of column c
-	 * shows register 2 in row k, at 1:1 and with each dot 2x2 pixels */
+	 * shows register 2 in row k, drawn one by one (the fast path) and
+	 * as repeats of one (the general one) */
 	for (i = 0; i < 2; ++i) {
-		scale = i + 1;
-		len = sprintf(data, i ? "\"2;1;64;6" : "\"1;1;64;6");
-		len += sprintf(data + len, "#1!64~$#2");
+		len = sprintf(data, "\"1;1;64;6#1!64~$#2");
 		for (c = 0; c < 64; ++c)
-			data[len++] = '?' + c;
-		data[len] = 0;
+			len += sprintf(data + len, i ? "!1%c" : "%c", '?' + c);
 
 		ck_assert_int_eq(decode_with(s, 0, 1, NULL, data, &img), 0);
 		ck_assert_uint_eq(img.width, 64);
-		ck_assert_uint_eq(img.height, 6 * scale);
-		for (x = 0; x < 64; ++x) {
-			for (k = 0; k < 6; ++k) {
-				for (y = k * scale; y < (k + 1) * scale; ++y)
-					ck_assert_msg(px(&img, x, y) ==
-						      (x >> k & 1 ? VT_RED : VT_BLUE),
-						      "scale %u: sixel %u row %u", scale,
-						      x, y);
-			}
-		}
+		ck_assert_uint_eq(img.height, 6);
+		for (x = 0; x < 64; ++x)
+			for (k = 0; k < 6; ++k)
+				ck_assert_msg(px(&img, x, k) ==
+					      (x >> k & 1 ? VT_RED : VT_BLUE),
+					      "pass %u: sixel %u row %u", i, x, k);
 		image_free(&img);
 	}
 	tsm_sixel_free(s);
@@ -425,54 +419,33 @@ START_TEST(test_sixel_aspect)
 {
 	struct tsm_sixel *s = new_decoder(0, 0, 0);
 	struct tsm_sixel_image img;
-	const struct { int p1; unsigned int rows; } table[] = {
-		{ -1, 12 }, { 0, 12 }, { 1, 12 }, { 2, 30 }, { 3, 18 },
-		{ 4, 18 }, { 5, 12 }, { 6, 12 }, { 7, 6 }, { 8, 6 }, { 9, 6 },
-		{ 10, 12 },
-	};
+	const char *raster[] = { "", "\"1;1", "\"2;1", "\"1;2", "\"2;2",
+				 "\"5;1", "\"100;1" };
+	char data[64];
 	unsigned int i;
+	int p1;
 
-	for (i = 0; i < sizeof(table) / sizeof(table[0]); ++i) {
-		ck_assert_int_eq(decode_with(s, table[i].p1, 1, NULL, "#1~", &img), 0);
-		ck_assert_msg(img.height == table[i].rows,
-			      "P1=%d gives %u rows, want %u", table[i].p1,
-			      img.height, table[i].rows);
-		ck_assert_uint_eq(img.width, 1);
-		image_free(&img);
+	/* one dot is one pixel whatever the aspect P1 and Pan;Pad ask for,
+	 * as xterm, WezTerm and mlterm draw it */
+	for (p1 = -1; p1 <= 10; ++p1) {
+		for (i = 0; i < sizeof(raster) / sizeof(raster[0]); ++i) {
+			snprintf(data, sizeof(data), "%s#1!3~", raster[i]);
+			ck_assert_int_eq(decode_with(s, p1, 1, NULL, data, &img), 0);
+			ck_assert_msg(img.width == 3 && img.height == 6,
+				      "P1=%d %s: %ux%u, want 3x6", p1,
+				      raster[i] + 1, img.width, img.height);
+			image_free(&img);
+		}
 	}
 
-	/* 2:1 doubles each dot's rows: bit 1 covers rows 2 and 3 */
-	ck_assert_int_eq(decode_with(s, 0, 1, NULL, "#1A", &img), 0);
-	ck_assert_uint_eq(img.height, 4);
-	ck_assert_uint_eq(px(&img, 0, 1), CLEAR);
-	ck_assert_uint_eq(px(&img, 0, 2), VT_BLUE);
-	ck_assert_uint_eq(px(&img, 0, 3), VT_BLUE);
-	image_free(&img);
-
-	/* raster attributes override P1 */
-	ck_assert_int_eq(decode_with(s, 2, 1, NULL, "\"1;1#1~", &img), 0);
-	ck_assert_uint_eq(img.height, 6);
-	image_free(&img);
-	ck_assert_int_eq(decode_with(s, 7, 1, NULL, "\"3;1#1~", &img), 0);
-	ck_assert_uint_eq(img.height, 18);
-	image_free(&img);
-	/* Pad above Pan widens the dots */
-	ck_assert_int_eq(decode_with(s, 7, 1, NULL, "\"1;2#1!3~", &img), 0);
-	ck_assert_uint_eq(img.width, 6);
-	ck_assert_uint_eq(img.height, 6);
-	image_free(&img);
-	/* the ratio counts, not its terms */
-	ck_assert_int_eq(decode_with(s, 7, 1, NULL, "\"2;2#1~", &img), 0);
-	ck_assert_uint_eq(img.width, 1);
-	ck_assert_uint_eq(img.height, 6);
-	image_free(&img);
-	/* ratios past 5:1 stop there */
-	ck_assert_int_eq(decode_with(s, 7, 1, NULL, "\"100;1#1~", &img), 0);
-	ck_assert_uint_eq(img.height, 30);
+	/* raster attributes still size the picture, in pixels */
+	ck_assert_int_eq(decode_with(s, 2, 1, NULL, "\"2;1;3;8#1@", &img), 0);
+	ck_assert_uint_eq(img.width, 3);
+	ck_assert_uint_eq(img.height, 8);
 	image_free(&img);
 
 	/* after the first sixel, raster attributes are ignored */
-	ck_assert_int_eq(decode_with(s, 7, 1, NULL, "#1~\"3;1;50;50~", &img), 0);
+	ck_assert_int_eq(decode_with(s, 7, 1, NULL, "#1~\"1;1;50;50~", &img), 0);
 	ck_assert_uint_eq(img.width, 2);
 	ck_assert_uint_eq(img.height, 6);
 	image_free(&img);
@@ -525,11 +498,6 @@ START_TEST(test_sixel_raster_size)
 	ck_assert_uint_eq(img.height, 5);
 	image_free(&img);
 
-	/* the raster size counts the dots' scale */
-	ck_assert_int_eq(decode_with(s, 0, 1, NULL, "\"2;1;3;4#1@", &img), 0);
-	ck_assert_uint_eq(img.width, 3);
-	ck_assert_uint_eq(img.height, 8);
-	image_free(&img);
 
 	tsm_sixel_free(s);
 }
