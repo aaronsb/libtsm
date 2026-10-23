@@ -426,6 +426,19 @@ START_TEST(test_sixel_reset_mid_string)
 }
 END_TEST
 
+START_TEST(test_sixel_off_mid_string)
+{
+	/* a picture whose budget goes while it streams is dropped at its end,
+	 * with every byte it held, as sixel is then off */
+	input("\033P0;1q\"1;1;100;100#1~~~~");
+	ck_assert_uint_gt(tsm_screen_get_image_bytes(screen), 0);
+	tsm_screen_set_image_limit(screen, 0);
+	input("~~\033\\");
+	ck_assert_uint_eq(placements(), 0);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+}
+END_TEST
+
 /* Registers */
 
 START_TEST(test_sixel_registers)
@@ -670,6 +683,7 @@ TEST_DEFINE_CASE(strings)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_sixel_cancel)
 	TEST(test_sixel_reset_mid_string)
+	TEST(test_sixel_off_mid_string)
 	TEST(test_sixel_registers)
 	TEST(test_sixel_max_size)
 	TEST(test_sixel_budget)

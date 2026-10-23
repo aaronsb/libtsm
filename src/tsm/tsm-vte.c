@@ -1061,8 +1061,9 @@ static void do_dcs_end(struct tsm_vte *vte, uint32_t data)
 	vte->sixel_active = false;
 
 	/* CAN and SUB discard the picture; ST, or anything else that ends
-	 * the string, shows it */
-	if (data == 0x18 || data == 0x1a) {
+	 * the string, shows it, unless sixel went off while it streamed (its
+	 * budget removed, say) */
+	if (data == 0x18 || data == 0x1a || !sixel_on(vte)) {
 		tsm_sixel_abort(vte->sixel);
 		return;
 	}
