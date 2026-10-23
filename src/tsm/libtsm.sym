@@ -196,6 +196,4 @@ global:
 	tsm_screen_get_image_bytes;
 	tsm_screen_image_victim;
 	tsm_screen_image_evict;
-	tsm_screen_test_image;
-	tsm_screen_test_place;
 } LIBTSM_4_8_FORK3;

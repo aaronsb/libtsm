@@ -6,14 +6,16 @@
 
 /*
  * The test calls of ADR-103 step 3a: an image and a placement made without a
- * protocol, as the sixel and kitty parsers make them.
+ * protocol, as the sixel and kitty parsers make them. They are left out of
+ * libtsm.sym, so the shared library does not export them; the tests, which
+ * compile libtsm's sources themselves, and hosts that build it as a static
+ * subproject reach them through libtsm.h.
  */
 
 #include <errno.h>
 #include "libtsm.h"
 #include "libtsm-int.h"
 
-SHL_EXPORT
 int tsm_screen_test_image(struct tsm_screen *con, const struct tsm_test_image *img,
 			  uint64_t *key)
 {
@@ -28,7 +30,6 @@ int tsm_screen_test_image(struct tsm_screen *con, const struct tsm_test_image *i
 	return ret;
 }
 
-SHL_EXPORT
 int tsm_screen_test_place(struct tsm_screen *con, const struct tsm_test_placement *pl,
 			  uint64_t *key)
 {

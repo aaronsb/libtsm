@@ -715,7 +715,8 @@ size_t tsm_screen_image_evict(struct tsm_screen *con);
 /*
  * For tests only (ADR-103 step 3a): an image and a placement made without a
  * protocol, as the sixel and kitty parsers will make them. Each acts on the
- * store of the screen buffer in use.
+ * store of the screen buffer in use. The shared library does not export
+ * them; tests and hosts that compile libtsm's sources reach them.
  */
 struct tsm_test_image {
 	unsigned int width;
