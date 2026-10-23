@@ -4,6 +4,7 @@ libtsm_srcs = [
     'tsm-render.c',
     'tsm-screen.c',
     'tsm-selection.c',
+    'tsm-sixel.c',
     'tsm-unicode.c',
     'tsm-vte-charsets.c',
     'tsm-vte.c',
