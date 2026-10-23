@@ -1,0 +1,10 @@
+size 12x4
+cursor 0,2
+flags AUTO_WRAP
+reply 1b5b333b3152
+row 0 |img2sixel:|
+row 1 ||
+row 2 ||
+row 3 ||
+placement 0 row 1 col 0 box 5x2 at 0,0 size 37x23 src 0,0 37x23 cell 8x16 z 0 above-text sixel image 0 opaque
+image 0 37x23 digest c4d9eac7

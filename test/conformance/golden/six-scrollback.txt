@@ -1,0 +1,9 @@
+size 12x4
+cursor 5,3
+flags AUTO_WRAP
+row 0 |above|
+row 1 ||
+row 2 ||
+row 3 |below|
+placement 0 row 1 col 0 box 2x2 at 0,0 size 16x32 src 0,0 16x32 cell 8x16 z 0 above-text sixel image 0 opaque
+image 0 16x32 digest 0dba61c5

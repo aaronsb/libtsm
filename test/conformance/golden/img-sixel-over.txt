@@ -14,5 +14,5 @@ placement 5 row 1 col 6 box 2x1 at 0,0 size 16x16 src 0,0 16x16 cell 8x16 z 0 ab
 image 0 24x32 digest 849a65c5
 image 1 24x32 digest fcb943c5
 image 2 16x16 digest 509905c5
-image 3 8x16 digest b5f705c5
+image 3 8x16 digest e39013a9
 image 4 16x16 digest acf1c5c5
