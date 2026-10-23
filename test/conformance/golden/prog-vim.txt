@@ -111,8 +111,6 @@ attr 21 0-79 fg=12
 row 22 |~|
 attr 22 0-79 fg=12
 row 23 |"src/main.c" 9L, 150B                                         4,1           All|
-attr 23 52-52 underline
-attr 23 62-66 underline
 checkpoint 2193
 size 80x24
 cursor 23,3

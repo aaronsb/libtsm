@@ -2091,10 +2091,10 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		tsm_screen_erase_chars(vte->con, num);
 		break;
 	case 'm':
-		/* CSI_GT ('>' prefix) marks a private/DEC sequence such as
-		 * XTMODKEYS \033[>4;1m — not an SGR attribute. Guard against
-		 * misinterpreting it as e.g. SGR 4 (underline). */
-		if (!(vte->csi_flags & CSI_GT))
+		/* A '>' or '?' prefix marks a private sequence, not SGR:
+		 * XTMODKEYS \033[>4;1m sets and XTQMODKEYS \033[?4m queries
+		 * xterm's modifyOtherKeys level. Neither is SGR 4 (underline). */
+		if (!(vte->csi_flags & (CSI_GT | CSI_WHAT)))
 			csi_attribute(vte);
 		break;
 	case 'p':

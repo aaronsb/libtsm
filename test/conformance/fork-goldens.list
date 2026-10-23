@@ -41,3 +41,6 @@ insert-wide-one-column      # insert mode with wide cells on a one-column screen
 colour-resolve              # colours, dim and reverse with underline colours (ADR-102 step 2)
 wide-chars                  # a wide character with one column left wraps; it is not cut at the margin
 prog-tmux                   # cells tmux's status line erases take its background colour only, not its foreground
+#
+# Upstream fixes after v4.8.0, merged from kmscon/libtsm:
+prog-vim                    # vim's XTQMODKEYS query (CSI ? 4 m) is not SGR 4: its status line is not underlined (upstream c0733a5)
