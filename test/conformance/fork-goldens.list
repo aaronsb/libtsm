@@ -42,6 +42,10 @@ colour-resolve              # colours, dim and reverse with underline colours (A
 wide-chars                  # a wide character with one column left wraps; it is not cut at the margin
 prog-tmux                   # cells tmux's status line erases take its background colour only, not its foreground
 #
+# ADR-103 step 3c: sixel is on in tsm-replay, so DA1 carries attribute 4,
+# and XTWINOPS 14 and 16 are answered:
+replies                     # DA1 replies ?60;1;4;6;9;15c
+#
 # Upstream fixes after v4.8.0, merged from kmscon/libtsm:
 prog-vim                    # vim's XTQMODKEYS query (CSI ? 4 m) is not SGR 4: its status line is not underlined (upstream c0733a5)
 #
