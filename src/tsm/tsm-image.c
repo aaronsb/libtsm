@@ -1159,7 +1159,7 @@ bool tsm_screen_image_victim(struct tsm_screen *con, struct tsm_image_victim *ou
 		out->key = image->key;
 		out->rank = rank;
 		out->last_use = image->last_use;
-		out->bytes = image->bytes;
+		out->bytes = image->bytes - image->owed;
 	}
 	return true;
 }
@@ -1219,7 +1219,7 @@ int tsm_screen_image_victims(struct tsm_screen *con, tsm_image_victim_cb cb, voi
 			v[n].key = image->key;
 			v[n].rank = image_rank(image);
 			v[n].last_use = image->last_use;
-			v[n].bytes = image->bytes;
+			v[n].bytes = image->bytes - image->owed;
 			++n;
 		}
 	}

@@ -731,6 +731,8 @@ struct tsm_image_victim {
 	/* when it was last created, placed or drawn, on a clock all screens
 	 * in the process share, so a host can order victims across screens */
 	uint64_t last_use;
+	/* the bytes the host gets back when it is evicted: what the image
+	 * holds less what its pieces owe and the budget never granted */
 	size_t bytes;
 };
 
