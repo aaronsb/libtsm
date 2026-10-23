@@ -1,0 +1,13 @@
+size 12x4
+cursor 0,2
+flags AUTO_WRAP
+reply 1b5b333b3152
+row 0 | ab|
+row 1 ||
+row 2 |under|
+row 3 ||
+placement 0 row 0 col 0 box 1x1 at 0,0 size 8x16 src 0,0 8x16 cell 8x16 z 0 above-text sixel image 0 opaque
+placement 1 row 0 col 3 box 1x1 at 0,0 size 8x16 src 24,0 8x16 cell 8x16 z 0 above-text sixel image 0 opaque
+placement 2 row 2 col 0 box 3x1 at 0,0 size 24x16 src 0,0 24x16 cell 8x16 z 0 above-text sixel image 1
+image 0 32x16 digest 0dba61c5
+image 1 24x16 digest 2016b327

@@ -35,6 +35,11 @@ test_vte_mouse = executable(
     dependencies: test_deps,
 )
 test_vte = executable('test_vte', 'test_vte.c', dependencies: test_deps)
+test_vte_sixel = executable(
+    'test_vte_sixel',
+    'test_vte_sixel.c',
+    dependencies: test_deps,
+)
 
 test('htable', test_htable)
 test('image', test_image)
@@ -48,6 +53,7 @@ test('valgrind', test_valgrind,
      should_fail: get_option('b_sanitize').contains('address'))
 test('vte_mouse', test_vte_mouse)
 test('vte', test_vte)
+test('vte_sixel', test_vte_sixel)
 
 # Not a test: prints sixel decode throughput (bench-sixel [FILE.six] [SECONDS]).
 executable('bench-sixel', 'bench-sixel.c', dependencies: test_deps)
@@ -69,6 +75,26 @@ if get_option('fuzz')
         'fuzz-sixel',
         fuzz_sixel_srcs,
         include_directories: '../src/tsm',
+        c_args: ['-fsanitize=fuzzer'],
+        link_args: ['-fsanitize=fuzzer'],
+    )
+endif
+
+# Sixel through the vte (fuzz/fuzz-vte-sixel.c): the parser, decoder, budget
+# and placements together, built the same two ways.
+fuzz_vte_sixel_replay = executable(
+    'fuzz-vte-sixel-replay',
+    'fuzz/fuzz-vte-sixel.c',
+    dependencies: [libtsm_test_dep],
+    c_args: ['-DFUZZ_REPLAY'],
+)
+test('fuzz-vte-sixel-seeds', fuzz_vte_sixel_replay,
+     args: [meson.current_source_dir() / 'fuzz' / 'vte-sixel-seeds'])
+if get_option('fuzz')
+    executable(
+        'fuzz-vte-sixel',
+        'fuzz/fuzz-vte-sixel.c',
+        dependencies: [libtsm_test_dep],
         c_args: ['-fsanitize=fuzzer'],
         link_args: ['-fsanitize=fuzzer'],
     )

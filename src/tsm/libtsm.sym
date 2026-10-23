@@ -197,3 +197,11 @@ global:
 	tsm_screen_image_victim;
 	tsm_screen_image_evict;
 } LIBTSM_4_8_FORK3;
+
+LIBTSM_4_8_FORK5 {
+global:
+	tsm_vte_input_bounded;
+	tsm_vte_set_sixel;
+	tsm_vte_set_graphic_max_size;
+	tsm_vte_set_sixel_registers;
+} LIBTSM_4_8_FORK4;

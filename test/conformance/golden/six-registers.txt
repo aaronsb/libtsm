@@ -1,0 +1,15 @@
+size 12x4
+cursor 3,0
+flags AUTO_WRAP
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+placement 0 row 0 col 0 box 1x1 at 0,0 size 8x6 src 0,0 8x6 cell 8x16 z 0 above-text sixel image 0 opaque
+placement 1 row 0 col 1 box 1x1 at 0,0 size 8x6 src 0,0 8x6 cell 8x16 z 0 above-text sixel image 1 opaque
+placement 2 row 0 col 2 box 1x1 at 0,0 size 8x6 src 0,0 8x6 cell 8x16 z 0 above-text sixel image 2 opaque
+placement 3 row 0 col 3 box 1x1 at 0,0 size 8x6 src 0,0 8x6 cell 8x16 z 0 above-text sixel image 3 opaque
+image 0 8x6 digest 886a9ee5
+image 1 8x6 digest 0309a445
+image 2 8x6 digest 886a9ee5
+image 3 8x6 digest 886a9ee5

@@ -42,6 +42,10 @@ colour-resolve              # colours, dim and reverse with underline colours (A
 wide-chars                  # a wide character with one column left wraps; it is not cut at the margin
 prog-tmux                   # cells tmux's status line erases take its background colour only, not its foreground
 #
+# ADR-103 step 3c: sixel is on in tsm-replay, so DA1 carries attribute 4,
+# and XTWINOPS 14 and 16 are answered:
+replies                     # DA1 replies ?60;1;4;6;9;15c
+#
 # Upstream fixes after v4.8.0, merged from kmscon/libtsm:
 prog-vim                    # vim's XTQMODKEYS query (CSI ? 4 m) is not SGR 4: its status line is not underlined (upstream c0733a5)
 #
@@ -79,3 +83,25 @@ img-alt-1047        # 1047, as 1049
 img-alt-shown       # on the alternate screen only its placements show
 img-ris             # RIS empties both stores
 img-decstr          # DECSTR leaves placements
+#
+# ADR-103 step 3c: sixel strings through the vte, which upstream ignores.
+six-cursor-xterm        # cursor after sixel, as in a run of xterm 411 (two departures, ADR-103)
+six-cursor              # cursor on the picture's last row, at its left column
+six-cursor-8452         # mode 8452: cursor right of the picture, clamped
+six-scroll-bottom       # a picture past the bottom scrolls as index does
+six-scroll-region       # a picture scrolled into a region whole; a taller one cut
+six-decsdm              # DECSDM set: top left, cut to the screen, cursor unmoved
+six-colours             # RGB and HLS registers, repeats, $ and -
+six-raster              # raster attributes size the picture; P2; no aspect scaling
+six-registers           # mode 1070: private or shared registers
+six-registers-ris       # RIS empties the shared registers, sets 1070 again
+six-max-size            # max-graphic-size bounds the picture
+six-cancel              # CAN and SUB discard; ESC shows; other DCS ignored
+six-text                # text cuts a sixel; a transparent sixel keeps text
+six-scrollback          # a picture into scrollback with its lines and back
+six-clear               # ED 2 and ED 3 remove pictures on screen and in scrollback
+six-replies             # DA1 attribute 4, XTSMGRAPHICS, XTWINOPS 14, 16, 18
+six-off                 # no budget: sixel ignored, no attribute 4
+six-img2sixel-palette16 # img2sixel stream: 16 colours
+six-img2sixel-gradient  # img2sixel stream: a gradient
+six-img2sixel-highcolor # img2sixel stream: registers redefined band by band

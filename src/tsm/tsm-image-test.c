@@ -44,3 +44,13 @@ int tsm_screen_test_place(struct tsm_screen *con, const struct tsm_test_placemen
 		*key = p->key;
 	return ret;
 }
+
+unsigned int tsm_screen_test_image_count(struct tsm_screen *con)
+{
+	return con ? con->img.main.count + con->img.alt.count : 0;
+}
+
+unsigned int tsm_screen_test_placement_count(struct tsm_screen *con)
+{
+	return con ? con->img.main.nplacements + con->img.alt.nplacements : 0;
+}

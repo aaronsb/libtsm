@@ -783,6 +783,12 @@ int tsm_utf8_mach_feed(struct tsm_utf8_mach *mach, char ci)
 	return mach->state;
 }
 
+bool tsm_utf8_mach_idle(struct tsm_utf8_mach *mach)
+{
+	return !mach || mach->state == TSM_UTF8_START ||
+	       mach->state == TSM_UTF8_ACCEPT || mach->state == TSM_UTF8_REJECT;
+}
+
 uint32_t tsm_utf8_mach_get(struct tsm_utf8_mach *mach)
 {
 	if (!mach || mach->state != TSM_UTF8_ACCEPT)

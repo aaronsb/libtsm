@@ -110,6 +110,8 @@ int tsm_utf8_mach_new(struct tsm_utf8_mach **out);
 void tsm_utf8_mach_free(struct tsm_utf8_mach *mach);
 
 int tsm_utf8_mach_feed(struct tsm_utf8_mach *mach, char c);
+/* true between sequences, where an ASCII byte is accepted as it is */
+bool tsm_utf8_mach_idle(struct tsm_utf8_mach *mach);
 uint32_t tsm_utf8_mach_get(struct tsm_utf8_mach *mach);
 void tsm_utf8_mach_reset(struct tsm_utf8_mach *mach);
 
@@ -206,11 +208,14 @@ struct tsm_image {
 	unsigned int width;
 	unsigned int height;
 	uint32_t *pixels;		/* premultiplied ARGB32 */
-	size_t bytes;			/* reserved from the budget */
+	size_t bytes;			/* held: granted by the budget, and owed */
+	size_t owed;			/* of those, its pieces' charges not yet granted */
 	uint8_t kind;			/* enum tsm_image_kind */
 	bool opaque;
 	bool transient;
 	bool pinned;			/* scratch: placed on a screen's own lines */
+	bool dying;			/* being freed: its placements go uncharged */
+	unsigned int hold;		/* never evicted while being placed */
 	unsigned int placements;	/* placements showing it */
 	uint64_t last_use;
 	tsm_age_t age;			/* when its pixels last changed */
@@ -245,6 +250,8 @@ struct tsm_placement {
 struct tsm_image_store {
 	struct shl_dlist images;
 	struct shl_dlist placements;
+	unsigned int count;		/* images, at most TSM_SCREEN_IMAGES_PER_STORE */
+	unsigned int nplacements;	/* at most TSM_SCREEN_PLACEMENTS_PER_STORE */
 	unsigned int sixels;		/* sixel placements, which text cuts */
 	unsigned int max_rows;		/* at least the tallest placement's rows */
 	unsigned int max_sixel_rows;	/* and the tallest sixel's */
@@ -273,8 +280,15 @@ struct tsm_images {
 	tsm_screen_image_release_cb release;
 	void *budget_data;
 	size_t limit;
-	size_t bytes;
+	size_t bytes;			/* granted by the host or under the limit */
+	/* the charges of placement pieces a screen event made, which the
+	 * images hold but the budget has yet to grant: screen_images_settle
+	 * asks for them once no event is in progress */
+	size_t owed;
 	struct tsm_image *keep;		/* never evicted: a replacement frees it */
+	/* images and placements the eviction scans have visited, ever, which
+	 * the vte counts against one input call's work */
+	uint64_t work;
 
 	unsigned int cell_width;
 	unsigned int cell_height;
@@ -440,6 +454,27 @@ int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 		     struct tsm_image **out);
 int screen_image_place(struct tsm_screen *con, struct tsm_image *image,
 		       const struct tsm_test_placement *pl, struct tsm_placement **out);
+/*
+ * Sixel (tsm-vte.c). A picture being decoded holds its bytes through
+ * screen_images_reserve and screen_images_unreserve, under the screen's
+ * budget like any image; screen_sixel_new then stores it with those bytes,
+ * taking @pixels (freed, with the bytes released, on failure).
+ * screen_sixel_place shows it at the cursor and moves the cursor as ADR-103
+ * says, and screen_image_drop frees an image nothing placed.
+ */
+int screen_images_reserve(struct tsm_screen *con, size_t bytes);
+void screen_images_unreserve(struct tsm_screen *con, size_t bytes);
+int screen_sixel_new(struct tsm_screen *con, unsigned int width, unsigned int height,
+		     uint32_t *pixels, bool opaque, struct tsm_image **out);
+int screen_sixel_place(struct tsm_screen *con, struct tsm_image *image,
+		       bool scroll, bool cursor_right);
+void screen_image_drop(struct tsm_screen *con, struct tsm_image *image);
+/*
+ * Asks the budget for what placement pieces owe, evicting as any reservation
+ * may; refused, drops the smallest placements until nothing is owed. Called
+ * where no screen event is in progress.
+ */
+void screen_images_settle(struct tsm_screen *con);
 /* the frame's placement list, flagged changed against @since */
 int screen_images_frame(struct tsm_screen *con, const struct tsm_frame_age *since,
 			bool all_changed);

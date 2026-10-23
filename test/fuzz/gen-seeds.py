@@ -1,15 +1,26 @@
 #!/usr/bin/env python3
-"""Write the seed corpus of fuzz-sixel into sixel-seeds/.
+"""Write the seed corpora of fuzz-sixel into sixel-seeds/ and of
+fuzz-vte-sixel into vte-sixel-seeds/.
 
-Each seed is fuzz-sixel's input: three header bytes (P1, P2, flags) and a
+Each fuzz-sixel seed is its input: three header bytes (P1, P2, flags) and a
 payload. The seeds are the libsixel fixtures and the edge cases of
 test_sixel.c, so fuzzing starts from every construct the tests know.
+
+Each fuzz-vte-sixel seed is two header bytes (screen and cell size; limits,
+registers and feeding) and a terminal stream: the six-* and img-* streams of
+the conformance corpus, so fuzzing starts from every sixel case tier 1
+judges.
 """
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, "..", "sixel")
 OUT = os.path.join(HERE, "sixel-seeds")
+VTE_OUT = os.path.join(HERE, "vte-sixel-seeds")
+CASES_DIR = os.path.join(HERE, "..", "conformance", "cases")
+# header bytes for the streams: 12x4 screen of 8x16 cells, defaults, fed
+# whole; and the same fed in 7-byte bounded chunks with shared registers
+VTE_HEADERS = (bytes([0x00, 0x30]), bytes([0x10, 0x18]))
 
 # P1 byte: value + 1 (0 is omitted); P2 byte: value + 1; flags: limits in
 # bits 0-1, chunk size in bits 2-4, two registers in bit 6, shared in bit 7
@@ -46,6 +57,22 @@ def main():
     for name in ("palette16", "gradient", "highcolor"):
         with open(os.path.join(OUT, "libsixel-" + name), "wb") as f:
             f.write(bytes([0, 0, 0x14]) + payload(name + ".six"))
+
+    os.makedirs(VTE_OUT, exist_ok=True)
+    # a piece still owed when its picture, in scrollback, is evicted, under
+    # the 1188-byte budget (review of #36)
+    with open(os.path.join(VTE_OUT, "owed-evicted"), "wb") as f:
+        f.write(bytes([0x30, 0x30]) + b"\x1b[1;1H\x1bP0;0q!24~\x1b\\"
+                b"\x1b[1;2HX\x1b[4;1H\n\n\n\n\n")
+    for case in sorted(os.listdir(CASES_DIR)):
+        if not case.startswith(("six-", "img-")) or not case.endswith(".bin"):
+            continue
+        with open(os.path.join(CASES_DIR, case), "rb") as f:
+            stream = f.read()
+        for i, header in enumerate(VTE_HEADERS):
+            name = f"{case[:-4]}-{i}"
+            with open(os.path.join(VTE_OUT, name), "wb") as f:
+                f.write(header + stream)
 
 
 if __name__ == "__main__":

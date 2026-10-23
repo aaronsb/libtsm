@@ -82,8 +82,13 @@
  *                              or kitty; changed only in the --frame view)
  *   image M WxH digest HEX    (FNV-1a of the pixels, each as A, R, G, B)
  *
- * There, too, the stream may hold test commands, which no protocol has yet
- * (ADR-103 step 3a): an APC "ESC _ tsm-test;CMD;KEY=VALUE... ESC \" runs CMD
+ * Against a libtsm that declares TSM_VTE_SIXEL, sixel is on, so a stream's
+ * sixel strings make placements and DA1 replies with attribute 4.
+ *
+ * There, too, the stream may hold test commands, for what no protocol makes
+ * yet (kitty images, ADR-103 step 4a) and for the host's side of the screen
+ * (cell size, limits, resize, scrolling the view): an APC
+ * "ESC _ tsm-test;CMD;KEY=VALUE... ESC \" runs CMD
  * through libtsm's public and test-only calls in place of being fed to the
  * vte. Elsewhere it reaches the vte, which ignores it. A command that fails
  * prints "test CMD error N" (a negative errno) where it ran. CMD and its keys:
@@ -100,6 +105,8 @@
  *   place;img=[;col=;row=;x=;y=;c=;r=;sx=;sy=;sw=;sh=;z=;p=]
  *                             a placement of image n at the cursor unless col
  *                             and row are given
+ *   graphic-max;w=;h=         tsm_vte_set_graphic_max_size (TSM_VTE_SIXEL)
+ *   registers;n=[;private=0]  tsm_vte_set_sixel_registers (TSM_VTE_SIXEL)
  *
  * SPDX-License-Identifier: MIT
  */
@@ -501,10 +508,13 @@ static int test_place_cmd(struct tsm_screen *screen, char **argv, int argc)
 }
 
 /* runs the test command in @cmd, @len bytes after "tsm-test;" */
-static void test_command(struct tsm_screen *screen, const char *cmd, size_t len)
+static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
+			 const char *cmd, size_t len)
 {
 	char buf[512], *argv[32], *tok, *save;
 	int argc = 0, r = 0;
+
+	(void)vte;
 
 	if (len >= sizeof(buf)) {
 		fprintf(stderr, "tsm-replay: test command too long\n");
@@ -539,6 +549,14 @@ static void test_command(struct tsm_screen *screen, const char *cmd, size_t len)
 		r = test_image_cmd(screen, argv, argc);
 	} else if (!strcmp(argv[0], "place")) {
 		r = test_place_cmd(screen, argv, argc);
+#ifdef TSM_VTE_SIXEL
+	} else if (!strcmp(argv[0], "graphic-max")) {
+		r = tsm_vte_set_graphic_max_size(vte, test_arg(argv, argc, "w", 0),
+						 test_arg(argv, argc, "h", 0));
+	} else if (!strcmp(argv[0], "registers")) {
+		r = tsm_vte_set_sixel_registers(vte, test_arg(argv, argc, "n", 0),
+						test_arg(argv, argc, "private", 1));
+#endif
 	} else {
 		fprintf(stderr, "tsm-replay: unknown test command %s\n", argv[0]);
 		exit(2);
@@ -579,7 +597,7 @@ static void feed(struct tsm_screen *screen, struct tsm_vte *vte, const char *dat
 			fprintf(stderr, "tsm-replay: test command without ST\n");
 			exit(2);
 		}
-		test_command(screen, start, end - start);
+		test_command(screen, vte, start, end - start);
 		len -= end + 2 - data;
 		data = end + 2;
 	}
@@ -939,6 +957,10 @@ int main(int argc, char **argv)
 #ifdef TSM_SCREEN_IMAGES
 	/* no host budget here: Ghostty's per-screen default as the limit */
 	tsm_screen_set_image_limit(screen, (size_t)320 * 1000 * 1000);
+#endif
+#ifdef TSM_VTE_SIXEL
+	/* paid for from that limit */
+	tsm_vte_set_sixel(vte, true);
 #endif
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
 	if (view != VIEW_DRAW && tsm_vte_set_palette(vte, DRAW2_PALETTE) < 0) {

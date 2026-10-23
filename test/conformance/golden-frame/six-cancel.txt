@@ -1,0 +1,13 @@
+size 12x4
+cursor 0,1
+flags AUTO_WRAP
+reply 1b5b313b31521b5b313b35521b5b323b31521b5b323b3152
+palette legacy fg=#e5e5e5 bg=#000000
+changed 48
+frame-cursor 0,1 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |   ¿|
+row 1 ||
+row 2 ||
+row 3 ||
+placement 0 row 0 col 6 box 2x1 at 0,0 size 16x16 src 0,0 16x16 cell 8x16 z 0 above-text sixel image 0 opaque changed
+image 0 16x16 digest 39db7fc5

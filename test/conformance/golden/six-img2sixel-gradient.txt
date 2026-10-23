@@ -1,0 +1,12 @@
+size 12x6
+cursor 1,4
+flags AUTO_WRAP
+reply 1b5b353b3252
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+placement 0 row 1 col 1 box 8x4 at 0,0 size 64x50 src 0,0 64x50 cell 8x16 z 0 above-text sixel image 0 opaque
+image 0 64x50 digest 168364af

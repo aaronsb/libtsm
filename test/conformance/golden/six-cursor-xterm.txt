@@ -1,0 +1,18 @@
+size 40x12
+cursor 3,2
+flags AUTO_WRAP
+reply 1b5b343b33521b5b343b33521b5b323b33521b5b323b33521b5b343b35521b5b323b3430521b5b31323b31521b5b333b3452
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+row 6 ||
+row 7 ||
+row 8 ||
+row 9 ||
+row 10 ||
+row 11 ||
+placement 0 row 0 col 0 box 2x3 at 0,0 size 12x39 src 0,0 12x39 cell 6x13 z 0 above-text sixel image 0 opaque
+image 0 12x39 digest 4bac6c9d

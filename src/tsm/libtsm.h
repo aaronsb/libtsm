@@ -643,6 +643,31 @@ int tsm_screen_frame_image(struct tsm_screen *con, uint64_t key,
 #define TSM_SCREEN_IMAGE_MAX_CELLS	10000
 
 /*
+ * What an image holds beside its pixels (its record, a placement, its key),
+ * rounded up: every image costs this many bytes more than its pixels, so a
+ * budget bounds the memory of many small pictures as well as of large ones.
+ * And each store, main and alternate, holds at most
+ * TSM_SCREEN_IMAGES_PER_STORE images: past that a new one evicts in the
+ * order tsm_screen_image_victim gives, from that store, or is refused when
+ * every image there is placed on the screen's lines.
+ */
+#define TSM_SCREEN_IMAGE_OVERHEAD	512
+#define TSM_SCREEN_IMAGES_PER_STORE	1024
+
+/*
+ * The image's overhead pays for its first placement. Each further one (a
+ * kitty image placed again, a piece text or a scroll cuts from a sixel)
+ * costs TSM_SCREEN_PLACEMENT_OVERHEAD more, and each store holds at most
+ * TSM_SCREEN_PLACEMENTS_PER_STORE placements. A cut or scroll that would pass
+ * that keeps the largest pieces and drops the smallest, as if their cells
+ * were erased; pieces the budget then refuses are dropped the same way,
+ * smallest first. A new placement past it evicts images as above, or is
+ * refused.
+ */
+#define TSM_SCREEN_PLACEMENT_OVERHEAD	256
+#define TSM_SCREEN_PLACEMENTS_PER_STORE	4096
+
+/*
  * The cell size in pixels, the size the host reports through TIOCSWINSZ.
  * Placements made from now on measure their pixel quantities in it; those
  * made before keep the size they were made with. 8x16 until set.
@@ -651,8 +676,12 @@ int tsm_screen_set_cell_size(struct tsm_screen *con, unsigned int width,
 			     unsigned int height);
 
 /*
- * The image budget. An image costs width x height x 4 bytes, reserved before
- * it is allocated. With a host budget, libtsm asks @reserve for each
+ * The image budget. An image costs width x height x 4 bytes, plus
+ * TSM_SCREEN_IMAGE_OVERHEAD, plus TSM_SCREEN_PLACEMENT_OVERHEAD for each
+ * placement past its first, reserved before it is allocated. Pieces a screen
+ * event cuts are reserved once the event is over (at the end of an input
+ * call, or before the next reservation). tsm_screen_get_image_bytes counts
+ * them from when they are cut. With a host budget, libtsm asks @reserve for each
  * reservation (0 grants it, a negative errno refuses it) and tells @release
  * of every image it frees, evictions included. A host that runs several
  * screens evicts across them in its @reserve, with tsm_screen_image_victim
@@ -734,6 +763,10 @@ struct tsm_test_image {
 /* Stores @img and returns its key in @key: 0, -EINVAL, -ENOMEM or -ENOSPC. */
 int tsm_screen_test_image(struct tsm_screen *con, const struct tsm_test_image *img,
 			  uint64_t *key);
+/* the images the screen holds, in both stores */
+unsigned int tsm_screen_test_image_count(struct tsm_screen *con);
+/* the placements the screen holds, in both stores */
+unsigned int tsm_screen_test_placement_count(struct tsm_screen *con);
 
 struct tsm_test_placement {
 	uint64_t image;			/* the image's key */
@@ -1047,6 +1080,48 @@ unsigned int tsm_vte_get_mouse_event(struct tsm_vte *vte);
 void tsm_vte_reset(struct tsm_vte *vte);
 void tsm_vte_hard_reset(struct tsm_vte *vte);
 void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len);
+
+/*
+ * As tsm_vte_input, but stops once the image work this call has done passes
+ * a bound, and returns the bytes it consumed: at least one when @len is not 0.
+ * The work is counted in pixels written, allocated or copied, about 16
+ * million per call, since a few bytes of sixel can fill a large picture. A
+ * host feeds the rest in a later call, after its other events, so one read of
+ * crafted input cannot hold its event loop for long.
+ */
+size_t tsm_vte_input_bounded(struct tsm_vte *vte, const char *u8, size_t len);
+
+/*
+ * Sixel graphics (ADR-103 in aaronsb/kmscon): DCS P1;P2;P3 q ... ST makes a
+ * picture at the cursor. Defined when the calls below exist.
+ *
+ * Sixel is off until the host turns it on, and needs an image budget on the
+ * screen as well (tsm_screen_set_image_budget or tsm_screen_set_image_limit).
+ * While either is missing, sixel strings are ignored, DA1 omits attribute 4,
+ * and XTSMGRAPHICS reports no graphics. Both on, the picture's memory comes
+ * from that budget, and a picture that does not fit is dropped.
+ */
+#define TSM_VTE_SIXEL 1
+
+void tsm_vte_set_sixel(struct tsm_vte *vte, bool enable);
+
+/*
+ * max-graphic-size: the largest picture in pixels, for each dimension; pixels
+ * past it are dropped. 0 is the default, 10000; larger values are clamped to
+ * TSM_SCREEN_IMAGE_MAX. Returns 0 or -EINVAL.
+ */
+int tsm_vte_set_graphic_max_size(struct tsm_vte *vte, unsigned int width,
+				 unsigned int height);
+
+/*
+ * num-color-registers, 2 to 65535, or 0 for the default 1024; and
+ * private-color-registers, the state mode 1070 starts in and returns to on
+ * RIS: set, each picture starts from the default colours; reset, pictures
+ * share their registers until RIS. Both apply at once, as after RIS. Returns
+ * 0 or -EINVAL.
+ */
+int tsm_vte_set_sixel_registers(struct tsm_vte *vte, unsigned int count,
+				bool private_registers);
 
 /**
  * @brief Set backspace key to send either backspace or delete.

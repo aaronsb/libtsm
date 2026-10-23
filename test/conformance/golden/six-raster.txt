@@ -1,0 +1,14 @@
+size 12x4
+cursor 6,0
+flags AUTO_WRAP
+reply 1b5b323b31521b5b323b34521b5b313b3752
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+placement 0 row 0 col 0 box 2x2 at 0,0 size 16x20 src 0,0 16x20 cell 8x16 z 0 above-text sixel image 0 opaque
+placement 1 row 0 col 3 box 2x2 at 0,0 size 16x20 src 0,0 16x20 cell 8x16 z 0 above-text sixel image 1
+placement 2 row 0 col 6 box 1x1 at 0,0 size 8x12 src 0,0 8x12 cell 8x16 z 0 above-text sixel image 2 opaque
+image 0 16x20 digest 88c20bc5
+image 1 16x20 digest 8d9afd85
+image 2 8x12 digest cb7e24c5

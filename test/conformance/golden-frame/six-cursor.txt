@@ -1,0 +1,17 @@
+size 12x6
+cursor 8,0
+flags AUTO_WRAP
+reply 1b5b343b33521b5b313b3952
+palette legacy fg=#e5e5e5 bg=#000000
+changed 72
+frame-cursor 8,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 |ab|
+row 5 ||
+placement 0 row 1 col 2 box 2x3 at 0,0 size 16x40 src 0,0 16x40 cell 8x16 z 0 above-text sixel image 0 opaque changed
+placement 1 row 0 col 8 box 1x1 at 0,0 size 8x1 src 0,0 8x1 cell 8x16 z 0 above-text sixel image 1 opaque changed
+image 0 16x40 digest 01d5d2c5
+image 1 8x1 digest 8bd2fab5

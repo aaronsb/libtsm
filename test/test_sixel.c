@@ -897,6 +897,132 @@ START_TEST(test_sixel_growth)
 }
 END_TEST
 
+START_TEST(test_sixel_work)
+{
+	struct tsm_sixel *s = new_decoder(0, 0, 0);
+	struct tsm_sixel_image img;
+	uint64_t w0;
+
+	/* bytes count one each, and so do gaps: '?' sets no pixel */
+	tsm_sixel_begin(s, 7, 1, NULL);
+	w0 = tsm_sixel_work(s);
+	tsm_sixel_feed(s, "!100?$", 6);
+	ck_assert_uint_eq(tsm_sixel_work(s) - w0, 6);
+
+	/* a repeat counts the buffer it needs, and the pixels it writes */
+	w0 = tsm_sixel_work(s);
+	tsm_sixel_feed(s, "!100~", 5);
+	ck_assert_uint_ge(tsm_sixel_work(s) - w0, 5 + 100 * 6);
+	w0 = tsm_sixel_work(s);
+	tsm_sixel_feed(s, "$!100~", 6);
+	ck_assert_uint_ge(tsm_sixel_work(s) - w0, 6 + 100 * 6);
+	/* and so does one sixel at a time, all six rows */
+	w0 = tsm_sixel_work(s);
+	tsm_sixel_feed(s, "$~~", 3);
+	ck_assert_uint_eq(tsm_sixel_work(s) - w0, 3 + 2 * 6);
+
+	/* and ST the picture it fills */
+	w0 = tsm_sixel_work(s);
+	ck_assert_int_eq(tsm_sixel_finish(s, &img), 0);
+	ck_assert_uint_ge(tsm_sixel_work(s) - w0, 100 * 6);
+	image_free(&img);
+	tsm_sixel_free(s);
+}
+END_TEST
+
+/* the picture "!10000~$" repeated @n times makes, fed whole */
+static void flood(char *data, unsigned int n)
+{
+	unsigned int i;
+
+	data[0] = 0;
+	for (i = 0; i < n; ++i)
+		strcat(data, "!10000~$");
+}
+
+START_TEST(test_sixel_feed_some)
+{
+	struct tsm_sixel *s = new_decoder(0, 0, 0);
+	struct tsm_sixel_image whole, part;
+	char data[8 * 64 + 1];
+	size_t len, pos, n, calls = 0;
+	uint64_t w0;
+
+	flood(data, 64);
+	len = strlen(data);
+	ck_assert_int_eq(decode_with(s, 7, 2, NULL, data, &whole), 0);
+
+	/* a limit stops the feed once the work reaches it: here after each
+	 * repeat, one command's 60000 pixels */
+	tsm_sixel_begin(s, 7, 2, NULL);
+	for (pos = 0; pos < len; pos += n) {
+		w0 = tsm_sixel_work(s);
+		n = tsm_sixel_feed_some(s, data + pos, len - pos, w0 + 1000);
+		ck_assert_uint_ge(n, 1);
+		ck_assert_uint_lt(n, 8 + 1);
+		++calls;
+	}
+	ck_assert_uint_ge(calls, 64);
+	ck_assert_int_eq(tsm_sixel_finish(s, &part), 0);
+
+	/* the pieces make the same picture */
+	ck_assert_uint_eq(part.width, whole.width);
+	ck_assert_uint_eq(part.height, whole.height);
+	ck_assert(!memcmp(part.pixels, whole.pixels,
+			  (size_t)whole.width * whole.height * 4));
+	image_free(&part);
+	image_free(&whole);
+
+	/* a limit already reached still consumes a byte */
+	tsm_sixel_begin(s, 7, 2, NULL);
+	ck_assert_uint_eq(tsm_sixel_feed_some(s, data, len, 0), 1);
+	ck_assert_uint_eq(tsm_sixel_feed_some(s, data, 0, 0), 0);
+	tsm_sixel_abort(s);
+	tsm_sixel_free(s);
+}
+END_TEST
+
+START_TEST(test_sixel_raster_deferred)
+{
+	struct tsm_sixel *s = new_decoder(0, 0, 0);
+	struct tsm_sixel_image img;
+	uint64_t w0;
+	unsigned int i;
+
+	/* raster attributes reserve their area and allocate none of it:
+	 * 8192 of them cost their bytes and nothing else */
+	tsm_sixel_begin(s, 7, 1, NULL);
+	w0 = tsm_sixel_work(s);
+	for (i = 0; i < 8192; ++i)
+		tsm_sixel_feed(s, "\"1;1;2000;2000", 14);
+	ck_assert_uint_eq(tsm_sixel_work(s) - w0, 8192 * 14);
+	ck_assert_uint_eq(reserved, 2000 * 2000 * 4);
+
+	/* the first sixel allocates the raster area, inside the reservation */
+	w0 = tsm_sixel_work(s);
+	tsm_sixel_feed(s, "#1~", 3);
+	ck_assert_uint_ge(tsm_sixel_work(s) - w0, 2000 * 2000);
+	ck_assert_uint_eq(reserved, 2000 * 2000 * 4);
+	ck_assert_int_eq(tsm_sixel_finish(s, &img), 0);
+	ck_assert_uint_eq(img.width, 2000);
+	ck_assert_uint_eq(img.height, 2000);
+	ck_assert_uint_eq(px(&img, 0, 0), VT_BLUE);
+	ck_assert_uint_eq(px(&img, 1, 0), CLEAR);
+	image_free(&img);
+
+	/* with no sixel at all, ST makes the raster area */
+	tsm_sixel_begin(s, 7, 2, NULL);
+	tsm_sixel_feed(s, "\"1;1;30;20$", 11);
+	ck_assert_uint_eq(reserved, 30 * 20 * 4);
+	ck_assert_int_eq(tsm_sixel_finish(s, &img), 0);
+	ck_assert_uint_eq(img.width, 30);
+	ck_assert_uint_eq(img.height, 20);
+	ck_assert_uint_eq(px(&img, 29, 19), BLACK);
+	image_free(&img);
+	tsm_sixel_free(s);
+}
+END_TEST
+
 /* Fixtures */
 
 struct ppm {
@@ -1109,6 +1235,9 @@ TEST_DEFINE_CASE(edges)
 	TEST(test_sixel_huge_raster)
 	TEST(test_sixel_budget_required)
 	TEST(test_sixel_raster_reserved)
+	TEST(test_sixel_raster_deferred)
+	TEST(test_sixel_work)
+	TEST(test_sixel_feed_some)
 	TEST(test_sixel_truncated)
 	TEST(test_sixel_abort)
 TEST_END_CASE

@@ -51,8 +51,15 @@
  *
  * Memory: every byte the picture holds is asked of the reserve callback
  * first. Raster attributes reserve width * height * 4 before any sixel, so a
- * picture that cannot fit is refused before it is decoded; growth past them
- * reserves the old and new buffers together while rows are copied.
+ * picture that cannot fit is refused before it is decoded, and the first
+ * sixel allocates it; growth past them reserves the old and new buffers
+ * together while rows are copied.
+ *
+ * Work: a few payload bytes can make the decoder write many pixels (a repeat
+ * fills up to max-graphic-size columns, raster attributes size a picture
+ * that ST fills). The decoder counts bytes read and pixels touched, so its
+ * caller can bound the work one call does by that count rather than by
+ * bytes.
  */
 
 #ifndef TSM_SIXEL_H
@@ -130,6 +137,20 @@ void tsm_sixel_begin(struct tsm_sixel *sixel, int p1, int p2,
 
 /* Payload bytes, the bytes between the final 'q' and ST. */
 void tsm_sixel_feed(struct tsm_sixel *sixel, const char *buf, size_t len);
+
+/*
+ * As tsm_sixel_feed, but stops after the byte that brings tsm_sixel_work()
+ * to @limit or past it, and returns the bytes consumed: at least one when
+ * @len is not 0.
+ */
+size_t tsm_sixel_feed_some(struct tsm_sixel *sixel, const char *buf,
+			   size_t len, uint64_t limit);
+
+/*
+ * The decoder's work since tsm_sixel_new(): payload bytes read, plus every
+ * pixel written, allocated or copied. It only grows.
+ */
+uint64_t tsm_sixel_work(const struct tsm_sixel *sixel);
 
 /*
  * Ends the image (ST). Returns 0 and fills @image, or -ENODATA for an empty

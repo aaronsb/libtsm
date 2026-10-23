@@ -15,11 +15,12 @@ libtsm_srcs = [
 # tsm_screen_attr grew from 12 to 16 bytes (fork.1), struct tsm_screen_cell
 # from 12 to 16 with the underline colour (fork.2), tsm_screen_frame_since was
 # added (fork.3), and struct tsm_frame grew a placement list beside the image
-# calls (fork.4, ADR-103). Its own soname keeps a program built against
+# calls (fork.4, ADR-103), and the vte gained sixel and a bounded input call
+# (fork.5). Its own soname keeps a program built against
 # upstream's header from loading it as libtsm.so.4, and the file name keeps
 # an install from replacing upstream's. Raise the number after "fork" on every
 # further ABI change, and keep it in step with the project version.
-soversion = '4-fork.4'
+soversion = '4-fork.5'
 
 # Export symbol with version
 link_flags = '-Wl,--version-script=' + meson.current_source_dir() + '/libtsm.sym'

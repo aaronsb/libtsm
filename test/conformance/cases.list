@@ -81,6 +81,26 @@ img-alt-1047 12 4
 img-alt-shown 12 4
 img-ris 12 4
 img-decstr 12 4
+six-cursor-xterm 40 12
+six-cursor 12 6
+six-cursor-8452 12 4
+six-scroll-bottom 12 4
+six-scroll-region 12 6
+six-decsdm 12 4
+six-colours 12 4
+six-raster 12 4
+six-registers 12 4
+six-registers-ris 12 4
+six-max-size 12 4
+six-cancel 12 4
+six-text 12 4
+six-scrollback 12 4
+six-clear 12 4
+six-replies 12 4
+six-off 12 4
+six-img2sixel-palette16 12 4
+six-img2sixel-gradient 12 6
+six-img2sixel-highcolor 12 4
 # Real programs, recorded by record-programs.py (checkpoints in cases/<name>.cuts):
 prog-shell 80 24
 prog-less 80 24

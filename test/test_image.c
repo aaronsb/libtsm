@@ -16,6 +16,9 @@
 #include <stdio.h>
 #include <string.h>
 
+/* what an image of @w x @h pixels costs the budget */
+#define COST(w, h) ((size_t)(w) * (h) * 4 + TSM_SCREEN_IMAGE_OVERHEAD)
+
 static void log_cb(void *data, const char *file, int line, const char *func,
 		   const char *subs, unsigned int sev, const char *format, va_list args)
 {
@@ -163,7 +166,7 @@ START_TEST(test_image_store)
 	img.kind = TSM_IMAGE_KITTY;
 	img.id = 1;
 	ck_assert_int_eq(tsm_screen_test_image(screen, &img, &key), 0);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 32);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(4, 2));
 
 	ck_assert_int_eq(tsm_screen_frame_image(screen, key, &fi), 0);
 	ck_assert_uint_eq(fi.width, 4);
@@ -179,7 +182,7 @@ START_TEST(test_image_store)
 	ck_assert_uint_ne(other, key);
 	ck_assert_int_eq(tsm_screen_frame_image(screen, other, &fi), 0);
 	ck_assert(!fi.opaque);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 64);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 2 * COST(4, 2));
 
 	/* refusals */
 	ck_assert_int_eq(tsm_screen_frame_image(screen, key + 12345, &fi), -ENOENT);
@@ -213,8 +216,8 @@ START_TEST(test_image_eviction_order)
 
 	setup(&screen, &vte);
 	tsm_screen_set_max_sb(screen, 100);
-	/* 8x16 images of 512 bytes, room for five */
-	tsm_screen_set_image_limit(screen, 5 * 512);
+	/* 8x16 images, room for five */
+	tsm_screen_set_image_limit(screen, 5 * COST(8, 16));
 
 	sb = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
 	place(screen, sb, 0, 0);
@@ -223,7 +226,7 @@ START_TEST(test_image_eviction_order)
 	old = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 3, false, 0xffff0000);
 	transient = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 4, true, 0xffffffff);
 	newer = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 5, false, 0xff123456);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 5 * 512);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 5 * COST(8, 16));
 
 	/* two lines scroll: row 0 enters scrollback, row 4 moves to row 2 */
 	input_str(vte, "\e[5;1H\n\n");
@@ -231,54 +234,147 @@ START_TEST(test_image_eviction_order)
 	ck_assert(tsm_screen_image_victim(screen, &v));
 	ck_assert_uint_eq(v.key, transient);
 	ck_assert_uint_eq(v.rank, TSM_IMAGE_UNPLACED_TRANSIENT);
-	ck_assert_uint_eq(v.bytes, 512);
+	ck_assert_uint_eq(v.bytes, COST(8, 16));
 
 	/* a sixth image evicts the transient one */
 	key = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 6, false, 0xff000000);
 	ck_assert(!image_exists(screen, transient));
 	ck_assert(image_exists(screen, old));
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 5 * 512);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 5 * COST(8, 16));
 
 	/* then the least recently used unplaced one */
 	ck_assert(tsm_screen_image_victim(screen, &v));
 	ck_assert_uint_eq(v.key, old);
 	ck_assert_uint_eq(v.rank, TSM_IMAGE_UNPLACED);
-	ck_assert_uint_eq(tsm_screen_image_evict(screen), 512);
+	ck_assert_uint_eq(tsm_screen_image_evict(screen), COST(8, 16));
 	ck_assert(!image_exists(screen, old));
 	ck_assert(tsm_screen_image_victim(screen, &v));
 	ck_assert_uint_eq(v.key, newer);
-	ck_assert_uint_eq(tsm_screen_image_evict(screen), 512);
+	ck_assert_uint_eq(tsm_screen_image_evict(screen), COST(8, 16));
 	ck_assert(tsm_screen_image_victim(screen, &v));
 	ck_assert_uint_eq(v.key, key);
-	ck_assert_uint_eq(tsm_screen_image_evict(screen), 512);
+	ck_assert_uint_eq(tsm_screen_image_evict(screen), COST(8, 16));
 
 	/* then the one placed only in scrollback, with its placement */
 	ck_assert(tsm_screen_image_victim(screen, &v));
 	ck_assert_uint_eq(v.key, sb);
 	ck_assert_uint_eq(v.rank, TSM_IMAGE_SCROLLBACK);
-	ck_assert_uint_eq(tsm_screen_image_evict(screen), 512);
+	ck_assert_uint_eq(tsm_screen_image_evict(screen), COST(8, 16));
 	ck_assert(!image_exists(screen, sb));
 
 	/* never the one on the screen */
 	ck_assert(!tsm_screen_image_victim(screen, &v));
 	ck_assert_uint_eq(tsm_screen_image_evict(screen), 0);
 	ck_assert(image_exists(screen, on_screen));
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 512);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(8, 16));
 
 	/* a new image that cannot fit is refused, and evicts nothing */
 	tsm_screen_set_image_limit(screen, 1000);
 	r = try_image(screen, 8, 16, 7, &key);
 	ck_assert_int_eq(r, -ENOSPC);
 	ck_assert(image_exists(screen, on_screen));
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 512);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(8, 16));
 
 	/* nor does one larger than the whole limit */
-	tsm_screen_set_image_limit(screen, 4 * 512);
+	tsm_screen_set_image_limit(screen, 4 * COST(8, 16));
 	newer = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 8, false, 0xff000000);
 	r = try_image(screen, 16, 64, 9, &key);
 	ck_assert_int_eq(r, -ENOSPC);
 	ck_assert(image_exists(screen, newer));
 
+	teardown(screen, vte);
+}
+END_TEST
+
+/*
+ * A store holds at most TSM_SCREEN_IMAGES_PER_STORE images: one more evicts
+ * in the usual order, from that store, or is refused when every image there
+ * is placed on the screen's lines. Each image also costs
+ * TSM_SCREEN_IMAGE_OVERHEAD beside its pixels.
+ */
+START_TEST(test_image_store_cap)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	uint64_t first, second, key;
+	unsigned int i;
+
+	setup(&screen, &vte);
+	first = make_image(screen, 1, 1, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	second = make_image(screen, 1, 1, TSM_IMAGE_KITTY, 2, false, 0xff0000ff);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 2 * COST(1, 1));
+	for (i = 3; i <= TSM_SCREEN_IMAGES_PER_STORE; ++i)
+		make_image(screen, 1, 1, TSM_IMAGE_KITTY, i, false, 0xff0000ff);
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen),
+			  TSM_SCREEN_IMAGES_PER_STORE);
+
+	/* one more evicts the least recently used unplaced image */
+	key = make_image(screen, 1, 1, TSM_IMAGE_KITTY, 5000, false, 0xff0000ff);
+	ck_assert(!image_exists(screen, first));
+	ck_assert(image_exists(screen, second));
+	ck_assert(image_exists(screen, key));
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen),
+			  TSM_SCREEN_IMAGES_PER_STORE);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
+			  TSM_SCREEN_IMAGES_PER_STORE * COST(1, 1));
+
+	/* replacing an id adds no image, so it needs no room */
+	ck_assert_int_eq(try_image(screen, 1, 1, 5000, &key), 0);
+	ck_assert(image_exists(screen, second));
+
+	/* the alternate screen's store has room of its own */
+	input_str(vte, "\e[?1049h");
+	make_image(screen, 1, 1, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen),
+			  TSM_SCREEN_IMAGES_PER_STORE + 1);
+	input_str(vte, "\e[?1049l");
+
+	teardown(screen, vte);
+
+	/* every image placed on the screen: the next is refused */
+	setup(&screen, &vte);
+	for (i = 1; i <= TSM_SCREEN_IMAGES_PER_STORE; ++i)
+		place(screen, make_image(screen, 1, 1, TSM_IMAGE_KITTY, i, false,
+					 0xff0000ff), 0, 0);
+	ck_assert_int_eq(try_image(screen, 1, 1, 5000, &key), -ENOSPC);
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen),
+			  TSM_SCREEN_IMAGES_PER_STORE);
+	teardown(screen, vte);
+}
+END_TEST
+
+/*
+ * A kitty id transmitted again while a cut piece still owes its charge: what
+ * is owed is settled first, which may evict the old image, and the new one
+ * then stands alone rather than replacing a freed one.
+ */
+START_TEST(test_image_replace_while_owed)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct tsm_screen_attr attr = { 0 };
+	uint64_t key;
+
+	setup(&screen, &vte);
+	tsm_vte_set_sixel(vte, true);
+	tsm_screen_set_image_limit(screen, COST(4, 4) + COST(24, 6));
+	make_image(screen, 4, 4, TSM_IMAGE_KITTY, 7, false, 0xff0000ff);
+	input_str(vte, "\e[1;1H\eP0;0q!24~\e\\");
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
+			  COST(4, 4) + COST(24, 6));
+
+	/* a write over the middle cell, by the host outside an input call */
+	tsm_screen_move_to(screen, 1, 0);
+	tsm_screen_write(screen, 'X', &attr);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(4, 4) +
+			  COST(24, 6) + TSM_SCREEN_PLACEMENT_OVERHEAD);
+
+	/* the piece's charge evicts the unplaced kitty image before id 7 is
+	 * looked up; the new id 7 then has no room beside the placed sixel */
+	ck_assert_int_eq(try_image(screen, 4, 4, 7, &key), -ENOSPC);
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen), 1);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
+			  COST(24, 6) + TSM_SCREEN_PLACEMENT_OVERHEAD);
 	teardown(screen, vte);
 }
 END_TEST
@@ -384,7 +480,7 @@ START_TEST(test_image_host_budget)
 {
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
-	struct host h = { .budget = 2 * 512 };
+	struct host h = { .budget = 2 * COST(8, 16) };
 	uint64_t a, b, c, key;
 
 	setup(&screen, &vte);
@@ -393,21 +489,21 @@ START_TEST(test_image_host_budget)
 
 	a = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
 	ck_assert_uint_eq(h.reserves, 1);
-	ck_assert_uint_eq(h.last_reserve, 512);
+	ck_assert_uint_eq(h.last_reserve, COST(8, 16));
 	b = make_image(screen, 8, 16, TSM_IMAGE_SIXEL, 0, false, 0xff0000ff);
 	place(screen, b, 0, 0);
-	ck_assert_uint_eq(h.used, 1024);
+	ck_assert_uint_eq(h.used, 2 * COST(8, 16));
 
 	/* refused by the host: nothing is stored */
 	ck_assert_int_eq(try_image(screen, 8, 16, 3, &key), -ENOSPC);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
-	ck_assert_uint_eq(h.used, 1024);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 2 * COST(8, 16));
+	ck_assert_uint_eq(h.used, 2 * COST(8, 16));
 
 	/* a sixel image goes with its last placement, and is released */
 	input_str(vte, "\e[2J");
 	ck_assert(!image_exists(screen, b));
 	ck_assert_uint_eq(h.releases, 1);
-	ck_assert_uint_eq(h.used, 512);
+	ck_assert_uint_eq(h.used, COST(8, 16));
 
 	/* a host that evicts makes room, releasing before it grants */
 	h.evict_from = screen;
@@ -415,7 +511,7 @@ START_TEST(test_image_host_budget)
 	ck_assert(!image_exists(screen, a));
 	ck_assert(image_exists(screen, c));
 	ck_assert_uint_eq(h.releases, 2);
-	ck_assert_uint_eq(h.used, 1024);
+	ck_assert_uint_eq(h.used, COST(8, 32));
 
 	/* the screen releases what it holds when freed */
 	teardown(screen, vte);
@@ -432,7 +528,7 @@ START_TEST(test_image_host_budget_install)
 {
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
-	struct host a = { .budget = 4 * 512 }, b = { .budget = 512 };
+	struct host a = { .budget = 4 * COST(8, 16) }, b = { .budget = COST(8, 16) };
 	uint64_t key;
 
 	setup(&screen, &vte);
@@ -443,23 +539,23 @@ START_TEST(test_image_host_budget_install)
 	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve, host_release, &b),
 			 -ENOSPC);
 	ck_assert_uint_eq(b.used, 0);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 2 * COST(8, 16));
 
 	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve, host_release, &a), 0);
-	ck_assert_uint_eq(a.used, 1024);
+	ck_assert_uint_eq(a.used, 2 * COST(8, 16));
 	make_image(screen, 8, 16, TSM_IMAGE_KITTY, 3, false, 0xff0000ff);
-	ck_assert_uint_eq(a.used, 1536);
+	ck_assert_uint_eq(a.used, 3 * COST(8, 16));
 
 	/* RIS frees all three, released to the host that reserved them */
 	input_str(vte, "\ec");
 	ck_assert_uint_eq(a.used, 0);
 
 	/* moving to another host hands the bytes over */
-	b.budget = 4 * 512;
+	b.budget = 4 * COST(8, 16);
 	make_image(screen, 8, 16, TSM_IMAGE_KITTY, 4, false, 0xff0000ff);
 	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve, host_release, &b), 0);
 	ck_assert_uint_eq(a.used, 0);
-	ck_assert_uint_eq(b.used, 512);
+	ck_assert_uint_eq(b.used, COST(8, 16));
 
 	/* removing the host gives them back; the screen's own limit then applies */
 	tsm_screen_set_image_limit(screen, 1000);
@@ -486,27 +582,27 @@ START_TEST(test_image_replace_refused)
 {
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
-	struct host h = { .budget = 2 * 512 };
+	struct host h = { .budget = 2 * COST(8, 16) };
 	uint64_t old, other, key;
 
 	setup(&screen, &vte);
-	tsm_screen_set_image_limit(screen, 2 * 512);
+	tsm_screen_set_image_limit(screen, 2 * COST(8, 16));
 	old = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
 	place(screen, old, 0, 0);
 	other = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff0000ff);
 	place(screen, other, 2, 0);
 
-	/* 1024 bytes for id 1 cannot fit beside id 2's placed 512 */
+	/* an 8x32 id 1 cannot fit beside id 2's placed 8x16 */
 	ck_assert_int_eq(try_image(screen, 8, 32, 1, &key), -ENOSPC);
 	ck_assert(image_exists(screen, old));
 	ck_assert_uint_eq(tsm_screen_frame(screen)->placement_count, 2);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 2 * COST(8, 16));
 
-	/* 512 bytes fit in the old one's room */
+	/* an 8x16 fits in the old one's room */
 	ck_assert_int_eq(try_image(screen, 8, 16, 1, &key), 0);
 	ck_assert(!image_exists(screen, old));
 	ck_assert(image_exists(screen, key));
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 2 * COST(8, 16));
 
 	/* under a host that evicts: the image being replaced is not its victim */
 	input_str(vte, "\ec");
@@ -518,7 +614,7 @@ START_TEST(test_image_replace_refused)
 	ck_assert_int_eq(try_image(screen, 8, 32, 1, &key), -ENOSPC);
 	ck_assert(image_exists(screen, old));
 	ck_assert(image_exists(screen, other));
-	ck_assert_uint_eq(h.used, 1024);
+	ck_assert_uint_eq(h.used, 2 * COST(8, 16));
 
 	teardown(screen, vte);
 	ck_assert_uint_eq(h.used, 0);
@@ -535,7 +631,7 @@ START_TEST(test_image_replace_host)
 {
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
-	struct host h = { .budget = 2 * 512 };
+	struct host h = { .budget = 2 * COST(8, 16) };
 	uint64_t old, other, key;
 	unsigned int reserves;
 
@@ -545,32 +641,32 @@ START_TEST(test_image_replace_host)
 	place(screen, old, 0, 0);
 	other = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff0000ff);
 	place(screen, other, 2, 0);
-	ck_assert_uint_eq(h.used, 1024);
+	ck_assert_uint_eq(h.used, 2 * COST(8, 16));
 
 	reserves = h.reserves;
 	ck_assert_int_eq(try_image(screen, 8, 16, 1, &key), 0);
 	ck_assert(!image_exists(screen, old));
 	ck_assert_uint_eq(h.reserves, reserves);
-	ck_assert_uint_eq(h.used, 1024);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
+	ck_assert_uint_eq(h.used, 2 * COST(8, 16));
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 2 * COST(8, 16));
 
 	old = key;
 	ck_assert_int_eq(try_image(screen, 8, 8, 1, &key), 0);
 	ck_assert(!image_exists(screen, old));
-	ck_assert_uint_eq(h.used, 768);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 768);
+	ck_assert_uint_eq(h.used, COST(8, 16) + COST(8, 8));
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(8, 16) + COST(8, 8));
 
 	/* 1024 bytes need 768 more: past the budget, refused, the old kept */
 	old = key;
 	ck_assert_int_eq(try_image(screen, 8, 32, 1, &key), -ENOSPC);
 	ck_assert_uint_eq(h.last_reserve, 768);
 	ck_assert(image_exists(screen, old));
-	ck_assert_uint_eq(h.used, 768);
+	ck_assert_uint_eq(h.used, COST(8, 16) + COST(8, 8));
 
 	/* 512 bytes, 256 more, fit */
 	ck_assert_int_eq(try_image(screen, 8, 16, 1, &key), 0);
 	ck_assert_uint_eq(h.last_reserve, 256);
-	ck_assert_uint_eq(h.used, 1024);
+	ck_assert_uint_eq(h.used, 2 * COST(8, 16));
 
 	teardown(screen, vte);
 	ck_assert_uint_eq(h.used, 0);
@@ -665,22 +761,22 @@ START_TEST(test_image_lifetime)
 	place(screen, sixel, 0, 0);
 	kitty = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
 	place(screen, kitty, 2, 0);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 2 * COST(8, 16));
 
 	input_str(vte, "\e[2J");
 	ck_assert(!image_exists(screen, sixel));
 	ck_assert(image_exists(screen, kitty));
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 512);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(8, 16));
 	ck_assert_uint_eq(tsm_screen_frame(screen)->placement_count, 0);
 
 	/* the alternate screen's store is emptied when it is left */
 	input_str(vte, "\e[?1049h");
 	kitty = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
 	place(screen, kitty, 0, 0);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 2 * COST(8, 16));
 	input_str(vte, "\e[?1049l");
 	ck_assert(!image_exists(screen, kitty));
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 512);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(8, 16));
 
 	/* RIS empties both */
 	input_str(vte, "\ec");
@@ -727,7 +823,7 @@ START_TEST(test_image_kitty_replace)
 	ck_assert_uint_ne(second, first);
 	ck_assert(!image_exists(screen, first));
 	ck_assert_uint_eq(tsm_screen_frame(screen)->placement_count, 0);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(16, 16));
 
 	teardown(screen, vte);
 }
@@ -1295,6 +1391,8 @@ TEST_DEFINE_CASE(store)
 	TEST(test_image_eviction_order)
 	TEST(test_image_eviction_partly_on_screen)
 	TEST(test_image_lru)
+	TEST(test_image_store_cap)
+	TEST(test_image_replace_while_owed)
 	TEST(test_image_host_budget)
 	TEST(test_image_host_budget_install)
 	TEST(test_image_replace_refused)
