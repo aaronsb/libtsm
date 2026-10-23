@@ -113,8 +113,6 @@ cells 21 0-79 fg=#5c5cff bg=#000000 ul=#5c5cff
 row 22 |~|
 cells 22 0-79 fg=#5c5cff bg=#000000 ul=#5c5cff
 row 23 |"src/main.c" 9L, 150B                                         4,1           All|
-cells 23 52-52 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline
-cells 23 62-66 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 underline
 checkpoint 2193
 size 80x24
 cursor 23,3
