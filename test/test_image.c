@@ -1533,7 +1533,10 @@ START_TEST(test_changed_since_wrap)
 				 0xff00ff00), 0, 0);
 	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
 	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
-	tsm_screen_image_evict(screen);
+	/* freed before the wrap: its removal's age is from before it too, and
+	 * must not read as newer than every frame after */
+	input_str(vte, "\e[2J");
+	ck_assert_uint_eq(tsm_screen_test_placement_count(screen), 0);
 	while (screen->age_cnt > 1000)
 		input_str(vte, "\e[3;3Hx");
 	ck_assert(tsm_screen_frame_changed_since(screen, &a));
@@ -1647,18 +1650,22 @@ static void check_invariants(struct tsm_screen *con)
  */
 struct caller {
 	struct tsm_frame_age age;
+	unsigned int cols, rows;
+	struct tsm_frame_cell cells[14 * 12];
 	struct tsm_frame_cursor cursor;
 	struct tsm_frame_placement places[64];
 	unsigned int nplaces;
 };
 
 /* @c's next frame, and when the query said unchanged, a frame identical to
- * its last: no cell or placement flagged, the same cursor and placements */
+ * its last: no cell or placement flagged, and the same cells, cursor and
+ * placements, compared by content as well as by the flags the ages set */
 static void caller_frame(struct tsm_screen *screen, struct caller *c)
 {
 	const struct tsm_frame_placement *p;
 	struct tsm_frame_placement q;
 	struct tsm_frame_cursor cur;
+	struct tsm_frame_cell cell;
 	const struct tsm_frame *f;
 	bool same = !tsm_screen_frame_changed_since(screen, &c->age);
 	unsigned int x, y, i;
@@ -1666,10 +1673,15 @@ static void caller_frame(struct tsm_screen *screen, struct caller *c)
 	f = tsm_screen_frame_since(screen, &c->age);
 	ck_assert_ptr_ne(f, NULL);
 	if (same) {
+		ck_assert_uint_eq(f->cols, c->cols);
+		ck_assert_uint_eq(f->rows, c->rows);
 		for (y = 0; y < f->rows; ++y)
-			for (x = 0; x < f->cols; ++x)
-				ck_assert(!(tsm_frame_cell_at(f, x, y)->flags &
-					    TSM_FRAME_CHANGED));
+			for (x = 0; x < f->cols; ++x) {
+				cell = *tsm_frame_cell_at(f, x, y);
+				ck_assert(!(cell.flags & TSM_FRAME_CHANGED));
+				ck_assert_mem_eq(&cell, &c->cells[y * f->cols + x],
+						 sizeof(cell));
+			}
 		/* a hidden cursor moves without drawing */
 		cur = f->cursor;
 		cur.cell.flags &= ~TSM_FRAME_CHANGED;
@@ -1682,6 +1694,15 @@ static void caller_frame(struct tsm_screen *screen, struct caller *c)
 			ck_assert_mem_eq(p, &c->places[i], sizeof(*p));
 		}
 	}
+	ck_assert_uint_le((size_t)f->cols * f->rows, 14 * 12);
+	c->cols = f->cols;
+	c->rows = f->rows;
+	for (y = 0; y < f->rows; ++y)
+		for (x = 0; x < f->cols; ++x) {
+			cell = *tsm_frame_cell_at(f, x, y);
+			cell.flags &= ~TSM_FRAME_CHANGED;
+			c->cells[y * f->cols + x] = cell;
+		}
 	c->cursor = f->cursor;
 	c->cursor.cell.flags &= ~TSM_FRAME_CHANGED;
 	ck_assert_uint_le(f->placement_count, 64);
