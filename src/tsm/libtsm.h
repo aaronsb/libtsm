@@ -439,6 +439,8 @@ struct tsm_frame_cursor {
 	struct tsm_frame_cell cell;
 };
 
+struct tsm_frame_placement;
+
 struct tsm_frame {
 	unsigned int cols;
 	unsigned int rows;
@@ -450,6 +452,13 @@ struct tsm_frame {
 	size_t cell_size;
 	const struct tsm_frame_cell *cells;
 	struct tsm_frame_cursor cursor;
+	/*
+	 * With TSM_SCREEN_IMAGES: every placement with a visible row, in draw
+	 * order, each placement_size bytes apart, as cells are cell_size apart.
+	 */
+	size_t placement_size;
+	unsigned int placement_count;
+	const struct tsm_frame_placement *placements;
 };
 
 /* cell @x, @y of @frame */
@@ -524,6 +533,224 @@ const struct tsm_frame *tsm_screen_frame_since(struct tsm_screen *con,
  */
 const uint32_t *tsm_screen_frame_cluster(struct tsm_screen *con, uint64_t key,
 					 size_t *len);
+
+/*
+ * Images (ADR-103 in aaronsb/kmscon): pictures sixel and the kitty graphics
+ * protocol store, and placements that put them on the screen. Defined when
+ * the calls and structs below exist.
+ *
+ * Each screen buffer, main and alternate, has its own store. A placement is
+ * anchored to the line holding its top row, so it travels with the text into
+ * scrollback and back. Text and erase remove the part of a sixel placement
+ * they cover; of the erase commands only ED 2 touches a kitty placement.
+ */
+#define TSM_SCREEN_IMAGES 1
+
+enum tsm_image_kind {
+	TSM_IMAGE_SIXEL		= 0,
+	TSM_IMAGE_KITTY		= 1,
+};
+
+/* the composition bands a placement's z chooses, drawn in this order */
+enum tsm_frame_band {
+	TSM_FRAME_BAND_BELOW_BG		= 0,	/* z < -1073741824: under cell
+						   backgrounds, showing through
+						   default-background cells only */
+	TSM_FRAME_BAND_BELOW_TEXT	= 1,	/* z < 0: over backgrounds, under
+						   glyphs and decorations */
+	TSM_FRAME_BAND_ABOVE_TEXT	= 2,	/* z >= 0, and every sixel */
+};
+
+/* struct tsm_frame_placement flags, beside TSM_FRAME_CHANGED */
+#define TSM_FRAME_OPAQUE	0x0200	/* no pixel of the image is below full alpha */
+
+struct tsm_frame_placement {
+	uint64_t key;			/* never reused */
+	uint64_t image_key;		/* for tsm_screen_frame_image */
+	/*
+	 * The box in cells: its top left at visible row @row, negative when
+	 * its top is above the view, and column @col; @cols by @rows cells.
+	 * Drawing clips it at the frame's right edge and bottom.
+	 */
+	int row;
+	unsigned int col;
+	unsigned int cols;
+	unsigned int rows;
+	/*
+	 * The picture's visible part: @width by @height pixels at @x, @y from
+	 * the box's top left, showing the image's pixels @src_x, @src_y,
+	 * @src_width by @src_height, scaled to that size. The pixel quantities
+	 * here are measured in cells of @cell_width by @cell_height, the cell
+	 * size the placement was made with; a renderer drawing other cells
+	 * scales them by its own over these.
+	 */
+	unsigned int x;
+	unsigned int y;
+	unsigned int width;
+	unsigned int height;
+	unsigned int src_x;
+	unsigned int src_y;
+	unsigned int src_width;
+	unsigned int src_height;
+	unsigned int cell_width;
+	unsigned int cell_height;
+	int32_t z;
+	uint8_t band;			/* enum tsm_frame_band */
+	uint8_t kind;			/* enum tsm_image_kind */
+	/*
+	 * TSM_FRAME_CHANGED when the placement was added, moved, clipped or
+	 * given new image data since this caller's previous frame, as cells
+	 * are flagged; TSM_FRAME_OPAQUE. A placement in the previous frame and
+	 * missing from this one, by key, was removed.
+	 */
+	uint16_t flags;
+};
+
+/* placement @i of @frame */
+static inline const struct tsm_frame_placement *
+tsm_frame_placement_at(const struct tsm_frame *frame, unsigned int i)
+{
+	return (const struct tsm_frame_placement *)((const char *)frame->placements +
+		(size_t)i * frame->placement_size);
+}
+
+struct tsm_frame_image {
+	unsigned int width;
+	unsigned int height;
+	size_t stride;			/* bytes from one row to the next */
+	const uint32_t *pixels;		/* premultiplied ARGB32, native endian */
+	bool opaque;			/* no pixel below full alpha */
+};
+
+/*
+ * The image @key names, as a frame's placements name it. Returns 0, or
+ * -ENOENT when no image has that key any more, and -EINVAL for NULL
+ * arguments. The pixels are valid until the screen next changes, as
+ * tsm_screen_frame_cluster's codepoints are.
+ */
+int tsm_screen_frame_image(struct tsm_screen *con, uint64_t key,
+			   struct tsm_frame_image *out);
+
+/*
+ * The cell size in pixels, the size the host reports through TIOCSWINSZ.
+ * Placements made from now on measure their pixel quantities in it; those
+ * made before keep the size they were made with. 8x16 until set.
+ */
+int tsm_screen_set_cell_size(struct tsm_screen *con, unsigned int width,
+			     unsigned int height);
+
+/*
+ * The image budget. An image costs width x height x 4 bytes, reserved before
+ * it is allocated. With a host budget, libtsm asks @reserve for each
+ * reservation (0 grants it, a negative errno refuses it) and tells @release
+ * of every image it frees, evictions included. A host that runs several
+ * screens evicts across them in its @reserve, with tsm_screen_image_victim
+ * and tsm_screen_image_evict, which may call @release before @reserve
+ * returns. NULL callbacks remove the host budget.
+ *
+ * Without one, each screen holds at most the limit tsm_screen_set_image_limit
+ * sets, TSM_SCREEN_IMAGE_LIMIT_DEFAULT until then, over its two stores, and
+ * evicts its own images in the order tsm_screen_image_victim gives.
+ *
+ * An image placed on a screen's own lines is never evicted; a new image that
+ * still does not fit is refused.
+ */
+typedef int (*tsm_screen_image_reserve_cb)(struct tsm_screen *con,
+					   size_t bytes, void *data);
+typedef void (*tsm_screen_image_release_cb)(struct tsm_screen *con,
+					    size_t bytes, void *data);
+
+void tsm_screen_set_image_budget(struct tsm_screen *con,
+				 tsm_screen_image_reserve_cb reserve,
+				 tsm_screen_image_release_cb release,
+				 void *data);
+
+/* Ghostty's per-screen default */
+#define TSM_SCREEN_IMAGE_LIMIT_DEFAULT ((size_t)320 * 1000 * 1000)
+
+void tsm_screen_set_image_limit(struct tsm_screen *con, size_t bytes);
+/* the bytes this screen's images hold, in both stores */
+size_t tsm_screen_get_image_bytes(struct tsm_screen *con);
+
+/* the eviction order: by rank, then least recently used first */
+enum tsm_image_rank {
+	TSM_IMAGE_UNPLACED_TRANSIENT	= 0,	/* no placement, kitty's N=1 */
+	TSM_IMAGE_UNPLACED		= 1,	/* no placement */
+	TSM_IMAGE_SCROLLBACK		= 2,	/* every placement wholly in
+						   scrollback */
+};
+
+struct tsm_image_victim {
+	uint64_t key;
+	unsigned int rank;		/* enum tsm_image_rank */
+	/* when it was last created, placed or drawn, on a clock all screens
+	 * in the process share, so a host can order victims across screens */
+	uint64_t last_use;
+	size_t bytes;
+};
+
+/*
+ * The image this screen evicts next, from either store: false when it has
+ * none it may evict.
+ */
+bool tsm_screen_image_victim(struct tsm_screen *con, struct tsm_image_victim *out);
+/* Evicts that image, with its placements; returns the bytes freed, 0 if none. */
+size_t tsm_screen_image_evict(struct tsm_screen *con);
+
+/*
+ * For tests only (ADR-103 step 3a): an image and a placement made without a
+ * protocol, as the sixel and kitty parsers will make them. Each acts on the
+ * store of the screen buffer in use.
+ */
+struct tsm_test_image {
+	unsigned int width;
+	unsigned int height;
+	const uint32_t *pixels;		/* width x height premultiplied ARGB32,
+					   copied */
+	uint8_t kind;			/* enum tsm_image_kind */
+	uint32_t id;			/* kitty: 1 to 2^32-1; an existing id is
+					   replaced, with its placements */
+	uint32_t number;		/* kitty's I, or 0 */
+	bool transient;			/* kitty's N=1 */
+};
+
+/* Stores @img and returns its key in @key: 0, -EINVAL, -ENOMEM or -ENOSPC. */
+int tsm_screen_test_image(struct tsm_screen *con, const struct tsm_test_image *img,
+			  uint64_t *key);
+
+struct tsm_test_placement {
+	uint64_t image;			/* the image's key */
+	uint32_t id;			/* kitty placement id, or 0; one with the
+					   same image and id is replaced */
+	unsigned int col;		/* the top left cell, on the screen */
+	unsigned int row;
+	unsigned int x;			/* pixel offset inside that cell */
+	unsigned int y;
+	/*
+	 * The box in cells. 0 for both: the picture at its pixel size, the box
+	 * rounded up to whole cells. Both given: the picture scaled to fit the
+	 * box less the offset, centred there. One given: the other follows the
+	 * source's aspect.
+	 */
+	unsigned int cols;
+	unsigned int rows;
+	/* the source rectangle, cut to the image; a width or height of 0
+	 * reaches the image's edge */
+	unsigned int src_x;
+	unsigned int src_y;
+	unsigned int src_width;
+	unsigned int src_height;
+	int32_t z;			/* kitty only; a sixel is z 0 */
+};
+
+/*
+ * Places an image and returns the placement's key in @key: 0, -EINVAL,
+ * -ENOENT (no such image) or -ENOMEM. A sixel image whose pixels are all
+ * opaque removes the parts of older sixel placements it covers, as text
+ * written there would. The cursor does not move.
+ */
+int tsm_screen_test_place(struct tsm_screen *con, const struct tsm_test_placement *pl,
+			  uint64_t *key);
 
 enum tsm_screen_cursor_style tsm_screen_get_cursor_style(struct tsm_screen *con);
 void tsm_screen_set_cursor_style(struct tsm_screen *con, enum tsm_screen_cursor_style type);

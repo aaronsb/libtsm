@@ -5,6 +5,7 @@ check_dep = dependency('check')
 # For tests that depends on libtsm and all dependencies
 test_deps = [shl_dep, check_dep, libtsm_dep, xkbcommon_dep]
 
+test_image = executable('test_image', 'test_image.c', dependencies: test_deps)
 test_htable = executable(
     'test_htable',
     'test_htable.c',
@@ -30,6 +31,7 @@ test_vte_mouse = executable(
 test_vte = executable('test_vte', 'test_vte.c', dependencies: test_deps)
 
 test('htable', test_htable)
+test('image', test_image)
 test('screen', test_screen)
 test('selection', test_selection)
 test('symbol', test_symbol)

@@ -50,6 +50,14 @@ The meson test `conformance-draw2` runs every case through this view and compare
 
 `tsm-replay --frame` prints each screen through `tsm_screen_frame`, the call that replaces draw2 (ADR-102 step 4). It shows what draw2 cannot: each cell's width, underline style, strike, dim, protect and inverse as applied. It also shows the cursor and the cell it draws, and how many cells the frame flagged as changed since the previous checkpoint. Rows print whole clusters, read back through `tsm_screen_frame_cluster`. The meson test `conformance-frame` compares the corpus with `golden-frame/`, which is fork-sourced like `golden-draw2/`. The draw2 view and its goldens stay until draw2 is removed.
 
+## Images
+
+Against a libtsm that declares `TSM_SCREEN_IMAGES` (ADR-103 in aaronsb/kmscon), every view ends with the image placements a frame lists, in draw order, and a digest of each image they show; the frame view adds each placement's changed flag. A screen with no placements prints nothing more, so the upstream-sourced goldens are untouched.
+
+No protocol makes images yet (sixel arrives with ADR-103 step 3c, the kitty graphics protocol with step 4a), so the `img-*` cases make them through test commands: an APC beginning `tsm-test;`, which tsm-replay runs through libtsm's test-only calls instead of feeding to the vte. The header of `tsm-replay.c` lists the commands. A tsm-replay built against upstream feeds the APC to the vte, which ignores it, and since every `img-*` case is fork-sourced, upstream's output for them is never compared.
+
+Each `img-*` case judges one row of ADR-103's screen-event table, for a sixel and a kitty placement side by side: text and erase over placements, ED 2 and ED 3, ICH and DCH, whole-screen and region scrolls, IL and DL, discarded lines, resize, the alternate screen, RIS and DECSTR. The parser sets no protected cells (DECSCA is not parsed), so `img-decsed` and `img-decsel` erase what ED and EL do, and `test_image.c` covers a selective erase around a protected cell.
+
 ## Pinned dev image
 
 `DEV_BASE` (the `archlinux:base-devel` digest) and `DEV_ARCHIVE` (an Arch Linux Archive date) at the top of the Makefile pin the dev image, so a rebuild installs the same packages. The kmscon fork pins its image the same way.

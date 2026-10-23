@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 
 libtsm_srcs = [
+    'tsm-image.c',
     'tsm-render.c',
     'tsm-screen.c',
     'tsm-selection.c',
@@ -11,12 +12,13 @@ libtsm_srcs = [
 
 # The fork's ABI differs from upstream's (ADR-102 in aaronsb/kmscon): struct
 # tsm_screen_attr grew from 12 to 16 bytes (fork.1), struct tsm_screen_cell
-# from 12 to 16 with the underline colour (fork.2), and tsm_screen_frame_since
-# was added (fork.3). Its own soname keeps a program built against upstream's
-# header from loading it as libtsm.so.4, and the file name keeps an install
-# from replacing upstream's. Raise the number after "fork" on every further
-# ABI change, and keep it in step with the project version.
-soversion = '4-fork.3'
+# from 12 to 16 with the underline colour (fork.2), tsm_screen_frame_since was
+# added (fork.3), and struct tsm_frame grew a placement list beside the image
+# calls (fork.4, ADR-103). Its own soname keeps a program built against
+# upstream's header from loading it as libtsm.so.4, and the file name keeps
+# an install from replacing upstream's. Raise the number after "fork" on every
+# further ABI change, and keep it in step with the project version.
+soversion = '4-fork.4'
 
 # Export symbol with version
 link_flags = '-Wl,--version-script=' + meson.current_source_dir() + '/libtsm.sym'

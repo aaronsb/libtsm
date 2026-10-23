@@ -186,3 +186,16 @@ LIBTSM_4_8_FORK3 {
 global:
 	tsm_screen_frame_since;
 } LIBTSM_4_8_FORK2;
+
+LIBTSM_4_8_FORK4 {
+global:
+	tsm_screen_frame_image;
+	tsm_screen_set_cell_size;
+	tsm_screen_set_image_budget;
+	tsm_screen_set_image_limit;
+	tsm_screen_get_image_bytes;
+	tsm_screen_image_victim;
+	tsm_screen_image_evict;
+	tsm_screen_test_image;
+	tsm_screen_test_place;
+} LIBTSM_4_8_FORK3;
