@@ -859,6 +859,42 @@ START_TEST(test_vte_underline_color_dim)
 }
 END_TEST
 
+/* xterm's modifyOtherKeys controls end in 'm' but carry a '>' or '?' prefix:
+ * XTMODKEYS (CSI > 4 ; 1 m, CSI > 4 m) sets the level, XTQMODKEYS (CSI ? 4 m)
+ * queries it. None of them is SGR, so none sets underline or bold, and the
+ * bare query CSI ? m does not reset what SGR set. */
+START_TEST(test_vte_modkeys_not_sgr)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_screen_cell *cells;
+	const char *input = "\e[>4;1ma\e[>4mb\e[?4mc\e[?1md\e[4mU\e[?mV";
+	int i, r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	tsm_vte_input(vte, input, strlen(input));
+
+	cells = tsm_screen_draw2(screen);
+	ck_assert_ptr_ne(cells, NULL);
+	for (i = 0; i < 4; i++) {
+		ck_assert_uint_eq(cells[i].ch, (uint32_t)"abcd"[i]);
+		ck_assert_msg(!cells[i].attr2.underline, "%c underlined", cells[i].ch);
+		ck_assert_msg(!cells[i].attr2.bold, "%c bold", cells[i].ch);
+	}
+	/* SGR 4 itself still underlines, and the query leaves it on */
+	ck_assert_uint_eq(cells[4].ch, 'U');
+	ck_assert_uint_eq(cells[4].attr2.underline, 1);
+	ck_assert_uint_eq(cells[5].ch, 'V');
+	ck_assert_uint_eq(cells[5].attr2.underline, 1);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 /* draw2 shows a cluster's base codepoint, so a combining mark does not blank
  * the letter it is on */
 START_TEST(test_vte_draw2_cluster_base)
@@ -2557,6 +2593,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_underline_color_not_bright)
 	TEST(test_vte_underline_color_follows_palette)
 	TEST(test_vte_underline_color_dim)
+	TEST(test_vte_modkeys_not_sgr)
 	TEST(test_vte_draw2_cluster_base)
 	TEST(test_vte_cluster_release)
 	TEST(test_vte_width_method_resets)
