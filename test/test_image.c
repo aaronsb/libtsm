@@ -810,6 +810,39 @@ START_TEST(test_image_selective_erase)
 }
 END_TEST
 
+/*
+ * A resize that pulls lines back from scrollback and pushes them out again
+ * leaves a placement's rows counted right: one reaching from scrollback onto
+ * the screen is still on the screen's lines, so ED 2 removes it.
+ */
+START_TEST(test_image_sb_rows_after_resize)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct tsm_test_placement pl = { 0 };
+	const struct tsm_frame *f;
+	uint64_t key;
+
+	setup(&screen, &vte);
+	tsm_screen_set_max_sb(screen, 20);
+	pl.image = make_image(screen, 8, 64, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	ck_assert_int_eq(tsm_screen_test_place(screen, &pl, &key), 0);
+
+	/* rows -3 to 0, then back on the screen, then out again */
+	input_str(vte, "\e[5;1H\n\n\n");
+	ck_assert_int_eq(tsm_screen_resize(screen, 10, 7), 0);
+	ck_assert_int_eq(tsm_screen_resize(screen, 10, 5), 0);
+	f = tsm_screen_frame(screen);
+	ck_assert_uint_eq(f->placement_count, 1);
+	ck_assert_int_eq(tsm_frame_placement_at(f, 0)->row, -3);
+
+	input_str(vte, "\e[2J");
+	ck_assert_uint_eq(tsm_screen_frame(screen)->placement_count, 0);
+
+	teardown(screen, vte);
+}
+END_TEST
+
 /* after the age counter wraps, a caller draws every placement once */
 START_TEST(test_image_frame_wrap)
 {
@@ -1042,6 +1075,7 @@ TEST_DEFINE_CASE(frame)
 	TEST(test_image_place_geometry)
 	TEST(test_image_frame_changed_callers)
 	TEST(test_image_selective_erase)
+	TEST(test_image_sb_rows_after_resize)
 	TEST(test_image_frame_wrap)
 TEST_END_CASE
 
