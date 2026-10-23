@@ -105,6 +105,8 @@
  *   place;img=[;col=;row=;x=;y=;c=;r=;sx=;sy=;sw=;sh=;z=;p=]
  *                             a placement of image n at the cursor unless col
  *                             and row are given
+ *   graphic-max;w=;h=         tsm_vte_set_graphic_max_size (TSM_VTE_SIXEL)
+ *   registers;n=[;private=0]  tsm_vte_set_sixel_registers (TSM_VTE_SIXEL)
  *
  * SPDX-License-Identifier: MIT
  */
@@ -506,10 +508,13 @@ static int test_place_cmd(struct tsm_screen *screen, char **argv, int argc)
 }
 
 /* runs the test command in @cmd, @len bytes after "tsm-test;" */
-static void test_command(struct tsm_screen *screen, const char *cmd, size_t len)
+static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
+			 const char *cmd, size_t len)
 {
 	char buf[512], *argv[32], *tok, *save;
 	int argc = 0, r = 0;
+
+	(void)vte;
 
 	if (len >= sizeof(buf)) {
 		fprintf(stderr, "tsm-replay: test command too long\n");
@@ -544,6 +549,14 @@ static void test_command(struct tsm_screen *screen, const char *cmd, size_t len)
 		r = test_image_cmd(screen, argv, argc);
 	} else if (!strcmp(argv[0], "place")) {
 		r = test_place_cmd(screen, argv, argc);
+#ifdef TSM_VTE_SIXEL
+	} else if (!strcmp(argv[0], "graphic-max")) {
+		r = tsm_vte_set_graphic_max_size(vte, test_arg(argv, argc, "w", 0),
+						 test_arg(argv, argc, "h", 0));
+	} else if (!strcmp(argv[0], "registers")) {
+		r = tsm_vte_set_sixel_registers(vte, test_arg(argv, argc, "n", 0),
+						test_arg(argv, argc, "private", 1));
+#endif
 	} else {
 		fprintf(stderr, "tsm-replay: unknown test command %s\n", argv[0]);
 		exit(2);
@@ -584,7 +597,7 @@ static void feed(struct tsm_screen *screen, struct tsm_vte *vte, const char *dat
 			fprintf(stderr, "tsm-replay: test command without ST\n");
 			exit(2);
 		}
-		test_command(screen, start, end - start);
+		test_command(screen, vte, start, end - start);
 		len -= end + 2 - data;
 		data = end + 2;
 	}

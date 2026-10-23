@@ -423,12 +423,15 @@ def _():
     return sgr(1, 31) + "red" + CSI + "?1049h" + CSI + "3;4r" + ESC + "c" + "clean"
 
 
-# Images (ADR-103 step 3a in aaronsb/kmscon). No protocol makes images yet,
-# so these streams make them through tsm-replay's test commands, an APC that
-# only a tsm-replay built against the fork's libtsm runs (see tsm-replay.c).
-# Each case judges one row of ADR-103's screen-event table for both kinds: a
-# sixel, image 1, and a kitty image, image 2, each 24x32 pixels, 3x2 cells of
-# 8x16.
+# Images (ADR-103 step 3a in aaronsb/kmscon). Each img-* case judges one row of
+# ADR-103's screen-event table for both kinds: a sixel and a kitty image,
+# each 24x32 pixels, 3x2 cells of 8x16. The sixels are real sixel strings
+# (step 3c), shown with the cursor saved and restored around them, so they
+# land where a test placement would and leave the cursor where it was. No
+# protocol makes kitty images yet (step 4a), so those, and the one sixel that
+# reaches past the screen's bottom, which no sixel string can place, come
+# from tsm-replay's test commands, an APC that only a tsm-replay built
+# against the fork's libtsm runs (see tsm-replay.c).
 
 def tt(cmd, **kv):
     return APC + "tsm-test;" + cmd + "".join(f";{k}={v}" for k, v in kv.items()) + ST
@@ -438,19 +441,41 @@ def img_setup(sb=0):
     out = tt("cell", w=8, h=16)
     if sb:
         out += tt("sb-max", n=sb)
-    return (out + tt("image", n=1, w=24, h=32, fill="ff0000ff") +
-            tt("image", n=2, w=24, h=32, kitty=1, fill="ff00ff00"))
+    return out + tt("image", n=2, w=24, h=32, kitty=1, fill="ff00ff00")
 
 
 def put(img, col, row, **kv):
     return tt("place", img=img, col=col, row=row, **kv)
 
 
+def sixel(w, h, rgb=(0, 0, 100), p1=0, p2=0, holes=()):
+    """A sixel string for a w x h picture of one colour, register 1 in RGB
+    percent, drawn band by band; with P2 = 1 the pixels in @holes, (x, y)
+    pairs, stay unset and so transparent."""
+    out = f"{DCS}{p1};{p2};0q\"1;1;{w};{h}#1;2;{rgb[0]};{rgb[1]};{rgb[2]}#1"
+    for y in range(0, h, 6):
+        rows = min(6, h - y)
+        cols = []
+        for x in range(w):
+            bits = (1 << rows) - 1
+            for hx, hy in holes:
+                if hx == x and y <= hy < y + rows:
+                    bits &= ~(1 << (hy - y))
+            cols.append(chr(63 + bits))
+        out += "".join(cols) + "-"
+    return out + ST
+
+
+def six(col, row, w=24, h=32, **kv):
+    """A sixel at @col, @row with the cursor kept, as a test placement."""
+    return ESC + "7" + cup(row + 1, col + 1) + sixel(w, h, **kv) + ESC + "8"
+
+
 @case("img-print", 12, 4)
 def _():
     # Text written over a sixel removes the cells it covers; a kitty
     # placement is untouched.
-    return (img_setup() + put(1, 1, 1) + put(2, 5, 1) +
+    return (img_setup() + six(1, 1) + put(2, 5, 1) +
             cup(2, 3) + "xy" + cup(2, 7) + "z")
 
 
@@ -458,16 +483,16 @@ def _():
 def _():
     # An opaque sixel removes the parts of older sixels under it; a
     # transparent one leaves them; neither touches a kitty placement.
-    return (img_setup() + tt("image", n=3, w=16, h=16, fill="ff00ffff") +
-            tt("image", n=4, w=8, h=16, fill="80000080") +
-            tt("image", n=5, w=16, h=16, fill="ffffff00") +
-            put(1, 1, 1) + put(2, 6, 1) + put(3, 2, 2) + put(4, 1, 1) + put(5, 6, 1))
+    return (img_setup() + six(1, 1) + put(2, 6, 1) +
+            six(2, 2, 16, 16, rgb=(0, 100, 100)) +
+            six(1, 1, 8, 16, p2=1, holes=((0, 0), (7, 15))) +
+            six(6, 1, 16, 16, rgb=(100, 100, 0)))
 
 
 def erase_case(op):
     # a sixel at columns 2-4 and a kitty image at 7-9, rows 1-2; the erase
     # runs with the cursor at row 1, column 3
-    return img_setup() + put(1, 2, 1) + put(2, 7, 1) + cup(2, 4) + op
+    return img_setup() + six(2, 1) + put(2, 7, 1) + cup(2, 4) + op
 
 
 @case("img-el0", 12, 4)
@@ -528,9 +553,9 @@ def _():
     # placements whole, the sixels where they lie on the screen. A kitty
     # image wholly in scrollback stays; the view is scrolled back to show it.
     return (img_setup(sb=10) + tt("image", n=3, w=8, h=16, kitty=1, fill="ffffffff") +
-            tt("image", n=4, w=8, h=16, fill="ff00ffff") +
             put(3, 0, 0) + cup(4, 1) + "\n" +
-            put(1, 2, 0) + put(2, 7, 0) + put(4, 0, 2) + put(3, 0, 3) +
+            six(2, 0) + put(2, 7, 0) + six(0, 2, 8, 16, rgb=(0, 100, 100)) +
+            put(3, 0, 3) +
             "\n" + CSI + "2J" + tt("sb-up", n=2))
 
 
@@ -539,16 +564,15 @@ def _():
     # ED 3 drops the scrollback, and the placements anchored on it, even
     # those reaching onto the screen
     return (img_setup(sb=10) + tt("image", n=3, w=8, h=16, kitty=1, fill="ffffffff") +
-            tt("image", n=4, w=8, h=16, fill="ff00ffff") +
-            put(1, 0, 0) + put(2, 4, 0) + cup(4, 1) + "\n" +
-            put(3, 5, 1) + put(4, 0, 2) + CSI + "3J")
+            six(0, 0) + put(2, 4, 0) + cup(4, 1) + "\n" +
+            put(3, 5, 1) + six(0, 2, 8, 16, rgb=(0, 100, 100)) + CSI + "3J")
 
 
 @case("img-scroll-up", 12, 4)
 def _():
     # LF at the bottom, IND and SU scroll the whole screen: placements move
     # with their lines into scrollback, whole, and the view brings them back
-    return (img_setup(sb=10) + put(1, 0, 1) + put(2, 4, 1) +
+    return (img_setup(sb=10) + six(0, 1) + put(2, 4, 1) +
             cup(4, 1) + "\n" + ESC + "D" + CSI + "2S" + tt("sb-up", n=3))
 
 
@@ -566,7 +590,7 @@ def _():
 def _():
     # SD and RI at the top: placements move down with their lines; the part
     # pushed past the bottom is clipped
-    return (img_setup() + put(1, 0, 1) + put(2, 4, 1) +
+    return (img_setup() + six(0, 1) + put(2, 4, 1) +
             CSI + "T" + cup(1, 1) + ESC + "M" + CSI + "T")
 
 
@@ -575,7 +599,7 @@ def _():
     # SD with placements reaching from scrollback onto the screen: the sixel
     # splits at the screen's top, its screen part moving down; the kitty
     # placement, not wholly on the screen, stays
-    return (img_setup(sb=10) + put(1, 0, 0) + put(2, 4, 0) +
+    return (img_setup(sb=10) + six(0, 0) + put(2, 4, 0) +
             cup(4, 1) + "\n" + CSI + "T" + tt("sb-up", n=1))
 
 
@@ -591,7 +615,7 @@ def _():
     # kitty placement wholly inside moves and is clipped, one across an edge
     # stays.
     return (region_images() +
-            put(1, 0, 1) + put(1, 3, 3) + put(1, 6, 5) +
+            six(0, 1) + six(3, 3) + six(6, 5) +
             put(2, 9, 3) + put(3, 13, 5) + put(4, 14, 1) +
             CSI + "3;6r" + cup(6, 1) + "\n\n")
 
@@ -599,7 +623,7 @@ def _():
 @case("img-il", 14, 6)
 def _():
     # IL scrolls rows 3-5 down from the cursor's line
-    return (region_images() + put(1, 0, 2) + put(1, 3, 4) + put(2, 6, 4) +
+    return (region_images() + six(0, 2) + six(3, 4) + put(2, 6, 4) +
             tt("image", n=5, w=24, h=32, kitty=1, fill="ffff00ff") + put(5, 9, 2) +
             cup(4, 1) + CSI + "L")
 
@@ -607,7 +631,7 @@ def _():
 @case("img-dl", 14, 6)
 def _():
     # DL scrolls rows 3-5 up from the cursor's line
-    return (region_images() + put(1, 0, 2) + put(1, 3, 4) + put(2, 6, 4) +
+    return (region_images() + six(0, 2) + six(3, 4) + put(2, 6, 4) +
             tt("image", n=5, w=24, h=32, kitty=1, fill="ffff00ff") + put(5, 9, 2) +
             put(3, 12, 3) + cup(4, 1) + CSI + "M")
 
@@ -617,15 +641,14 @@ def _():
     # Scrollback past its size discards its oldest line: a placement on it
     # loses that row and is anchored on the next line
     return (tt("cell", w=8, h=16) + tt("sb-max", n=2) +
-            tt("image", n=1, w=24, h=48, fill="ff0000ff") +
             tt("image", n=2, w=24, h=48, kitty=1, fill="ff00ff00") +
-            put(1, 0, 0) + put(2, 4, 0) + cup(3, 1) + "\n\n\n\n" + tt("sb-up", n=2))
+            six(0, 0, 24, 48) + put(2, 4, 0) + cup(3, 1) + "\n\n\n\n" + tt("sb-up", n=2))
 
 
 @case("img-discard-alt", 12, 4)
 def _():
     # The alternate screen has no scrollback: its top line is discarded
-    return (CSI + "?1049h" + img_setup() + put(1, 0, 0) + put(2, 4, 0) +
+    return (CSI + "?1049h" + img_setup() + six(0, 0) + put(2, 4, 0) +
             cup(4, 1) + "\n")
 
 
@@ -633,7 +656,7 @@ def _():
 def _():
     # Lines the height change brings back from scrollback carry their
     # placements; a narrower screen keeps them, drawn clipped
-    return (img_setup(sb=10) + put(1, 0, 0) + put(2, 6, 0) +
+    return (img_setup(sb=10) + six(0, 0) + put(2, 6, 0) +
             tt("image", n=3, w=24, h=32, kitty=1, fill="ffffffff") + put(3, 9, 2) +
             cup(4, 1) + "\n\n" + tt("resize", c=10, r=6))
 
@@ -641,7 +664,7 @@ def _():
 @case("img-resize-shrink", 12, 6)
 def _():
     # Lines the height change sends to scrollback carry theirs
-    return (img_setup(sb=10) + put(1, 0, 3) + put(2, 4, 3) + cup(6, 1) +
+    return (img_setup(sb=10) + six(0, 3) + put(2, 4, 3) + cup(6, 1) +
             tt("resize", c=12, r=3))
 
 
@@ -649,44 +672,250 @@ def _():
 def _():
     # The alternate screen's store is emptied on entry and on leaving, and
     # the main screen's placements show again
-    return (img_setup() + put(1, 0, 0) + put(2, 4, 0) + CSI + "?1049h" +
-            img_setup() + put(1, 0, 1) + put(2, 4, 2) + CSI + "?1049l")
+    return (img_setup() + six(0, 0) + put(2, 4, 0) + CSI + "?1049h" +
+            img_setup() + six(0, 1) + put(2, 4, 2) + CSI + "?1049l")
 
 
 @case("img-alt-47", 12, 4)
 def _():
     # 47 keeps the alternate screen's text when left, but not its images:
     # entered again, it shows only the sixel placed then
-    return (img_setup() + put(1, 0, 0) + CSI + "?47h" + "alt" +
+    return (img_setup() + six(0, 0) + CSI + "?47h" + "alt" +
             img_setup() + put(2, 4, 1) + CSI + "?47l" + CSI + "?47h" +
-            img_setup() + put(1, 0, 2))
+            img_setup() + six(0, 2))
 
 
 @case("img-alt-1047", 12, 4)
 def _():
     return (img_setup() + put(2, 4, 0) + CSI + "?1047h" +
-            img_setup() + put(1, 0, 1) + CSI + "?1047l")
+            img_setup() + six(0, 1) + CSI + "?1047l")
 
 
 @case("img-alt-shown", 12, 4)
 def _():
     # On the alternate screen only its own placements show
-    return (img_setup() + put(1, 0, 0) + CSI + "?1049h" +
+    return (img_setup() + six(0, 0) + CSI + "?1049h" +
             img_setup() + put(2, 4, 1))
 
 
 @case("img-ris", 12, 4)
 def _():
     # RIS empties both stores; a sixel placed after it shows alone
-    return (img_setup(sb=10) + put(1, 0, 0) + cup(4, 1) + "\n" + put(2, 4, 2) +
+    return (img_setup(sb=10) + six(0, 0) + cup(4, 1) + "\n" + put(2, 4, 2) +
             CSI + "?1049h" + img_setup() + put(2, 4, 1) + ESC + "c" +
-            img_setup() + put(1, 0, 1))
+            img_setup() + six(0, 1))
 
 
 @case("img-decstr", 12, 4)
 def _():
     # A soft reset leaves text, so it leaves pictures
-    return img_setup() + "text" + put(1, 0, 1) + put(2, 4, 1) + CSI + "!p"
+    return img_setup() + "text" + six(0, 1) + put(2, 4, 1) + CSI + "!p"
+
+
+# Sixel (ADR-103 step 3c): the decoder, placement and cursor, the modes and
+# the replies, through real sixel strings. Each case asks for the cursor
+# (DSR 6) after each picture, so its replies record where the cursor went.
+DSR = CSI + "6n"
+SIXEL_DIR = Path(__file__).resolve().parent.parent / "sixel"
+
+
+def cell(w=8, h=16):
+    return tt("cell", w=w, h=h)
+
+
+@case("six-cursor-xterm", 40, 12)
+def _():
+    # The byte stream of a probe run in xterm 411 (-ti vt340, 6x13 cells,
+    # 40x12) as a black box; its cursor reports were 4;3 4;3 2;3 2;3, then
+    # 4;5 with mode 8452, 3;1 at the right edge, 11;1 at the bottom, and
+    # 3;4 with DECSDM set. This libtsm answers 12;1 at the bottom and 2;40
+    # at the right edge, ADR-103's rules, where xterm differs.
+    out = cell(6, 13)
+    for pre, w, h in (
+            (CSI + "2J" + cup(2, 3), 12, 32),
+            (CSI + "2J" + cup(2, 3), 12, 39),
+            (CSI + "2J" + cup(2, 3), 12, 1),
+            (CSI + "2J" + cup(2, 3), 12, 13),
+            (CSI + "2J" + CSI + "?8452h" + cup(2, 3), 12, 27),
+            (CSI + "2J" + CSI + "?8452h" + cup(2, 39), 24, 13),
+            (CSI + "?8452l" + CSI + "2J" + cup(12, 1), 12, 39),
+            (CSI + "2J" + CSI + "?80h" + cup(3, 4), 12, 39)):
+        out += pre + sixel(w, h) + DSR + CSI + "?80l" + CSI + "?8452l"
+    return out
+
+
+@case("six-cursor", 12, 6)
+def _():
+    # The cursor ends on the row of the picture's last pixel row, at its
+    # left column: 40 pixels from row 1 reach row 3, and one pixel stays on
+    # its row. A new line then starts under the picture.
+    return (cell() + cup(2, 3) + sixel(16, 40) + DSR + "\r\nab" +
+            cup(1, 9) + sixel(8, 1) + DSR)
+
+
+@case("six-cursor-8452", 12, 4)
+def _():
+    # Mode 8452: the cursor ends right of the picture on its last row; at
+    # the right edge, in the last column. Reset, it ends below again.
+    return (cell() + CSI + "?8452h" + cup(1, 1) + sixel(16, 20) + DSR + "x" +
+            cup(4, 9) + sixel(40, 16) + DSR +
+            CSI + "?8452l" + cup(1, 6) + sixel(8, 16) + DSR)
+
+
+@case("six-scroll-bottom", 12, 4)
+def _():
+    # A picture passing the bottom scrolls the screen as index would, its
+    # top going into scrollback with its line; the view shows it back
+    return (cell() + tt("sb-max", n=10) + "line0\r\nline1" + cup(3, 2) +
+            sixel(16, 48) + DSR + tt("sb-up", n=1))
+
+
+@case("six-scroll-region", 12, 6)
+def _():
+    # In the region of rows 2 to 5, a picture that fits is scrolled into the
+    # region whole before it is placed. One taller than the region is
+    # scrolled to its top, then by index: its top row leaves the region and
+    # is cut, the part below the region stays, and the first picture
+    # scrolls out of the region
+    return (cell() + "top" + cup(6, 1) + "bottom" + CSI + "2;5r" +
+            cup(4, 1) + sixel(8, 48) + DSR +
+            cup(5, 4) + sixel(8, 80, rgb=(100, 0, 0)) + DSR)
+
+
+@case("six-decsdm", 12, 4)
+def _():
+    # DECSDM set (mode 80, xterm's sense): the picture at the top left, cut
+    # to the screen, the cursor unmoved; reset, at the cursor again
+    return (cell() + "text" + CSI + "?80h" + cup(3, 5) + sixel(120, 80) + DSR +
+            CSI + "?80l" + cup(3, 5) + sixel(8, 16, rgb=(100, 0, 0)) + DSR)
+
+
+@case("six-colours", 12, 4)
+def _():
+    # RGB and HLS registers (HLS hue 0 is blue), repeats, graphics carriage
+    # return and next line, colour taken when drawn, register 0 behind
+    # unset pixels (P2 0)
+    return (cell() + DCS + "0;0;0q" +
+            "#1;2;100;0;0#2;1;0;50;100#3;1;120;50;100#4;1;240;50;100" +
+            "#1!8~#2!8~$#3!4N#1;2;0;0;0!4N-" +
+            "#4~?~?~?~?" + ST + DSR)
+
+
+@case("six-raster", 12, 4)
+def _():
+    # Raster attributes size the picture past its data: P2 0 fills the
+    # rest with register 0, P2 1 leaves it transparent; raster attributes
+    # after data are ignored; Pan;Pad and P1 do not scale a dot
+    return (cell() + DCS + "0;0;0q\"1;1;16;20#1~~~~" + ST + DSR +
+            cup(1, 4) + DCS + "0;1;0q\"1;1;16;20#1~~~~\"1;1;40;40" + ST + DSR +
+            cup(1, 7) + DCS + "2;1;0q\"2;1;8;12#1!8~-!8~" + ST + DSR)
+
+
+@case("six-registers", 12, 4)
+def _():
+    # Mode 1070 set (the default): each picture starts from the default
+    # registers, so the second is black; reset, definitions carry over, so
+    # the fourth is red like the first and third
+    red = "#20;2;100;0;0"
+    return (cell() + DCS + "q" + red + "#20!8~" + ST +
+            cup(1, 2) + DCS + "q#20!8~" + ST +
+            CSI + "?1070l" + cup(1, 3) + DCS + "q" + red + "#20!8~" + ST +
+            cup(1, 4) + DCS + "q#20!8~" + ST)
+
+
+@case("six-registers-ris", 12, 4)
+def _():
+    # RIS empties the shared registers and sets mode 1070 again: after it,
+    # both pictures are black, the second shared again
+    return (cell() + CSI + "?1070l" + DCS + "q#20;2;100;0;0#20!8~" + ST +
+            ESC + "c" + cell() + DCS + "q#20!8~" + ST +
+            CSI + "?1070l" + cup(1, 2) + DCS + "q#20!8~" + ST)
+
+
+@case("six-max-size", 12, 4)
+def _():
+    # max-graphic-size bounds each dimension; pixels past it are dropped
+    return (cell() + tt("graphic-max", w=16, h=10) + sixel(40, 40) + DSR +
+            CSI + "?2;1S")
+
+
+@case("six-cancel", 12, 4)
+def _():
+    # CAN and SUB discard a picture; ESC ending the string shows it, and
+    # what follows runs; an empty picture, and a DCS with an intermediate
+    # (DECRQSS), make nothing
+    pic = sixel(16, 16)[:-2]
+    return (cell() + pic + "\x18" + DSR + cup(1, 4) + pic + "\x1a" + DSR +
+            cup(1, 7) + pic + ESC + "[2;1H" + DSR +
+            DCS + "q" + ST + DCS + "q#1" + ST + DCS + "$q\"p" + ST + DSR)
+
+
+@case("six-text", 12, 4)
+def _():
+    # Text written over a sixel removes the cells it covers; a transparent
+    # sixel over text leaves the text, which shows through it
+    return (cell() + sixel(32, 16) + cup(1, 2) + "ab" +
+            cup(3, 1) + "under" + cup(3, 1) +
+            sixel(24, 16, p2=1, holes=((0, 0),)) + DSR)
+
+
+@case("six-scrollback", 12, 4)
+def _():
+    # A1 in ADR-103: a picture scrolls into scrollback with its lines, and
+    # back into view with them
+    return (cell() + tt("sb-max", n=10) + "above" + cup(2, 1) + sixel(16, 32) +
+            "\r\nbelow\n\n\n\n" + tt("sb-up", n=4))
+
+
+@case("six-clear", 12, 4)
+def _():
+    # clear (ED 2, then ED 3) removes a picture on the screen and one in
+    # scrollback
+    return (cell() + tt("sb-max", n=10) + sixel(16, 32) + "\r\n\n\n\n" +
+            sixel(16, 16) + CSI + "H" + CSI + "2J" + CSI + "3J" + DSR +
+            tt("sb-up", n=4))
+
+
+@case("six-replies", 12, 4)
+def _():
+    # DA1 with attribute 4; XTSMGRAPHICS for registers (read, set within
+    # range, set out of range, reset, read the maximum, a bad action),
+    # geometry (read, read the maximum, set refused) and ReGIS (none);
+    # XTWINOPS 14, 16 and 18
+    return (cell() + CSI + "c" +
+            CSI + "?1;1S" + CSI + "?1;3;256S" + CSI + "?1;3;1S" +
+            CSI + "?1;2S" + CSI + "?1;4S" + CSI + "?1;9S" +
+            CSI + "?2;1S" + CSI + "?2;4S" + CSI + "?2;3;100;100S" +
+            CSI + "?3;1S" +
+            CSI + "14t" + CSI + "16t" + CSI + "18t")
+
+
+@case("six-off", 12, 4)
+def _():
+    # With no budget, sixel is off: the string is ignored, DA1 has no
+    # attribute 4 and XTSMGRAPHICS reports no graphics
+    return (cell() + tt("limit", b=0) + sixel(16, 16) + DSR + CSI + "c" +
+            CSI + "?1;1S" + CSI + "?2;1S")
+
+
+def img2sixel(name):
+    # libsixel's img2sixel output for test/sixel/<name>.ppm (gen-fixtures.sh)
+    return (SIXEL_DIR / f"{name}.six").read_text("latin-1")
+
+
+@case("six-img2sixel-palette16", 12, 4)
+def _():
+    return cell() + "img2sixel:" + "\r\n" + img2sixel("palette16") + DSR
+
+
+@case("six-img2sixel-gradient", 12, 6)
+def _():
+    return cell() + cup(2, 2) + img2sixel("gradient") + DSR
+
+
+@case("six-img2sixel-highcolor", 12, 4)
+def _():
+    return cell() + img2sixel("highcolor") + DSR
 
 
 def main():
