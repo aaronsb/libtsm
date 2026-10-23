@@ -247,7 +247,8 @@ struct tsm_image_store {
 	struct shl_dlist placements;
 	unsigned int sixels;		/* sixel placements, which text cuts */
 	unsigned int max_rows;		/* at least the tallest placement's rows */
-	bool max_rows_stale;		/* a placement went since it was counted */
+	unsigned int max_sixel_rows;	/* and the tallest sixel's */
+	bool max_rows_stale;		/* a placement went since they were counted */
 };
 
 struct tsm_image_slot {
@@ -273,6 +274,7 @@ struct tsm_images {
 	void *budget_data;
 	size_t limit;
 	size_t bytes;
+	struct tsm_image *keep;		/* never evicted: a replacement frees it */
 
 	unsigned int cell_width;
 	unsigned int cell_height;
@@ -428,6 +430,16 @@ void screen_images_clear_alt(struct tsm_screen *con);
 /* RIS */
 void screen_images_reset(struct tsm_screen *con);
 void screen_images_age_wrap(struct tsm_screen *con);
+/*
+ * An image as a protocol stores it, and a placement of it, which the test
+ * calls (tsm-image-test.c) describe in the same structs. A kitty id already
+ * in the store is replaced once the new image has its bytes.
+ */
+struct tsm_image *screen_image_find(struct tsm_screen *con, uint64_t key);
+int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
+		     struct tsm_image **out);
+int screen_image_place(struct tsm_screen *con, struct tsm_image *image,
+		       const struct tsm_test_placement *pl, struct tsm_placement **out);
 /* the frame's placement list, flagged changed against @since */
 int screen_images_frame(struct tsm_screen *con, const struct tsm_frame_age *since,
 			bool all_changed);

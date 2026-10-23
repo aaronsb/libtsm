@@ -59,6 +59,7 @@ static void store_init(struct tsm_image_store *st)
 	shl_dlist_init(&st->placements);
 	st->sixels = 0;
 	st->max_rows = 0;
+	st->max_sixel_rows = 0;
 }
 
 /* the sb_id of the last scrollback line, from which scrollback rows count */
@@ -111,24 +112,37 @@ static struct line *line_above(struct tsm_screen *con, struct line *line, int *r
  * Budget
  */
 
-static int budget_reserve(struct tsm_screen *con, size_t bytes)
+static size_t evictable_bytes(struct tsm_screen *con);
+
+/*
+ * Reserves @bytes for a new image. @keep, the image a replacement will free,
+ * counts as free room and is never evicted to make it; a request that cannot
+ * fit evicts nothing.
+ */
+static int budget_reserve(struct tsm_screen *con, size_t bytes, struct tsm_image *keep)
 {
 	struct tsm_images *img = &con->img;
+	size_t room;
+	int ret = 0;
 
+	img->keep = keep;
 	if (img->reserve) {
 		if (img->reserve(con, bytes, img->budget_data) < 0)
-			return -ENOSPC;
-		img->bytes += bytes;
-		return 0;
+			ret = -ENOSPC;
+	} else {
+		/* what the screen holds once @keep and every image it may
+		 * evict are gone */
+		room = img->bytes - (keep ? keep->bytes : 0) - evictable_bytes(con);
+		if (bytes > img->limit || room + bytes > img->limit)
+			ret = -ENOSPC;
+		while (!ret && img->bytes - (keep ? keep->bytes : 0) + bytes > img->limit)
+			if (!tsm_screen_image_evict(con))
+				ret = -ENOSPC;
 	}
-
-	if (bytes > img->limit)
-		return -ENOSPC;
-	while (img->bytes + bytes > img->limit)
-		if (!tsm_screen_image_evict(con))
-			return -ENOSPC;
-	img->bytes += bytes;
-	return 0;
+	img->keep = NULL;
+	if (!ret)
+		img->bytes += bytes;
+	return ret;
 }
 
 static void budget_release(struct tsm_screen *con, size_t bytes)
@@ -208,6 +222,8 @@ static void placement_attach(struct tsm_placement *p, struct line *line)
 
 	if (p->rows > st->max_rows)
 		st->max_rows = p->rows;
+	if (p->image->kind == TSM_IMAGE_SIXEL && p->rows > st->max_sixel_rows)
+		st->max_sixel_rows = p->rows;
 	if (p->line == line)
 		return;
 	placement_unlink_line(p);
@@ -370,25 +386,34 @@ static void placement_cut(struct tsm_screen *con, struct tsm_placement *p, int r
 	placement_split(con, p, pieces, n);
 }
 
-/* at least the tallest placement's rows, which bounds the lines a search
- * for the placements covering a row walks up; counted again only after a
- * placement has gone */
-static unsigned int store_max_rows(struct tsm_image_store *st)
+/*
+ * At least the tallest placement's rows, and the tallest sixel's, which bound
+ * the lines a search for the placements covering a row walks up; counted
+ * again only after a placement has gone.
+ */
+static void store_count_rows(struct tsm_image_store *st)
 {
 	struct shl_dlist *iter;
-	unsigned int max = 0;
+	struct tsm_placement *p;
 
 	if (!st->max_rows_stale)
-		return st->max_rows;
+		return;
 	st->max_rows_stale = false;
+	st->max_rows = 0;
+	st->max_sixel_rows = 0;
 	shl_dlist_for_each(iter, &st->placements) {
-		struct tsm_placement *p = shl_dlist_entry(iter, struct tsm_placement,
-							  store_link);
-		if (p->rows > max)
-			max = p->rows;
+		p = shl_dlist_entry(iter, struct tsm_placement, store_link);
+		if (p->rows > st->max_rows)
+			st->max_rows = p->rows;
+		if (p->image->kind == TSM_IMAGE_SIXEL && p->rows > st->max_sixel_rows)
+			st->max_sixel_rows = p->rows;
 	}
-	st->max_rows = max;
-	return max;
+}
+
+static unsigned int store_max_rows(struct tsm_image_store *st)
+{
+	store_count_rows(st);
+	return st->max_rows;
 }
 
 /* each placement's screen row in p->row, for the store in use */
@@ -420,6 +445,7 @@ static void store_clear(struct tsm_screen *con, struct tsm_image_store *st)
 	shl_dlist_for_each_safe(iter, tmp, &st->images)
 		image_free(con, shl_dlist_entry(iter, struct tsm_image, list));
 	st->max_rows = 0;
+	st->max_sixel_rows = 0;
 }
 
 /*
@@ -457,18 +483,17 @@ static struct tsm_image *store_find_id(struct tsm_image_store *st, uint32_t id)
 }
 
 /*
- * The image a screen evicts next: no placement, transient first; then placed
- * only in scrollback; each least recently used first. NULL when every image
- * is placed on a screen's own lines.
+ * Marks the images placed on a screen's own lines, which are never evicted:
+ * every image with a placement not wholly in scrollback, and the image a
+ * replacement is reserving room to free.
  */
-static struct tsm_image *image_victim(struct tsm_screen *con, unsigned int *rank)
+static void images_mark_pinned(struct tsm_screen *con)
 {
 	struct tsm_image_store *stores[] = { &con->img.main, &con->img.alt };
-	struct tsm_image *image, *best = NULL;
 	struct tsm_placement *p;
 	struct shl_dlist *iter;
 	uint64_t last = sb_last_id(con);
-	unsigned int i, r, best_rank = 0;
+	unsigned int i;
 
 	for (i = 0; i < 2; ++i) {
 		shl_dlist_for_each(iter, &stores[i]->images)
@@ -483,7 +508,43 @@ static struct tsm_image *image_victim(struct tsm_screen *con, unsigned int *rank
 				p->image->pinned = true;
 		}
 	}
+	if (con->img.keep)
+		con->img.keep->pinned = true;
+}
 
+/* the bytes of every image the screen may evict */
+static size_t evictable_bytes(struct tsm_screen *con)
+{
+	struct tsm_image_store *stores[] = { &con->img.main, &con->img.alt };
+	struct tsm_image *image;
+	struct shl_dlist *iter;
+	size_t bytes = 0;
+	unsigned int i;
+
+	images_mark_pinned(con);
+	for (i = 0; i < 2; ++i) {
+		shl_dlist_for_each(iter, &stores[i]->images) {
+			image = shl_dlist_entry(iter, struct tsm_image, list);
+			if (!image->pinned)
+				bytes += image->bytes;
+		}
+	}
+	return bytes;
+}
+
+/*
+ * The image a screen evicts next: no placement, transient first; then placed
+ * only in scrollback; each least recently used first. NULL when every image
+ * is pinned.
+ */
+static struct tsm_image *image_victim(struct tsm_screen *con, unsigned int *rank)
+{
+	struct tsm_image_store *stores[] = { &con->img.main, &con->img.alt };
+	struct tsm_image *image, *best = NULL;
+	struct shl_dlist *iter;
+	unsigned int i, r, best_rank = 0;
+
+	images_mark_pinned(con);
 	for (i = 0; i < 2; ++i) {
 		shl_dlist_for_each(iter, &stores[i]->images) {
 			image = shl_dlist_entry(iter, struct tsm_image, list);
@@ -573,7 +634,7 @@ void screen_images_scroll(struct tsm_screen *con, unsigned int top,
 	struct tsm_placement *p;
 	struct piece pieces[3];
 	unsigned int n;
-	int lo, hi, d, r0, r1, ia, ib, na, nb;
+	int lo, hi, clip, d, r0, r1, ia, ib, na, nb;
 	bool carry;
 
 	if (shl_dlist_empty(&st->placements) || bottom < top)
@@ -585,7 +646,10 @@ void screen_images_scroll(struct tsm_screen *con, unsigned int top,
 	 * reaches up through it, and nothing is pushed out at the top */
 	carry = up && top == 0 && st == &con->img.main && con->sb.max > 0;
 	lo = carry ? INT_MIN : (int)top;
-	hi = bottom;
+	/* nor is the screen's bottom an edge: rows reaching past it move with
+	 * their lines, and only a scroll down pushes rows out there */
+	hi = bottom + 1 == con->size_y ? INT_MAX : (int)bottom;
+	clip = up ? hi : (int)bottom;
 	d = up ? -(int)num : (int)num;
 
 	store_rows(con, st);
@@ -593,7 +657,7 @@ void screen_images_scroll(struct tsm_screen *con, unsigned int top,
 		p = shl_dlist_entry(iter, struct tsm_placement, store_link);
 		r0 = p->row;
 		r1 = r0 + (int)p->rows - 1;
-		if (r0 == INT_MAX || r1 < (int)top || r0 > hi)
+		if (r0 == INT_MAX || r1 < (int)top || r0 > (int)bottom)
 			continue;
 
 		n = 0;
@@ -613,7 +677,7 @@ void screen_images_scroll(struct tsm_screen *con, unsigned int top,
 		ia = (r0 < lo ? lo : r0) - r0;
 		ib = (r1 > hi ? hi : r1) - r0;
 		na = r0 + ia + d < lo ? lo - (r0 + d) : ia;
-		nb = r0 + ib + d > hi ? hi - (r0 + d) : ib;
+		nb = r0 + ib + d > clip ? clip - (r0 + d) : ib;
 		if (na <= nb) {
 			pieces[n] = (struct piece){ na, nb, 0, p->cols - 1, NULL,
 						    r0 + d + na };
@@ -664,7 +728,8 @@ void screen_images_cut(struct tsm_screen *con, unsigned int y,
 		return;
 	if (x1 >= con->size_x)
 		x1 = con->size_x - 1;
-	max = store_max_rows(st);
+	store_count_rows(st);
+	max = st->max_sixel_rows;
 
 	/* the sixels covering row @y are anchored at most max - 1 lines
 	 * above it; a cut piece no longer covers the cells, so a search
@@ -954,7 +1019,8 @@ SHL_EXPORT
 int tsm_screen_set_cell_size(struct tsm_screen *con, unsigned int width,
 			     unsigned int height)
 {
-	if (!con || !width || !height)
+	if (!con || !width || !height || width > TSM_SCREEN_CELL_MAX ||
+	    height > TSM_SCREEN_CELL_MAX)
 		return -EINVAL;
 	con->img.cell_width = width;
 	con->img.cell_height = height;
@@ -962,16 +1028,31 @@ int tsm_screen_set_cell_size(struct tsm_screen *con, unsigned int width,
 }
 
 SHL_EXPORT
-void tsm_screen_set_image_budget(struct tsm_screen *con,
-				 tsm_screen_image_reserve_cb reserve,
-				 tsm_screen_image_release_cb release,
-				 void *data)
+int tsm_screen_set_image_budget(struct tsm_screen *con,
+				tsm_screen_image_reserve_cb reserve,
+				tsm_screen_image_release_cb release,
+				void *data)
 {
-	if (!con)
-		return;
-	con->img.reserve = reserve;
-	con->img.release = release;
-	con->img.budget_data = data;
+	struct tsm_images *img;
+	size_t held;
+
+	if (!con || !reserve != !release)
+		return -EINVAL;
+	img = &con->img;
+
+	/* the new host takes on what the screen holds; it may evict from
+	 * this screen to make room, releasing to the old host meanwhile */
+	held = img->bytes;
+	if (reserve && held && reserve(con, held, data) < 0)
+		return -ENOSPC;
+	if (img->release && img->bytes)
+		img->release(con, img->bytes, img->budget_data);
+	img->reserve = reserve;
+	img->release = release;
+	img->budget_data = data;
+	if (release && held > img->bytes)
+		release(con, held - img->bytes, data);
+	return 0;
 }
 
 SHL_EXPORT
@@ -1024,33 +1105,40 @@ size_t tsm_screen_image_evict(struct tsm_screen *con)
 	return bytes;
 }
 
-SHL_EXPORT
-int tsm_screen_test_image(struct tsm_screen *con, const struct tsm_test_image *desc,
-			  uint64_t *key)
+/*
+ * Images and placements as the protocols make them (and the test calls,
+ * tsm-image-test.c)
+ */
+
+struct tsm_image *screen_image_find(struct tsm_screen *con, uint64_t key)
+{
+	return image_find(&con->img, key);
+}
+
+int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
+		     struct tsm_image **out)
 {
 	struct tsm_image_store *st;
-	struct tsm_image *image, *old;
+	struct tsm_image *image, *old = NULL;
 	size_t i, n, bytes;
 	int ret;
 
-	if (!con || !desc || !key || !desc->width || !desc->height || !desc->pixels ||
+	if (!desc->width || !desc->height || !desc->pixels ||
+	    desc->width > TSM_SCREEN_IMAGE_MAX || desc->height > TSM_SCREEN_IMAGE_MAX ||
 	    desc->kind > TSM_IMAGE_KITTY ||
-	    (desc->kind == TSM_IMAGE_KITTY && !desc->id) ||
-	    desc->width > SIZE_MAX / 4 / desc->height)
+	    (desc->kind == TSM_IMAGE_KITTY && !desc->id))
 		return -EINVAL;
 	st = cur_store(con);
 	n = (size_t)desc->width * desc->height;
 	bytes = n * 4;
 
 	screen_inc_age(con);
-	/* transmitting an id again replaces that image, with its placements */
-	if (desc->kind == TSM_IMAGE_KITTY) {
+	/* transmitting an id again replaces that image, with its placements,
+	 * once the new one has its bytes; refused, the old one stays */
+	if (desc->kind == TSM_IMAGE_KITTY)
 		old = store_find_id(st, desc->id);
-		if (old)
-			image_free(con, old);
-	}
 
-	ret = budget_reserve(con, bytes);
+	ret = budget_reserve(con, bytes, old);
 	if (ret)
 		return ret;
 	image = calloc(1, sizeof(*image));
@@ -1078,9 +1166,11 @@ int tsm_screen_test_image(struct tsm_screen *con, const struct tsm_test_image *d
 	image->transient = desc->transient;
 	image->last_use = ++image_clock;
 	image->age = con->age_cnt;
+	if (old)
+		image_free(con, old);
 	shl_dlist_link_tail(&st->images, &image->list);
 
-	*key = image->key;
+	*out = image;
 	return 0;
 }
 
@@ -1089,28 +1179,24 @@ static unsigned int div_up(unsigned long long a, unsigned int b)
 	return (a + b - 1) / b;
 }
 
-SHL_EXPORT
-int tsm_screen_test_place(struct tsm_screen *con, const struct tsm_test_placement *pl,
-			  uint64_t *key)
+int screen_image_place(struct tsm_screen *con, struct tsm_image *image,
+		       const struct tsm_test_placement *pl, struct tsm_placement **out)
 {
 	struct tsm_image_store *st;
-	struct tsm_image *image;
 	struct tsm_placement *p = NULL;
 	struct shl_dlist *iter;
-	unsigned int cw, ch, sw, sh, dw, dh, cols, rows, r, last;
-	unsigned long long bw, bh;
+	unsigned int cw, ch, sw, sh, cols, rows, r, last;
+	unsigned long long bw, bh, dw, dh;
 	int ox, oy;
 
-	if (!con || !pl || !key)
-		return -EINVAL;
 	st = cur_store(con);
-	image = image_find(&con->img, pl->image);
 	if (!image || image->store != st)
 		return -ENOENT;
 	cw = con->img.cell_width;
 	ch = con->img.cell_height;
 	if (pl->col >= con->size_x || pl->row >= con->size_y || pl->x >= cw ||
-	    pl->y >= ch || pl->src_x >= image->width || pl->src_y >= image->height)
+	    pl->y >= ch || pl->src_x >= image->width || pl->src_y >= image->height ||
+	    pl->cols > TSM_SCREEN_IMAGE_MAX_CELLS || pl->rows > TSM_SCREEN_IMAGE_MAX_CELLS)
 		return -EINVAL;
 
 	/* the source rectangle, cut to the image */
@@ -1141,29 +1227,34 @@ int tsm_screen_test_place(struct tsm_screen *con, const struct tsm_test_placemen
 		oy += (bh - dh) / 2;
 	} else if (pl->cols) {
 		cols = pl->cols;
-		dw = cols * cw;
-		dh = ((unsigned long long)dw * sh + sw / 2) / sw;
-		rows = div_up((unsigned long long)oy + dh, ch);
+		dw = (unsigned long long)cols * cw;
+		dh = (dw * sh + sw / 2) / sw;
+		rows = 0;
 	} else if (pl->rows) {
 		rows = pl->rows;
-		dh = rows * ch;
-		dw = ((unsigned long long)dh * sw + sh / 2) / sh;
-		cols = div_up((unsigned long long)ox + dw, cw);
+		dh = (unsigned long long)rows * ch;
+		dw = (dh * sw + sh / 2) / sh;
+		cols = 0;
 	} else {
 		dw = sw;
 		dh = sh;
-		cols = div_up((unsigned long long)ox + dw, cw);
-		rows = div_up((unsigned long long)oy + dh, ch);
+		cols = 0;
+		rows = 0;
 	}
-	/* a picture scaled to a sliver keeps a pixel */
+	/* a picture scaled to a sliver keeps a pixel; one scaled past the
+	 * largest box is refused, so every pixel quantity of a placement and
+	 * its pieces fits an int */
 	if (!dw)
 		dw = 1;
 	if (!dh)
 		dh = 1;
+	if (dw > (unsigned long long)TSM_SCREEN_IMAGE_MAX_CELLS * cw ||
+	    dh > (unsigned long long)TSM_SCREEN_IMAGE_MAX_CELLS * ch)
+		return -EINVAL;
 	if (!cols)
-		cols = 1;
+		cols = div_up(ox + dw, cw);
 	if (!rows)
-		rows = 1;
+		rows = div_up(oy + dh, ch);
 
 	screen_inc_age(con);
 	/* a kitty placement id names a placement of its image to replace */
@@ -1208,6 +1299,6 @@ int tsm_screen_test_place(struct tsm_screen *con, const struct tsm_test_placemen
 	placement_attach(p, con->lines[pl->row]);
 	image->last_use = ++image_clock;
 
-	*key = p->key;
+	*out = p;
 	return 0;
 }

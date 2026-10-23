@@ -632,6 +632,15 @@ int tsm_screen_frame_image(struct tsm_screen *con, uint64_t key,
 			   struct tsm_frame_image *out);
 
 /*
+ * Bounds that keep every pixel quantity of a placement inside an int: an
+ * image's width and height, a cell's width and height, and a box's columns
+ * and rows. Larger values are refused with -EINVAL.
+ */
+#define TSM_SCREEN_IMAGE_MAX		65535
+#define TSM_SCREEN_CELL_MAX		1024
+#define TSM_SCREEN_IMAGE_MAX_CELLS	10000
+
+/*
  * The cell size in pixels, the size the host reports through TIOCSWINSZ.
  * Placements made from now on measure their pixel quantities in it; those
  * made before keep the size they were made with. 8x16 until set.
@@ -660,10 +669,16 @@ typedef int (*tsm_screen_image_reserve_cb)(struct tsm_screen *con,
 typedef void (*tsm_screen_image_release_cb)(struct tsm_screen *con,
 					    size_t bytes, void *data);
 
-void tsm_screen_set_image_budget(struct tsm_screen *con,
-				 tsm_screen_image_reserve_cb reserve,
-				 tsm_screen_image_release_cb release,
-				 void *data);
+/*
+ * Installs a host budget, both callbacks or neither. The bytes the screen
+ * already holds move with it: the new host is asked to reserve them, and
+ * refusing leaves everything as it was (-ENOSPC); a host replaced or removed
+ * is given them back. Returns 0, -EINVAL or -ENOSPC.
+ */
+int tsm_screen_set_image_budget(struct tsm_screen *con,
+				tsm_screen_image_reserve_cb reserve,
+				tsm_screen_image_release_cb release,
+				void *data);
 
 /* Ghostty's per-screen default */
 #define TSM_SCREEN_IMAGE_LIMIT_DEFAULT ((size_t)320 * 1000 * 1000)

@@ -552,6 +552,16 @@ def _():
             cup(4, 1) + "\n" + ESC + "D" + CSI + "2S" + tt("sb-up", n=3))
 
 
+@case("img-scroll-up-bottom", 20, 5)
+def _():
+    # Placements reaching past the screen's bottom move up with their
+    # lines: the bottom of the screen is no region edge (aaronsb/libtsm#17)
+    return (tt("cell", w=8, h=16) +
+            tt("image", n=1, w=24, h=64, kitty=1, fill="ff00ff00") +
+            tt("image", n=2, w=24, h=64, fill="ff0000ff") +
+            put(1, 0, 3) + put(2, 4, 3) + cup(5, 1) + "\n\n\n")
+
+
 @case("img-scroll-down", 12, 5)
 def _():
     # SD and RI at the top: placements move down with their lines; the part

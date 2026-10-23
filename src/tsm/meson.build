@@ -2,6 +2,7 @@
 
 libtsm_srcs = [
     'tsm-image.c',
+    'tsm-image-test.c',
     'tsm-render.c',
     'tsm-screen.c',
     'tsm-selection.c',

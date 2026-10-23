@@ -44,6 +44,7 @@ static void setup(struct tsm_screen **screen, struct tsm_vte **vte)
 	ck_assert_int_eq(tsm_screen_resize(*screen, 10, 5), 0);
 	ck_assert_int_eq(tsm_vte_new(vte, *screen, write_cb, NULL, log_cb, NULL), 0);
 	ck_assert_int_eq(tsm_screen_set_cell_size(*screen, 8, 16), 0);
+	tsm_screen_set_image_limit(*screen, 64 << 20);
 }
 
 static void teardown(struct tsm_screen *screen, struct tsm_vte *vte)
@@ -419,6 +420,136 @@ START_TEST(test_image_host_budget)
 	/* the screen releases what it holds when freed */
 	teardown(screen, vte);
 	ck_assert_uint_eq(h.used, 0);
+}
+END_TEST
+
+/*
+ * A host budget installed over images the screen already holds is asked for
+ * their bytes, and refused, leaves the screen as it was; one removed, or
+ * replaced, is given them back. Each host's books balance.
+ */
+START_TEST(test_image_host_budget_install)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct host a = { .budget = 4 * 512 }, b = { .budget = 512 };
+	uint64_t key;
+
+	setup(&screen, &vte);
+	make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff0000ff);
+
+	/* too small for what the screen holds: refused, nothing changes */
+	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve, host_release, &b),
+			 -ENOSPC);
+	ck_assert_uint_eq(b.used, 0);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
+
+	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve, host_release, &a), 0);
+	ck_assert_uint_eq(a.used, 1024);
+	make_image(screen, 8, 16, TSM_IMAGE_KITTY, 3, false, 0xff0000ff);
+	ck_assert_uint_eq(a.used, 1536);
+
+	/* RIS frees all three, released to the host that reserved them */
+	input_str(vte, "\ec");
+	ck_assert_uint_eq(a.used, 0);
+
+	/* moving to another host hands the bytes over */
+	b.budget = 4 * 512;
+	make_image(screen, 8, 16, TSM_IMAGE_KITTY, 4, false, 0xff0000ff);
+	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve, host_release, &b), 0);
+	ck_assert_uint_eq(a.used, 0);
+	ck_assert_uint_eq(b.used, 512);
+
+	/* removing the host gives them back; the screen's own limit then applies */
+	tsm_screen_set_image_limit(screen, 1000);
+	ck_assert_int_eq(tsm_screen_set_image_budget(screen, NULL, NULL, NULL), 0);
+	ck_assert_uint_eq(b.used, 0);
+	ck_assert_int_eq(try_image(screen, 8, 32, 5, &key), -ENOSPC);
+
+	/* a reserve callback without a release one is refused */
+	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve, NULL, &a), -EINVAL);
+
+	teardown(screen, vte);
+	ck_assert_uint_eq(a.used, 0);
+	ck_assert_uint_eq(b.used, 0);
+}
+END_TEST
+
+/*
+ * A kitty id transmitted again replaces its image only once the new one has
+ * its bytes: refused, the old image and its placements stay. The old image's
+ * bytes count as free for the new one, and a host evicting in its reserve
+ * callback never evicts the image being replaced.
+ */
+START_TEST(test_image_replace_refused)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct host h = { .budget = 2 * 512 };
+	uint64_t old, other, key;
+
+	setup(&screen, &vte);
+	tsm_screen_set_image_limit(screen, 2 * 512);
+	old = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	place(screen, old, 0, 0);
+	other = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff0000ff);
+	place(screen, other, 2, 0);
+
+	/* 1024 bytes for id 1 cannot fit beside id 2's placed 512 */
+	ck_assert_int_eq(try_image(screen, 8, 32, 1, &key), -ENOSPC);
+	ck_assert(image_exists(screen, old));
+	ck_assert_uint_eq(tsm_screen_frame(screen)->placement_count, 2);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
+
+	/* 512 bytes fit in the old one's room */
+	ck_assert_int_eq(try_image(screen, 8, 16, 1, &key), 0);
+	ck_assert(!image_exists(screen, old));
+	ck_assert(image_exists(screen, key));
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
+
+	/* under a host that evicts: the image being replaced is not its victim */
+	input_str(vte, "\ec");
+	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve, host_release, &h), 0);
+	h.evict_from = screen;
+	old = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	other = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff0000ff);
+	place(screen, other, 0, 0);
+	ck_assert_int_eq(try_image(screen, 8, 32, 1, &key), -ENOSPC);
+	ck_assert(image_exists(screen, old));
+	ck_assert(image_exists(screen, other));
+	ck_assert_uint_eq(h.used, 1024);
+
+	teardown(screen, vte);
+	ck_assert_uint_eq(h.used, 0);
+}
+END_TEST
+
+/* sizes are bounded, so no product of them overflows */
+START_TEST(test_image_bounds)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct tsm_test_placement pl = { 0 };
+	uint64_t key;
+
+	setup(&screen, &vte);
+	ck_assert_int_eq(tsm_screen_set_cell_size(screen, TSM_SCREEN_CELL_MAX + 1, 16), -EINVAL);
+	ck_assert_int_eq(tsm_screen_set_cell_size(screen, 8, TSM_SCREEN_CELL_MAX + 1), -EINVAL);
+	ck_assert_int_eq(try_image(screen, TSM_SCREEN_IMAGE_MAX + 1, 1, 1, &key), -EINVAL);
+	ck_assert_int_eq(try_image(screen, 1, TSM_SCREEN_IMAGE_MAX + 1, 1, &key), -EINVAL);
+
+	pl.image = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	pl.cols = TSM_SCREEN_IMAGE_MAX_CELLS + 1;
+	ck_assert_int_eq(tsm_screen_test_place(screen, &pl, &key), -EINVAL);
+	pl.cols = 0;
+	pl.rows = TSM_SCREEN_IMAGE_MAX_CELLS + 1;
+	ck_assert_int_eq(tsm_screen_test_place(screen, &pl, &key), -EINVAL);
+	pl.cols = TSM_SCREEN_IMAGE_MAX_CELLS;
+	pl.rows = TSM_SCREEN_IMAGE_MAX_CELLS;
+	ck_assert_int_eq(tsm_screen_test_place(screen, &pl, &key), 0);
+
+	teardown(screen, vte);
 }
 END_TEST
 
@@ -933,6 +1064,8 @@ static void check_store(struct tsm_screen *con, struct tsm_image_store *st, bool
 		if (p->image->kind == TSM_IMAGE_SIXEL) {
 			++sixels;
 			ck_assert_int_eq(p->z, 0);
+			if (!st->max_rows_stale)
+				ck_assert_uint_le(p->rows, st->max_sixel_rows);
 		}
 	}
 	ck_assert_uint_eq(sixels, st->sixels);
@@ -1066,6 +1199,9 @@ TEST_DEFINE_CASE(store)
 	TEST(test_image_eviction_partly_on_screen)
 	TEST(test_image_lru)
 	TEST(test_image_host_budget)
+	TEST(test_image_host_budget_install)
+	TEST(test_image_replace_refused)
+	TEST(test_image_bounds)
 	TEST(test_image_lifetime)
 	TEST(test_image_kitty_replace)
 TEST_END_CASE
