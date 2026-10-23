@@ -731,6 +731,8 @@ struct tsm_image_victim {
 	/* when it was last created, placed or drawn, on a clock all screens
 	 * in the process share, so a host can order victims across screens */
 	uint64_t last_use;
+	/* the bytes the host gets back when it is evicted: what the image
+	 * holds less what its pieces owe and the budget never granted */
 	size_t bytes;
 };
 
@@ -741,6 +743,15 @@ struct tsm_image_victim {
 bool tsm_screen_image_victim(struct tsm_screen *con, struct tsm_image_victim *out);
 /* Evicts that image, with its placements; returns the bytes freed, 0 if none. */
 size_t tsm_screen_image_evict(struct tsm_screen *con);
+
+/*
+ * Calls @cb with each image this screen may evict, in the order
+ * tsm_screen_image_evict would evict them, until @cb returns false. Nothing
+ * is evicted, so a host can learn what eviction would free before it evicts.
+ * Returns 0, -EINVAL for NULL arguments, or -ENOMEM.
+ */
+typedef bool (*tsm_image_victim_cb)(const struct tsm_image_victim *victim, void *data);
+int tsm_screen_image_victims(struct tsm_screen *con, tsm_image_victim_cb cb, void *data);
 
 /*
  * For tests only (ADR-103 step 3a): an image and a placement made without a

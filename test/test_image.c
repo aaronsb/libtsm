@@ -286,6 +286,127 @@ START_TEST(test_image_eviction_order)
 }
 END_TEST
 
+/* the victims a walk saw, up to @stop of them */
+struct walk {
+	struct tsm_image_victim seen[8];
+	unsigned int n, stop;
+};
+
+static bool walk_cb(const struct tsm_image_victim *v, void *data)
+{
+	struct walk *w = data;
+
+	ck_assert_uint_lt(w->n, 8);
+	w->seen[w->n++] = *v;
+	return w->n < w->stop;
+}
+
+/*
+ * The victim walk names every image the screen may evict, in the order
+ * tsm_screen_image_evict then evicts them, and evicts none itself: a host
+ * learns what eviction would free before it evicts. It stops when the
+ * callback says so, and never names an image placed on the screen's lines.
+ */
+START_TEST(test_image_victim_walk)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct walk w = { .stop = 8 };
+	uint64_t on_screen, sb, old, transient, newer;
+	unsigned int i;
+
+	setup(&screen, &vte);
+	tsm_screen_set_max_sb(screen, 100);
+	tsm_screen_set_image_limit(screen, 5 * COST(8, 16));
+	ck_assert_int_eq(tsm_screen_image_victims(NULL, walk_cb, &w), -EINVAL);
+	ck_assert_int_eq(tsm_screen_image_victims(screen, NULL, &w), -EINVAL);
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
+	ck_assert_uint_eq(w.n, 0);
+
+	sb = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	place(screen, sb, 0, 0);
+	on_screen = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff00ff00);
+	place(screen, on_screen, 0, 4);
+	old = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 3, false, 0xffff0000);
+	transient = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 4, true, 0xffffffff);
+	newer = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 5, false, 0xff123456);
+	input_str(vte, "\e[5;1H\n\n");
+
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
+	ck_assert_uint_eq(w.n, 4);
+	ck_assert_uint_eq(w.seen[0].key, transient);
+	ck_assert_uint_eq(w.seen[0].rank, TSM_IMAGE_UNPLACED_TRANSIENT);
+	ck_assert_uint_eq(w.seen[1].key, old);
+	ck_assert_uint_eq(w.seen[1].rank, TSM_IMAGE_UNPLACED);
+	ck_assert_uint_eq(w.seen[2].key, newer);
+	ck_assert_uint_eq(w.seen[3].key, sb);
+	ck_assert_uint_eq(w.seen[3].rank, TSM_IMAGE_SCROLLBACK);
+	for (i = 0; i < 4; ++i)
+		ck_assert_uint_eq(w.seen[i].bytes, COST(8, 16));
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 5 * COST(8, 16));
+	ck_assert(image_exists(screen, transient) && image_exists(screen, sb));
+
+	/* stopped after two */
+	w.n = 0;
+	w.stop = 2;
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
+	ck_assert_uint_eq(w.n, 2);
+	ck_assert_uint_eq(w.seen[1].key, old);
+
+	/* eviction follows the walk, and the image on screen is never named */
+	w.n = 0;
+	w.stop = 8;
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
+	for (i = 0; i < 4; ++i) {
+		ck_assert_uint_eq(tsm_screen_image_evict(screen), COST(8, 16));
+		ck_assert(!image_exists(screen, w.seen[i].key));
+	}
+	ck_assert(image_exists(screen, on_screen));
+	w.n = 0;
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
+	ck_assert_uint_eq(w.n, 0);
+
+	teardown(screen, vte);
+}
+END_TEST
+
+/*
+ * The walk leaves what it reads as it was: two walks give the same victims,
+ * in the same order and with the same last use, where least recently used
+ * differs from the order the images were made in.
+ */
+START_TEST(test_image_victim_walk_read_only)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct walk w1 = { .stop = 8 }, w2 = { .stop = 8 };
+	uint64_t made_first, made_second;
+	unsigned int i;
+
+	setup(&screen, &vte);
+	tsm_screen_set_max_sb(screen, 100);
+	made_first = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	made_second = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff00ff00);
+	/* the second is placed first, so it is the less recently used */
+	place(screen, made_second, 0, 0);
+	place(screen, made_first, 2, 0);
+	input_str(vte, "\e[5;1H\n");
+
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w1), 0);
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w2), 0);
+	ck_assert_uint_eq(w1.n, 2);
+	ck_assert_uint_eq(w1.seen[0].key, made_second);
+	ck_assert_uint_eq(w1.seen[1].key, made_first);
+	ck_assert_uint_eq(w2.n, w1.n);
+	for (i = 0; i < w1.n; ++i) {
+		ck_assert_uint_eq(w2.seen[i].key, w1.seen[i].key);
+		ck_assert_uint_eq(w2.seen[i].last_use, w1.seen[i].last_use);
+	}
+
+	teardown(screen, vte);
+}
+END_TEST
+
 /*
  * A store holds at most TSM_SCREEN_IMAGES_PER_STORE images: one more evicts
  * in the usual order, from that store, or is refused when every image there
@@ -470,6 +591,57 @@ static void host_release(struct tsm_screen *con, size_t bytes, void *data)
 	ck_assert_uint_ge(h->used, bytes);
 	h->used -= bytes;
 }
+
+/*
+ * A victim's bytes are what the host gets back when it is evicted: with a
+ * piece's charge still owed, as after a host write outside an input call,
+ * less than the image holds.
+ */
+START_TEST(test_image_victim_owed)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct tsm_screen_attr attr = { 0 };
+	struct host h = { .budget = 1 << 20 };
+	struct walk w = { .stop = 8 };
+	struct tsm_image_victim v;
+	size_t before;
+
+	setup(&screen, &vte);
+	tsm_screen_set_max_sb(screen, 100);
+	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve, host_release, &h), 0);
+	tsm_vte_set_sixel(vte, true);
+	input_str(vte, "\e[1;1H\eP0;0q!24~\e\\");
+	ck_assert_uint_eq(h.used, COST(24, 6));
+
+	/* a host write cuts it in two; the second piece's charge is owed */
+	tsm_screen_move_to(screen, 1, 0);
+	tsm_screen_write(screen, 'X', &attr);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
+			  COST(24, 6) + TSM_SCREEN_PLACEMENT_OVERHEAD);
+	ck_assert_uint_eq(h.used, COST(24, 6));
+
+	/* both pieces scroll into scrollback, the charge still owed */
+	tsm_screen_move_to(screen, 0, 4);
+	tsm_screen_newline(screen);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
+			  COST(24, 6) + TSM_SCREEN_PLACEMENT_OVERHEAD);
+
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
+	ck_assert_uint_eq(w.n, 1);
+	ck_assert_uint_eq(w.seen[0].bytes, COST(24, 6));
+	ck_assert(tsm_screen_image_victim(screen, &v));
+	ck_assert_uint_eq(v.bytes, COST(24, 6));
+
+	before = h.used;
+	ck_assert_uint_ne(tsm_screen_image_evict(screen), 0);
+	ck_assert_uint_eq(before - h.used, w.seen[0].bytes);
+	ck_assert_uint_eq(h.used, 0);
+
+	tsm_screen_set_image_budget(screen, NULL, NULL, NULL);
+	teardown(screen, vte);
+}
+END_TEST
 
 /*
  * With a host budget the host is asked for every reservation, told of every
@@ -1389,6 +1561,9 @@ END_TEST
 TEST_DEFINE_CASE(store)
 	TEST(test_image_store)
 	TEST(test_image_eviction_order)
+	TEST(test_image_victim_walk)
+	TEST(test_image_victim_walk_read_only)
+	TEST(test_image_victim_owed)
 	TEST(test_image_eviction_partly_on_screen)
 	TEST(test_image_lru)
 	TEST(test_image_store_cap)

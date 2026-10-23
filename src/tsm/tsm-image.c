@@ -603,6 +603,13 @@ static size_t evictable_bytes(struct tsm_screen *con)
 	return bytes;
 }
 
+static unsigned int image_rank(const struct tsm_image *image)
+{
+	if (image->placements)
+		return TSM_IMAGE_SCROLLBACK;
+	return image->transient ? TSM_IMAGE_UNPLACED_TRANSIENT : TSM_IMAGE_UNPLACED;
+}
+
 /*
  * The image a screen evicts next: no placement, transient first; then placed
  * only in scrollback; each least recently used first. NULL when every image
@@ -624,12 +631,7 @@ static struct tsm_image *image_victim(struct tsm_screen *con, unsigned int *rank
 			image = shl_dlist_entry(iter, struct tsm_image, list);
 			if (image->pinned)
 				continue;
-			if (image->placements)
-				r = TSM_IMAGE_SCROLLBACK;
-			else if (image->transient)
-				r = TSM_IMAGE_UNPLACED_TRANSIENT;
-			else
-				r = TSM_IMAGE_UNPLACED;
+			r = image_rank(image);
 			if (!best || r < best_rank ||
 			    (r == best_rank && image->last_use < best->last_use)) {
 				best = image;
@@ -1157,7 +1159,7 @@ bool tsm_screen_image_victim(struct tsm_screen *con, struct tsm_image_victim *ou
 		out->key = image->key;
 		out->rank = rank;
 		out->last_use = image->last_use;
-		out->bytes = image->bytes;
+		out->bytes = image->bytes - image->owed;
 	}
 	return true;
 }
@@ -1176,6 +1178,56 @@ size_t tsm_screen_image_evict(struct tsm_screen *con)
 	bytes = image->bytes;
 	image_free(con, image);
 	return bytes;
+}
+
+/* eviction order: rank, then least recently used; last_use is unique */
+static int victim_cmp(const void *a, const void *b)
+{
+	const struct tsm_image_victim *x = a, *y = b;
+
+	if (x->rank != y->rank)
+		return x->rank < y->rank ? -1 : 1;
+	if (x->last_use != y->last_use)
+		return x->last_use < y->last_use ? -1 : 1;
+	return 0;
+}
+
+SHL_EXPORT
+int tsm_screen_image_victims(struct tsm_screen *con, tsm_image_victim_cb cb, void *data)
+{
+	struct tsm_image_store *stores[2];
+	struct tsm_image_victim *v;
+	struct tsm_image *image;
+	struct shl_dlist *iter;
+	unsigned int i, n = 0;
+
+	if (!con || !cb)
+		return -EINVAL;
+	stores[0] = &con->img.main;
+	stores[1] = &con->img.alt;
+	if (!con->img.main.count && !con->img.alt.count)
+		return 0;
+	v = malloc((con->img.main.count + con->img.alt.count) * sizeof(*v));
+	if (!v)
+		return -ENOMEM;
+	images_mark_pinned(con);
+	for (i = 0; i < 2; ++i) {
+		shl_dlist_for_each(iter, &stores[i]->images) {
+			image = shl_dlist_entry(iter, struct tsm_image, list);
+			if (image->pinned)
+				continue;
+			v[n].key = image->key;
+			v[n].rank = image_rank(image);
+			v[n].last_use = image->last_use;
+			v[n].bytes = image->bytes - image->owed;
+			++n;
+		}
+	}
+	qsort(v, n, sizeof(*v), victim_cmp);
+	for (i = 0; i < n && cb(&v[i], data); ++i)
+		;
+	free(v);
+	return 0;
 }
 
 /*
