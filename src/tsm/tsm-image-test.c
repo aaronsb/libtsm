@@ -6,10 +6,11 @@
 
 /*
  * The test calls of ADR-103 step 3a: an image and a placement made without a
- * protocol, as the sixel and kitty parsers make them. They are left out of
- * libtsm.sym, so the shared library does not export them; the tests, which
- * compile libtsm's sources themselves, and hosts that build it as a static
- * subproject reach them through libtsm.h.
+ * protocol, as the sixel and kitty parsers make them. This file is not part
+ * of the library: only what links libtsm_test_dep (libtsm's tests and
+ * tsm-replay) builds it, so the shared library neither contains nor exports
+ * these calls. A host's own tests can take libtsm_test_dep from the
+ * subproject the same way.
  */
 
 #include <errno.h>

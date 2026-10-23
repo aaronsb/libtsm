@@ -60,8 +60,10 @@ git worktree add --detach "$WORK/proj/subprojects/libtsm" "$REF" >/dev/null
 cp "$HERE/tsm-replay.c" "$WORK/proj/"
 cat > "$WORK/proj/meson.build" <<'EOF'
 project('tsm-replay-reference', 'c')
-libtsm = dependency('libtsm', fallback: ['libtsm', 'libtsm_dep'],
-                    default_options: ['default_library=static', 'tests=false'])
+sp = subproject('libtsm', default_options: ['default_library=static', 'tests=false'])
+# the fork's test calls build only through libtsm_test_dep; upstream and fork
+# commits from before it have libtsm_dep alone
+libtsm = sp.get_variable('libtsm_test_dep', sp.get_variable('libtsm_dep'))
 executable('tsm-replay', 'tsm-replay.c', dependencies: libtsm)
 EOF
 

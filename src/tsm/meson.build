@@ -2,7 +2,6 @@
 
 libtsm_srcs = [
     'tsm-image.c',
-    'tsm-image-test.c',
     'tsm-render.c',
     'tsm-screen.c',
     'tsm-selection.c',
@@ -49,6 +48,16 @@ libtsm_dep = declare_dependency(
     link_with: libtsm,
     dependencies: deps,
     sources: libtsm_srcs,
+)
+
+# The test calls of ADR-103 step 3a (tsm_screen_test_image and
+# tsm_screen_test_place) build only into what links this: libtsm's tests and
+# tsm-replay. The shared library neither contains nor exports them.
+libtsm_test_dep = declare_dependency(
+    include_directories: '.',
+    link_with: libtsm,
+    dependencies: deps,
+    sources: libtsm_srcs + ['tsm-image-test.c'],
 )
 
 install_headers('libtsm.h')
