@@ -1071,7 +1071,8 @@ static void do_dcs_end(struct tsm_vte *vte, uint32_t data)
 
 	/* CAN and SUB discard the picture; ST, or anything else that ends
 	 * the string, shows it, unless sixel went off while it streamed (its
-	 * budget removed, say) */
+	 * budget removed, say). The budget would refuse that picture too, but
+	 * only after the store made room for it, which can evict an image */
 	if (data == 0x18 || data == 0x1a || !sixel_on(vte)) {
 		tsm_sixel_abort(vte->sixel);
 		return;

@@ -432,16 +432,34 @@ END_TEST
 
 START_TEST(test_sixel_off_mid_string)
 {
+	uint32_t px = 0xff0000ff;
+	struct tsm_test_image k = {
+		.width = 1, .height = 1, .pixels = &px, .kind = TSM_IMAGE_KITTY,
+	};
+	uint64_t key;
+
 	/* a picture whose budget goes while it streams is dropped at its end,
-	 * with every byte it held, as sixel is then off. The store would
-	 * refuse it too: with no budget, sixel is off, and its overhead cannot
-	 * be reserved, so no public path makes this check the only guard */
+	 * with every byte it held, as sixel is then off */
 	input("\033P0;1q\"1;1;100;100#1~~~~");
 	ck_assert_uint_gt(tsm_screen_get_image_bytes(screen), 0);
 	tsm_screen_set_image_limit(screen, 0);
 	input("~~\033\\");
 	ck_assert_uint_eq(placements(), 0);
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+
+	/* dropped before the store makes room for it: a full store keeps the
+	 * images it had, though the budget would refuse the picture after an
+	 * eviction */
+	tsm_screen_set_image_limit(screen, 64 << 20);
+	for (k.id = 1; k.id <= TSM_SCREEN_IMAGES_PER_STORE; ++k.id)
+		ck_assert_int_eq(tsm_screen_test_image(screen, &k, &key), 0);
+	input("\033P0;1q\"1;1;100;100#1~~~~");
+	tsm_screen_set_image_limit(screen, 0);
+	input("~~\033\\");
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen),
+			  TSM_SCREEN_IMAGES_PER_STORE);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
+			  TSM_SCREEN_IMAGES_PER_STORE * COST(1, 1));
 }
 END_TEST
 
@@ -684,6 +702,29 @@ START_TEST(test_sixel_owed_evicted)
 }
 END_TEST
 
+/*
+ * A budget that refuses what pieces owe drops the smallest piece first: a
+ * picture cut into one cell and three keeps the three.
+ */
+START_TEST(test_sixel_owed_smallest_first)
+{
+	const struct tsm_frame_placement *p;
+
+	tsm_screen_set_image_limit(screen, COST(40, 6));
+	input("\033[1;1H\033P0;0q!40~\033\\");
+	ck_assert_uint_eq(placements(), 1);
+	ck_assert_uint_eq(placement(0)->cols, 5);
+
+	/* the piece the cut makes owes a charge the limit refuses */
+	input("\033[1;2HX");
+	ck_assert_uint_eq(placements(), 1);
+	p = placement(0);
+	ck_assert_uint_eq(p->col, 2);
+	ck_assert_uint_eq(p->cols, 3);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(40, 6));
+}
+END_TEST
+
 /* Work per call */
 
 START_TEST(test_sixel_bounded)
@@ -835,6 +876,7 @@ TEST_DEFINE_CASE(strings)
 	TEST(test_sixel_pieces_bounded)
 	TEST(test_sixel_pieces_budget)
 	TEST(test_sixel_owed_evicted)
+	TEST(test_sixel_owed_smallest_first)
 	TEST(test_sixel_bounded)
 	TEST(test_sixel_split_input)
 TEST_END_CASE
