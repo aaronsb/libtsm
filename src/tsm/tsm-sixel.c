@@ -36,9 +36,10 @@
  *
  * The picture is drawn straight into ARGB32, 0 meaning no sixel set the
  * pixel (every register colour is opaque). Its rows are cap_w pixels apart.
- * Raster attributes size it, and reserve its memory, before any sixel; it
- * grows as sixels land outside it. One sixel dot is one pixel; the pixel
- * aspect of P1 and of raster attributes is not applied (see tsm-sixel.h).
+ * Raster attributes size it, and reserve its memory, before any sixel; the
+ * first sixel allocates it, and it grows as sixels land outside it. One
+ * sixel dot is one pixel; the pixel aspect of P1 and of raster attributes is
+ * not applied (see tsm-sixel.h).
  */
 
 #include <errno.h>
@@ -88,10 +89,12 @@ struct tsm_sixel {
 	unsigned int width;	/* furthest column reached by data */
 	unsigned int height;	/* one past the lowest row a sixel set */
 
-	uint32_t *buf;
+	uint32_t *buf;		/* NULL until the first sixel */
 	unsigned int cap_w;
 	unsigned int cap_h;
 	size_t reserved;	/* bytes the reserve callback granted */
+
+	uint64_t work;		/* bytes read and pixels touched, ever */
 };
 
 /*
@@ -361,19 +364,21 @@ static unsigned int max_u(unsigned int a, unsigned int b)
 /*
  * Moves the picture into a buffer of @w x @h pixels, both at least the current
  * size, keeping what is drawn. Both buffers are reserved while the rows move
- * across, so memory never exceeds the reservation. Returns false when the
- * memory is refused or unavailable.
+ * across, so memory never exceeds the reservation; the first buffer takes
+ * what raster attributes reserved. Returns false when the memory is refused
+ * or unavailable.
  */
 static bool resize(struct tsm_sixel *sixel, unsigned int w, unsigned int h)
 {
 	uint32_t *buf;
-	size_t size;
+	size_t size, old;
 	unsigned int row;
 
 	if ((size_t)w > SIZE_MAX / 2 / sizeof(*buf) / (h ? h : 1))
 		return false;
 	size = (size_t)w * h * sizeof(*buf);
-	if (!reserve_bytes(sixel, sixel->reserved + size))
+	old = (size_t)sixel->cap_w * sixel->cap_h * sizeof(*buf);
+	if (old + size > sixel->reserved && !reserve_bytes(sixel, old + size))
 		return false;
 
 	buf = calloc((size_t)w * h, sizeof(*buf));
@@ -385,6 +390,7 @@ static bool resize(struct tsm_sixel *sixel, unsigned int w, unsigned int h)
 		       sixel->buf + (size_t)row * sixel->cap_w,
 		       sixel->cap_w * sizeof(*buf));
 	free(sixel->buf);
+	sixel->work += (uint64_t)w * h + (uint64_t)sixel->height * sixel->cap_w;
 
 	sixel->buf = buf;
 	sixel->cap_w = w;
@@ -401,14 +407,16 @@ static bool resize(struct tsm_sixel *sixel, unsigned int w, unsigned int h)
 static bool grow(struct tsm_sixel *sixel, unsigned int need_w,
 		 unsigned int need_h)
 {
-	unsigned int w = sixel->cap_w, h = sixel->cap_h;
+	/* the first buffer is at least the raster area */
+	unsigned int w = sixel->buf ? sixel->cap_w : sixel->ra_w;
+	unsigned int h = sixel->buf ? sixel->cap_h : sixel->ra_h;
 
 	if (need_w > w)
 		w = max_u(need_w, min_u(w + w / 4, sixel->max_w));
 	if (need_h > h)
 		h = max_u(need_h, min_u(h + h / 4, sixel->max_h));
 
-	return resize(sixel, w, h);
+	return resize(sixel, max_u(w, need_w), max_u(h, need_h));
 }
 
 /*
@@ -454,6 +462,7 @@ static void put(struct tsm_sixel *sixel, unsigned int bits, unsigned int count)
 		line = sixel->buf + (size_t)row * stride;
 		for (col = x0; col < x1; ++col)
 			line[col] = color;
+		sixel->work += x1 - x0;
 	}
 }
 
@@ -489,6 +498,7 @@ static inline bool put_one(struct tsm_sixel *sixel, unsigned int bits)
 		sixel->height = end;
 
 	/* all six rows, masked: cheaper than a branch per bit */
+	sixel->work += 6;
 	color = sixel->color;
 	p = sixel->buf + (size_t)y * stride + x;
 	put_masked(p, bits, color);
@@ -519,10 +529,12 @@ static void end_params(struct tsm_sixel *sixel, enum sixel_state state)
 		sixel->ra_h = n >= 4 ? min_u(p[3], sixel->max_h) : 0;
 
 		/* the raster area is reserved now, so a picture that cannot
-		 * fit is refused before it is decoded */
+		 * fit is refused before it is decoded; the first sixel
+		 * allocates it, so raster attributes alone cost no memory */
 		release(sixel);
 		if (sixel->ra_w && sixel->ra_h &&
-		    !resize(sixel, sixel->ra_w, sixel->ra_h))
+		    !reserve_bytes(sixel, (size_t)sixel->ra_w * sixel->ra_h *
+				   sizeof(*sixel->buf)))
 			fail(sixel);
 	}
 }
@@ -615,20 +627,34 @@ static void step(struct tsm_sixel *sixel, unsigned char c)
 	data(sixel, c);
 }
 
-void tsm_sixel_feed(struct tsm_sixel *sixel, const char *buf, size_t len)
+size_t tsm_sixel_feed_some(struct tsm_sixel *sixel, const char *buf,
+			   size_t len, uint64_t limit)
 {
 	const unsigned char *p = (const unsigned char *)buf;
 	size_t i;
 
 	if (!sixel || !buf)
-		return;
+		return len;
 
-	for (i = 0; i < len; ++i) {
-		if (sixel->state == SIXEL_DATA && p[i] >= '?' && p[i] <= '~' &&
-		    put_one(sixel, p[i] - '?'))
-			continue;
-		step(sixel, p[i]);
+	for (i = 0; i < len; ) {
+		++sixel->work;
+		if (!(sixel->state == SIXEL_DATA && p[i] >= '?' && p[i] <= '~' &&
+		      put_one(sixel, p[i] - '?')))
+			step(sixel, p[i]);
+		if (++i < len && sixel->work >= limit)
+			break;
 	}
+	return i;
+}
+
+void tsm_sixel_feed(struct tsm_sixel *sixel, const char *buf, size_t len)
+{
+	tsm_sixel_feed_some(sixel, buf, len, UINT64_MAX);
+}
+
+uint64_t tsm_sixel_work(const struct tsm_sixel *sixel)
+{
+	return sixel ? sixel->work : 0;
 }
 
 int tsm_sixel_finish(struct tsm_sixel *sixel, struct tsm_sixel_image *image)
@@ -667,13 +693,14 @@ int tsm_sixel_finish(struct tsm_sixel *sixel, struct tsm_sixel_image *image)
 	}
 
 	px = sixel->buf;
+	n = (size_t)w * h;
+	sixel->work += n;
 	if (w != sixel->cap_w)
 		for (row = 1; row < h; ++row)
 			memmove(px + (size_t)row * w,
 				px + (size_t)row * sixel->cap_w,
 				w * sizeof(*px));
 
-	n = (size_t)w * h;
 	if (!sixel->transparent) {
 		bg = sixel->pal->colors[0];
 		for (i = 0; i < n; ++i)
