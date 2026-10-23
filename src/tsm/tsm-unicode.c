@@ -57,7 +57,9 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef HAVE_SYS_RANDOM_H
 #include <sys/random.h>
+#endif
 #include <time.h>
 #include <unistd.h>
 #include "libtsm.h"
@@ -276,6 +278,23 @@ static size_t hash_cluster(const void *elem, void *priv)
 			   c->len * sizeof(c->cps[0]), 1, 3);
 }
 
+/* Fills @buf from the kernel's randomness; false when there is none to be had
+ * without waiting. getrandom comes first where it exists so that a console
+ * started before the kernel's pool is ready does not block on it. */
+bool tsm_entropy(void *buf, size_t len)
+{
+#if defined(HAVE_GETRANDOM)
+	return getrandom(buf, len, GRND_NONBLOCK) == (ssize_t)len;
+#elif defined(HAVE_GETENTROPY)
+	return len <= 256 && getentropy(buf, len) == 0;
+#elif defined(HAVE_ARC4RANDOM_BUF)
+	arc4random_buf(buf, len);
+	return true;
+#else
+	return false;
+#endif
+}
+
 /* a key no other screen can guess: the kernel's randomness, or failing that
  * the clocks, the pid and the table's address, mixed */
 static void make_hash_key(struct tsm_symbol_table *tbl)
@@ -284,8 +303,7 @@ static void make_hash_key(struct tsm_symbol_table *tbl)
 	uint64_t x;
 	int i;
 
-	if (getrandom(tbl->hash_key, sizeof(tbl->hash_key), GRND_NONBLOCK) ==
-	    sizeof(tbl->hash_key))
+	if (tsm_entropy(tbl->hash_key, sizeof(tbl->hash_key)))
 		return;
 
 	clock_gettime(CLOCK_MONOTONIC, &mono);

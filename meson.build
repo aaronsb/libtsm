@@ -25,13 +25,16 @@ add_test_setup(
     ],
 )
 
+# The feature macros are also passed to the configure checks below, so a check
+# sees the declarations the build sees.
+feature_args = ['-D_GNU_SOURCE', '-D_POSIX_C_SOURCE=200809L']
+
 add_project_arguments(
     '-ffast-math',
     '-fno-strict-aliasing',
     '-ffunction-sections',
     '-fdata-sections',
-    '-D_GNU_SOURCE',
-    '-D_POSIX_C_SOURCE=200809L',
+    feature_args,
     language: 'c',
 )
 
@@ -50,6 +53,23 @@ endif
 #
 config = configuration_data()
 config.set('BUILD_ENABLE_DEBUG', get_option('extra_debug'))
+
+# The kernel randomness that keys the cluster table (tsm_entropy in
+# tsm-unicode.c): getrandom on Linux and FreeBSD, getentropy on macOS and
+# OpenBSD, arc4random_buf on the other BSDs.
+cc = meson.get_compiler('c')
+entropy_prefix = '#include <stdlib.h>\n#include <unistd.h>\n'
+if cc.has_header('sys/random.h', args: feature_args)
+    config.set('HAVE_SYS_RANDOM_H', true)
+    entropy_prefix += '#include <sys/random.h>\n'
+endif
+config.set('HAVE_GETRANDOM',
+    cc.has_function('getrandom', prefix: entropy_prefix, args: feature_args) and
+    cc.has_header_symbol('sys/random.h', 'GRND_NONBLOCK', args: feature_args))
+config.set('HAVE_GETENTROPY',
+    cc.has_function('getentropy', prefix: entropy_prefix, args: feature_args))
+config.set('HAVE_ARC4RANDOM_BUF',
+    cc.has_function('arc4random_buf', prefix: entropy_prefix, args: feature_args))
 config_h = configure_file(configuration: config, output: 'config.h')
 abs_config_h = meson.current_build_dir() / '@0@'.format('config.h')
 add_project_arguments('-include', abs_config_h, language: 'c')

@@ -1413,7 +1413,11 @@ TEST_DEFINE_CASE(frame)
 	TEST(test_image_frame_wrap)
 TEST_END_CASE
 
+/* 16000 events with the invariants checked after each: under a second here,
+ * but close to four on a macOS runner, where check's default timeout of 4 s
+ * failed it */
 TEST_DEFINE_CASE(events)
+	TIMEOUT(20)
 	TEST(test_image_random_events)
 TEST_END_CASE
 
