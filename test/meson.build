@@ -47,6 +47,9 @@ test('valgrind', test_valgrind,
 test('vte_mouse', test_vte_mouse)
 test('vte', test_vte)
 
+# Not a test: prints sixel decode throughput (bench-sixel [FILE.six] [SECONDS]).
+executable('bench-sixel', 'bench-sixel.c', dependencies: test_deps)
+
 # The sixel decoder's fuzz target (fuzz/fuzz-sixel.c): built as a replay of
 # the seed corpus for every run, and with libFuzzer when -Dfuzz=true under
 # clang (make fuzz).
