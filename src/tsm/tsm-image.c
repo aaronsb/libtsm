@@ -115,40 +115,47 @@ static struct line *line_above(struct tsm_screen *con, struct line *line, int *r
 static size_t evictable_bytes(struct tsm_screen *con);
 
 /*
- * Reserves @bytes for a new image. @keep, the image a replacement will free,
- * counts as free room and is never evicted to make it; a request that cannot
- * fit evicts nothing.
+ * Reserves room for a new image of @bytes. @keep, the image a replacement
+ * will free, passes its bytes to the new one: only what the new image adds is
+ * reserved, from the host or under the screen's limit, and @keep is never
+ * evicted to make room. A request that cannot fit evicts nothing. Returns the
+ * bytes reserved in @added; screen_image_new hands @keep's share over once
+ * the new image exists.
  */
-static int budget_reserve(struct tsm_screen *con, size_t bytes, struct tsm_image *keep)
+static int budget_reserve(struct tsm_screen *con, size_t bytes, struct tsm_image *keep,
+			  size_t *added)
 {
 	struct tsm_images *img = &con->img;
-	size_t room;
+	size_t credit = keep ? keep->bytes : 0, need, room;
 	int ret = 0;
 
+	need = bytes > credit ? bytes - credit : 0;
 	img->keep = keep;
 	if (img->reserve) {
-		if (img->reserve(con, bytes, img->budget_data) < 0)
+		if (need && img->reserve(con, need, img->budget_data) < 0)
 			ret = -ENOSPC;
 	} else {
 		/* what the screen holds once @keep and every image it may
 		 * evict are gone */
-		room = img->bytes - (keep ? keep->bytes : 0) - evictable_bytes(con);
+		room = img->bytes - credit - evictable_bytes(con);
 		if (bytes > img->limit || room + bytes > img->limit)
 			ret = -ENOSPC;
-		while (!ret && img->bytes - (keep ? keep->bytes : 0) + bytes > img->limit)
+		while (!ret && img->bytes - credit + bytes > img->limit)
 			if (!tsm_screen_image_evict(con))
 				ret = -ENOSPC;
 	}
 	img->keep = NULL;
-	if (!ret)
-		img->bytes += bytes;
+	if (!ret) {
+		img->bytes += need;
+		*added = need;
+	}
 	return ret;
 }
 
 static void budget_release(struct tsm_screen *con, size_t bytes)
 {
 	con->img.bytes -= bytes;
-	if (con->img.release)
+	if (con->img.release && bytes)
 		con->img.release(con, bytes, con->img.budget_data);
 }
 
@@ -1119,11 +1126,12 @@ int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 {
 	struct tsm_image_store *st;
 	struct tsm_image *image, *old = NULL;
-	size_t i, n, bytes;
+	size_t i, n, bytes, added;
 	int ret;
 
 	if (!desc->width || !desc->height || !desc->pixels ||
 	    desc->width > TSM_SCREEN_IMAGE_MAX || desc->height > TSM_SCREEN_IMAGE_MAX ||
+	    (uint64_t)desc->width * desc->height * 4 > TSM_SCREEN_IMAGE_MAX_BYTES ||
 	    desc->kind > TSM_IMAGE_KITTY ||
 	    (desc->kind == TSM_IMAGE_KITTY && !desc->id))
 		return -EINVAL;
@@ -1137,7 +1145,7 @@ int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 	if (desc->kind == TSM_IMAGE_KITTY)
 		old = store_find_id(st, desc->id);
 
-	ret = budget_reserve(con, bytes, old);
+	ret = budget_reserve(con, bytes, old, &added);
 	if (ret)
 		return ret;
 	image = calloc(1, sizeof(*image));
@@ -1147,7 +1155,7 @@ int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 		if (image)
 			free(image->pixels);
 		free(image);
-		budget_release(con, bytes);
+		budget_release(con, added);
 		return -ENOMEM;
 	}
 
@@ -1165,8 +1173,12 @@ int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 	image->transient = desc->transient;
 	image->last_use = ++image_clock;
 	image->age = con->age_cnt;
-	if (old)
+	/* the old image's bytes beyond what was added pass to the new one;
+	 * freeing it releases only what is left over */
+	if (old) {
+		old->bytes -= bytes - added;
 		image_free(con, old);
+	}
 	shl_dlist_link_tail(&st->images, &image->list);
 
 	*out = image;

@@ -525,6 +525,90 @@ START_TEST(test_image_replace_refused)
 }
 END_TEST
 
+/*
+ * Under a host budget as without one, a replacement needs room only for what
+ * it adds: the old image's bytes pass to the new one. A same-size
+ * replacement at a full budget reserves nothing; a smaller one gives the
+ * difference back; a larger one is asked for the difference alone.
+ */
+START_TEST(test_image_replace_host)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct host h = { .budget = 2 * 512 };
+	uint64_t old, other, key;
+	unsigned int reserves;
+
+	setup(&screen, &vte);
+	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve, host_release, &h), 0);
+	old = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	place(screen, old, 0, 0);
+	other = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff0000ff);
+	place(screen, other, 2, 0);
+	ck_assert_uint_eq(h.used, 1024);
+
+	reserves = h.reserves;
+	ck_assert_int_eq(try_image(screen, 8, 16, 1, &key), 0);
+	ck_assert(!image_exists(screen, old));
+	ck_assert_uint_eq(h.reserves, reserves);
+	ck_assert_uint_eq(h.used, 1024);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 1024);
+
+	old = key;
+	ck_assert_int_eq(try_image(screen, 8, 8, 1, &key), 0);
+	ck_assert(!image_exists(screen, old));
+	ck_assert_uint_eq(h.used, 768);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 768);
+
+	/* 1024 bytes need 768 more: past the budget, refused, the old kept */
+	old = key;
+	ck_assert_int_eq(try_image(screen, 8, 32, 1, &key), -ENOSPC);
+	ck_assert_uint_eq(h.last_reserve, 768);
+	ck_assert(image_exists(screen, old));
+	ck_assert_uint_eq(h.used, 768);
+
+	/* 512 bytes, 256 more, fit */
+	ck_assert_int_eq(try_image(screen, 8, 16, 1, &key), 0);
+	ck_assert_uint_eq(h.last_reserve, 256);
+	ck_assert_uint_eq(h.used, 1024);
+
+	teardown(screen, vte);
+	ck_assert_uint_eq(h.used, 0);
+}
+END_TEST
+
+/*
+ * An image whose bytes would wrap a 32-bit size_t is refused on every
+ * platform: 32768 x 32768 x 4 is 2^32, which a 32-bit size_t holds as 0.
+ * Neither call reads the pixels it is given.
+ */
+START_TEST(test_image_size_wrap)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct tsm_test_image img = { 0 };
+	uint32_t px = 0xff000000;
+	uint64_t key;
+
+	setup(&screen, &vte);
+	img.kind = TSM_IMAGE_KITTY;
+	img.id = 1;
+	img.pixels = &px;
+	img.width = 32768;
+	img.height = 32768;
+	ck_assert((uint64_t)img.width * img.height * 4 > UINT32_MAX);
+	ck_assert_int_eq(tsm_screen_test_image(screen, &img, &key), -EINVAL);
+
+	/* one column fewer is a size, which the budget alone refuses */
+	img.width = 32767;
+	ck_assert((uint64_t)img.width * img.height * 4 <= UINT32_MAX);
+	ck_assert_int_eq(tsm_screen_test_image(screen, &img, &key), -ENOSPC);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+
+	teardown(screen, vte);
+}
+END_TEST
+
 /* with neither a host budget nor a limit, a screen stores no image */
 START_TEST(test_image_closed_by_default)
 {
@@ -1214,6 +1298,8 @@ TEST_DEFINE_CASE(store)
 	TEST(test_image_host_budget)
 	TEST(test_image_host_budget_install)
 	TEST(test_image_replace_refused)
+	TEST(test_image_replace_host)
+	TEST(test_image_size_wrap)
 	TEST(test_image_closed_by_default)
 	TEST(test_image_bounds)
 	TEST(test_image_lifetime)

@@ -634,9 +634,11 @@ int tsm_screen_frame_image(struct tsm_screen *con, uint64_t key,
 /*
  * Bounds that keep every pixel quantity of a placement inside an int: an
  * image's width and height, a cell's width and height, and a box's columns
- * and rows. Larger values are refused with -EINVAL.
+ * and rows; and an image's bytes, so its size never wraps a 32-bit size_t.
+ * Larger values are refused with -EINVAL, on every platform.
  */
 #define TSM_SCREEN_IMAGE_MAX		65535
+#define TSM_SCREEN_IMAGE_MAX_BYTES	UINT32_MAX
 #define TSM_SCREEN_CELL_MAX		1024
 #define TSM_SCREEN_IMAGE_MAX_CELLS	10000
 
