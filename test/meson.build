@@ -47,6 +47,29 @@ test('valgrind', test_valgrind,
 test('vte_mouse', test_vte_mouse)
 test('vte', test_vte)
 
+# The sixel decoder's fuzz target (fuzz/fuzz-sixel.c): built as a replay of
+# the seed corpus for every run, and with libFuzzer when -Dfuzz=true under
+# clang (make fuzz).
+fuzz_sixel_srcs = ['fuzz/fuzz-sixel.c', '../src/tsm/tsm-sixel.c']
+fuzz_sixel_replay = executable(
+    'fuzz-sixel-replay',
+    fuzz_sixel_srcs,
+    include_directories: '../src/tsm',
+    c_args: ['-DFUZZ_REPLAY'],
+)
+test('fuzz-sixel-seeds', fuzz_sixel_replay,
+     args: [meson.current_source_dir() / 'fuzz' / 'sixel-seeds'])
+if get_option('fuzz')
+    executable(
+        'fuzz-sixel',
+        fuzz_sixel_srcs,
+        include_directories: '../src/tsm',
+        c_args: ['-fsanitize=fuzzer'],
+        link_args: ['-fsanitize=fuzzer'],
+    )
+endif
+
+
 # Conformance replay (ADR-301 tier 1 in the kmscon fork): every recorded
 # stream in conformance/ must reproduce its golden screen state.
 tsm_replay = executable(

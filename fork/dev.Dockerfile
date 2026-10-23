@@ -9,7 +9,7 @@
 # the top of the Makefile): BASE is a digest, ARCHIVE_DATE a snapshot of the
 # Arch Linux Archive that pacman reads instead of the live mirrors.
 ARG BASE
-FROM ${BASE}
+FROM ${BASE} AS dev
 ARG BASE
 ARG ARCHIVE_DATE
 ENV DEV_IMAGE_BASE=${BASE} DEV_ARCHIVE_DATE=${ARCHIVE_DATE}
@@ -18,4 +18,9 @@ RUN echo "Server = https://archive.archlinux.org/repos/${ARCHIVE_DATE}/\$repo/os
         > /etc/pacman.d/mirrorlist
 RUN pacman -Syu --noconfirm --needed meson ninja git python check libxkbcommon \
         vim less tmux ncurses bash \
+    && pacman -Scc --noconfirm
+
+# make fuzz: the same image plus clang and its sanitizer and libFuzzer runtimes
+FROM dev AS fuzz
+RUN pacman -S --noconfirm --needed clang compiler-rt \
     && pacman -Scc --noconfirm
