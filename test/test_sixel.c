@@ -378,9 +378,10 @@ START_TEST(test_sixel_redefine_after_draw)
 {
 	struct tsm_sixel_image img;
 
-	/* pixels hold register numbers until ST, as on a VT340 */
-	ck_assert_int_eq(decode("#1@#1;2;0;100;0", &img), 0);
-	ck_assert_uint_eq(px(&img, 0, 0), GREEN);
+	/* a pixel keeps the colour its register had when it was drawn */
+	ck_assert_int_eq(decode("#1@#1;2;0;100;0@", &img), 0);
+	ck_assert_uint_eq(px(&img, 0, 0), VT_BLUE);
+	ck_assert_uint_eq(px(&img, 1, 0), GREEN);
 	image_free(&img);
 }
 END_TEST
@@ -754,9 +755,17 @@ START_TEST(test_sixel_huge_raster)
 				     "\"1;1;99999999;99999999#1~", &img),
 			 -ENOMEM);
 	ck_assert_ptr_eq(img.pixels, NULL);
-	/* raster attributes alone allocate nothing until ST */
+	/* raster attributes ended by ST are refused the same way */
 	ck_assert_int_eq(decode_with(s, 7, 0, NULL, "\"1;1;10000;10000", &img),
 			 -ENOMEM);
+
+	/* the refusal comes before any sixel is decoded */
+	tsm_sixel_begin(s, 7, 0, NULL);
+	tsm_sixel_feed(s, "\"1;1;3000;3000#", 15);
+	ck_assert_uint_eq(reserved, 0);
+	tsm_sixel_feed(s, "1~~~~", 5);
+	ck_assert_uint_eq(reserved, 0);
+	ck_assert_int_eq(tsm_sixel_finish(s, &img), -ENOMEM);
 
 	/* the decoder takes the next image as usual */
 	ck_assert_int_eq(decode_with(s, 7, 0, NULL, "\"1;1;100;100#1~", &img), 0);
@@ -778,9 +787,11 @@ START_TEST(test_sixel_truncated)
 	struct tsm_sixel *s = new_decoder(0, 0, 0);
 	struct tsm_sixel_image img;
 
-	/* ST inside a colour introducer still defines it */
-	ck_assert_int_eq(decode_with(s, 7, 1, NULL, "#1@#1;2;100;0;0", &img), 0);
+	/* ST inside a colour introducer still defines it: here register 0,
+	 * which fills the unset pixel above the sixel */
+	ck_assert_int_eq(decode_with(s, 7, 0, NULL, "#1A#0;2;100;0;0", &img), 0);
 	ck_assert_uint_eq(px(&img, 0, 0), RED);
+	ck_assert_uint_eq(px(&img, 0, 1), VT_BLUE);
 	image_free(&img);
 
 	/* ST after a repeat count drops the repeat */
@@ -792,6 +803,65 @@ START_TEST(test_sixel_truncated)
 	ck_assert_int_eq(decode_with(s, 7, 0, NULL, "\"1;1;3;2", &img), 0);
 	ck_assert_uint_eq(img.width, 3);
 	ck_assert_uint_eq(img.height, 2);
+	image_free(&img);
+
+	tsm_sixel_free(s);
+}
+END_TEST
+
+START_TEST(test_sixel_budget_required)
+{
+	struct tsm_sixel_limits lim = { 0 };
+	struct tsm_sixel *s = TEST_INVALID_PTR;
+
+	/* a decoder without a budget is refused */
+	ck_assert_int_eq(tsm_sixel_new(&s, NULL), -EINVAL);
+	ck_assert_int_eq(tsm_sixel_new(&s, &lim), -EINVAL);
+	ck_assert_ptr_eq(s, TEST_INVALID_PTR);
+}
+END_TEST
+
+START_TEST(test_sixel_raster_reserved)
+{
+	struct tsm_sixel *s = new_decoder(0, 0, 0);
+	struct tsm_sixel_image img;
+
+	/* raster attributes reserve the whole picture before any sixel */
+	tsm_sixel_begin(s, 7, 1, NULL);
+	tsm_sixel_feed(s, "\"1;1;100;50#", 12);
+	ck_assert_uint_eq(reserved, 100 * 50 * 4);
+
+	/* a later set before data replaces it */
+	tsm_sixel_feed(s, "\"1;1;20;10#", 11);
+	ck_assert_uint_eq(reserved, 20 * 10 * 4);
+
+	/* drawing inside it reserves nothing more ('N' sets rows 0 to 3) */
+	tsm_sixel_feed(s, "1!20~-!20N", 10);
+	ck_assert_uint_eq(reserved, 20 * 10 * 4);
+	ck_assert_int_eq(tsm_sixel_finish(s, &img), 0);
+	ck_assert_uint_eq(img.width, 20);
+	ck_assert_uint_eq(img.height, 10);
+	ck_assert_uint_eq(reserved, 20 * 10 * 4);
+	image_free(&img);
+
+	/* a sixel past it grows the picture, and its reservation */
+	tsm_sixel_begin(s, 7, 1, NULL);
+	tsm_sixel_feed(s, "\"1;1;20;10#1!20~-!20~", 21);
+	ck_assert_int_eq(tsm_sixel_finish(s, &img), 0);
+	ck_assert_uint_eq(img.height, 12);
+	ck_assert_uint_eq(reserved, 20 * 12 * 4);
+	image_free(&img);
+
+	/* while it grows, the old and new buffers are both reserved: 800 and
+	 * 960 bytes do not fit in 1000 */
+	budget = 1000;
+	tsm_sixel_begin(s, 7, 1, NULL);
+	tsm_sixel_feed(s, "\"1;1;20;10#1!20~-!20~", 21);
+	ck_assert_int_eq(tsm_sixel_finish(s, &img), -ENOMEM);
+	budget = 1760;
+	tsm_sixel_begin(s, 7, 1, NULL);
+	tsm_sixel_feed(s, "\"1;1;20;10#1!20~-!20~", 21);
+	ck_assert_int_eq(tsm_sixel_finish(s, &img), 0);
 	image_free(&img);
 
 	tsm_sixel_free(s);
@@ -941,14 +1011,15 @@ static void decode_file(const char *name, size_t chunk,
 
 /*
  * Compares a decoded fixture with libsixel's own decoding of it (NAME.ref.ppm,
- * sixel2png) and its source picture (NAME.ppm). The size is libsixel's; over
- * the source's area every channel is within @ref_err of libsixel's and,
- * unless @max_err is negative, within @max_err of the source, with the mean
- * error within @mean_err. (libsixel fills pixels outside the raster area that
- * no sixel set with a colour of its own, so they are not compared.)
+ * sixel2png) and its source picture (NAME.ppm). Unless @ref_err is negative,
+ * the size is libsixel's and over the source's area every channel is within
+ * @ref_err of libsixel's. (libsixel fills pixels outside the raster area that
+ * no sixel set with a colour of its own, so they are not compared.) Every
+ * channel is within @max_err of the source, with the mean error within
+ * @mean_err.
  */
-static void compare_fixture(const char *base, unsigned int ref_err,
-			    int max_err, double mean_err)
+static void compare_fixture(const char *base, int ref_err,
+			    unsigned int max_err, double mean_err)
 {
 	char name[256];
 	struct tsm_sixel_image img, img1;
@@ -963,8 +1034,10 @@ static void compare_fixture(const char *base, unsigned int ref_err,
 	snprintf(name, sizeof(name), "%s.ref.ppm", base);
 	ref = read_ppm(name);
 
-	ck_assert_uint_eq(img.width, ref.w);
-	ck_assert_uint_eq(img.height, ref.h);
+	if (ref_err >= 0) {
+		ck_assert_uint_eq(img.width, ref.w);
+		ck_assert_uint_eq(img.height, ref.h);
+	}
 	ck_assert_uint_eq(img.width, src.w);
 	ck_assert_uint_ge(img.height, src.h);
 
@@ -977,15 +1050,15 @@ static void compare_fixture(const char *base, unsigned int ref_err,
 
 			ck_assert_uint_eq(v >> 24, 0xff);
 			for (c = 0; c < 3; ++c) {
-				e = abs((int)got[c] - ref.rgb[off + c]);
-				ck_assert_msg(e <= ref_err,
-					      "%s: %u,%u channel %u is %u, libsixel %u",
-					      base, x, y, c, got[c], ref.rgb[off + c]);
-				worst_ref = e > worst_ref ? e : worst_ref;
-				if (max_err < 0)
-					continue;
+				if (ref_err >= 0) {
+					e = abs((int)got[c] - ref.rgb[off + c]);
+					ck_assert_msg(e <= (unsigned int)ref_err,
+						      "%s: %u,%u channel %u is %u, libsixel %u",
+						      base, x, y, c, got[c], ref.rgb[off + c]);
+					worst_ref = e > worst_ref ? e : worst_ref;
+				}
 				e = abs((int)got[c] - src.rgb[off + c]);
-				ck_assert_msg(e <= (unsigned int)max_err,
+				ck_assert_msg(e <= max_err,
 					      "%s: %u,%u channel %u is %u, source %u",
 					      base, x, y, c, got[c], src.rgb[off + c]);
 				worst = e > worst ? e : worst;
@@ -994,11 +1067,11 @@ static void compare_fixture(const char *base, unsigned int ref_err,
 		}
 	}
 	total /= (double)src.w * src.h * 3;
-	ck_assert_msg(max_err < 0 || total <= mean_err, "%s: mean error %.2f, worst %u", base,
+	ck_assert_msg(total <= mean_err, "%s: mean error %.2f, worst %u", base,
 		      total, worst);
-	fprintf(stderr, "%s: %ux%u, libsixel within %u, source within %u, "
-		"mean %.2f\n", base, img.width, img.height, worst_ref, worst,
-		total);
+	printf("%s: %ux%u, libsixel within %d, source within %u, "
+		"mean %.2f\n", base, img.width, img.height,
+		ref_err >= 0 ? (int)worst_ref : -1, worst, total);
 
 	/* one byte at a time decodes the same */
 	snprintf(name, sizeof(name), "%s.six", base);
@@ -1029,12 +1102,13 @@ END_TEST
 
 START_TEST(test_sixel_fixture_highcolor)
 {
-	/* img2sixel -I, 15-bit colour, redefines registers band after band.
-	 * libsixel 1.10.5 encodes this mode wrongly: its colours stray from
-	 * the source, a sixth band lands below the 30 rows, and the bytes
-	 * differ from run to run. Its own decoder reads the stream the same
-	 * way, so only that comparison holds. */
-	compare_fixture("highcolor", 1, -1, 0);
+	/* img2sixel -I, 15-bit colour, redefines registers band after band,
+	 * so each pixel must take its register's colour when it is drawn
+	 * (mean error 4.7; resolved at the end instead, 66). libsixel's own
+	 * decoder resolves colours at the end, so only the source is compared.
+	 * The stream also writes a sixth band under the 30 source rows; the
+	 * picture is 35 rows, and the rows past the source are not compared. */
+	compare_fixture("highcolor", -1, 56, 5.0);
 }
 END_TEST
 
@@ -1065,6 +1139,8 @@ TEST_DEFINE_CASE(edges)
 	TEST(test_sixel_max_size)
 	TEST(test_sixel_repeat_overflow)
 	TEST(test_sixel_huge_raster)
+	TEST(test_sixel_budget_required)
+	TEST(test_sixel_raster_reserved)
 	TEST(test_sixel_truncated)
 	TEST(test_sixel_abort)
 TEST_END_CASE

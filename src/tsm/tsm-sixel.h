@@ -32,16 +32,26 @@
  * never buffered: each byte updates the decoder's state and its picture, and
  * the work per byte is bounded by the image limits.
  *
- * The picture is kept as colour register numbers while it is decoded and
- * turned into premultiplied ARGB32 (ADR-102's colour glyph format) at the end,
- * so a register redefined after it was drawn with shows its last definition,
- * as on a VT340, whose pixels hold register numbers.
+ * The picture is premultiplied ARGB32, ADR-102's colour glyph format. A pixel
+ * takes its register's colour when a sixel sets it, so redefining a register
+ * changes what is drawn after, not before (foot does the same; encoders such
+ * as libsixel's high-colour mode redefine registers band after band). Pixels
+ * no sixel set take register 0 as it stands at ST, unless P2 = 1.
  *
  * Image size: the width is the furthest column a sixel data character reached;
  * the height ends at the lowest pixel row a sixel set. Raster attributes
  * extend both. Rows of a sixel band below its lowest set bit are not part of
  * the picture unless the raster attributes cover them, so a picture whose
  * height is not a multiple of six keeps its height (foot does the same).
+ *
+ * Pixel aspect: Pan:Pad (P1, or raster attributes before the first sixel) is
+ * a ratio, DEC STD 070's vertical to horizontal shape of a pixel, rounded to
+ * whole pixels and capped at 5:1. "2;2 is 1:1, where foot scales each axis.
+ *
+ * Memory: every byte the picture holds is asked of the reserve callback
+ * first. Raster attributes reserve width * height * 4 before any sixel, so a
+ * picture that cannot fit is refused before it is decoded; growth past them
+ * reserves the old and new buffers together while rows are copied.
  */
 
 #ifndef TSM_SIXEL_H
@@ -73,9 +83,10 @@ void tsm_sixel_palette_free(struct tsm_sixel_palette *pal);
 void tsm_sixel_palette_reset(struct tsm_sixel_palette *pal);
 
 /*
- * Asked before the decoder's pixel buffer changes size, from @old_size to
- * @new_size bytes. Returning false refuses a growth, and the image is then
- * dropped. A shrink is reported the same way and its answer is ignored.
+ * Asked before the decoder's pixel memory changes size, from @old_size to
+ * @new_size bytes: the host's image budget. Returning false refuses a growth,
+ * and the image is then dropped. A shrink is reported the same way and its
+ * answer is ignored. Required: tsm_sixel_new() refuses limits without one.
  */
 typedef bool (*tsm_sixel_reserve_cb)(void *data, size_t old_size,
 				     size_t new_size);
@@ -84,7 +95,7 @@ struct tsm_sixel_limits {
 	unsigned int max_width;		/* max-graphic-size; 0 for the default */
 	unsigned int max_height;
 	unsigned int registers;		/* num-color-registers; 0 for the default */
-	tsm_sixel_reserve_cb reserve;	/* NULL: only the size limits apply */
+	tsm_sixel_reserve_cb reserve;	/* required */
 	void *reserve_data;
 };
 
@@ -102,6 +113,7 @@ struct tsm_sixel_image {
 
 struct tsm_sixel;
 
+/* -EINVAL without @limits or its reserve callback */
 int tsm_sixel_new(struct tsm_sixel **out, const struct tsm_sixel_limits *limits);
 void tsm_sixel_free(struct tsm_sixel *sixel);
 

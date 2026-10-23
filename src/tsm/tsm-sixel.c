@@ -28,15 +28,18 @@
  * Written from DEC STD 070 and the VT330/VT340 Programmer Reference Manual
  * (sixel graphics, the default colour map, HLS with blue at 0 degrees) and
  * xterm's ctlseqs, as ADR-103 (aaronsb/kmscon) and ADR-300 require. foot's
- * sixel.c (MIT, Daniel Eklöf) was read as a reference: the height rule below
- * (rows of the last band past its lowest set bit are not part of the picture)
- * follows its behaviour; no code was taken from it.
+ * sixel.c (MIT, Daniel Eklöf) was read as a reference, and two rules follow
+ * its behaviour: a pixel takes its register's colour when it is drawn, unset
+ * pixels taking register 0 at the end unless P2 = 1; and rows of the last
+ * band past its lowest set bit are not part of the picture. No code was taken
+ * from it.
  *
- * The picture is a grid of 16-bit cells holding a colour register number plus
- * one, 0 meaning no sixel set the pixel. Its rows are cap_w cells apart and it
- * grows as sixels land outside it; raster attributes size it up front. The
- * graphics cursor (x, y) is kept in output pixels: one sixel dot is hs pixels
- * wide and vs pixels tall, from the pixel aspect ratio.
+ * The picture is drawn straight into ARGB32, 0 meaning no sixel set the
+ * pixel (every register colour is opaque). Its rows are cap_w pixels apart.
+ * Raster attributes size it, and reserve its memory, before any sixel; it
+ * grows as sixels land outside it. The graphics cursor (x, y) is kept in
+ * output pixels: one sixel dot is hs pixels wide and vs pixels tall, from the
+ * pixel aspect ratio.
  */
 
 #include <errno.h>
@@ -85,13 +88,13 @@ struct tsm_sixel {
 	unsigned int ra_w;	/* raster extent in output pixels, clamped */
 	unsigned int ra_h;
 
-	uint16_t color;		/* current register + 1 */
+	uint32_t color;		/* the current register's colour */
 	unsigned int x;		/* graphics cursor, at most max_w */
 	unsigned int y;		/* top of the current band, at most max_h */
 	unsigned int width;	/* furthest column reached by data */
 	unsigned int height;	/* one past the lowest row a sixel set */
 
-	uint16_t *buf;
+	uint32_t *buf;
 	unsigned int cap_w;
 	unsigned int cap_h;
 	size_t reserved;	/* bytes the reserve callback granted */
@@ -250,21 +253,20 @@ int tsm_sixel_new(struct tsm_sixel **out, const struct tsm_sixel_limits *limits)
 	struct tsm_sixel *sixel;
 	int ret;
 
-	if (!out)
+	/* every picture is paid for from a budget */
+	if (!out || !limits || !limits->reserve)
 		return -EINVAL;
 
 	sixel = calloc(1, sizeof(*sixel));
 	if (!sixel)
 		return -ENOMEM;
 
-	sixel->max_w = clamp_size(limits ? limits->max_width : 0);
-	sixel->max_h = clamp_size(limits ? limits->max_height : 0);
-	if (limits) {
-		sixel->reserve = limits->reserve;
-		sixel->reserve_data = limits->reserve_data;
-	}
+	sixel->max_w = clamp_size(limits->max_width);
+	sixel->max_h = clamp_size(limits->max_height);
+	sixel->reserve = limits->reserve;
+	sixel->reserve_data = limits->reserve_data;
 
-	ret = tsm_sixel_palette_new(&sixel->own, limits ? limits->registers : 0);
+	ret = tsm_sixel_palette_new(&sixel->own, limits->registers);
 	if (ret) {
 		free(sixel);
 		return ret;
@@ -281,7 +283,7 @@ static void release(struct tsm_sixel *sixel)
 	sixel->buf = NULL;
 	sixel->cap_w = 0;
 	sixel->cap_h = 0;
-	if (sixel->reserved && sixel->reserve)
+	if (sixel->reserved)
 		sixel->reserve(sixel->reserve_data, sixel->reserved, 0);
 	sixel->reserved = 0;
 }
@@ -299,8 +301,7 @@ void tsm_sixel_free(struct tsm_sixel *sixel)
 /* Asks the reserve callback to move the reservation to @size bytes. */
 static bool reserve_bytes(struct tsm_sixel *sixel, size_t size)
 {
-	if (sixel->reserve &&
-	    !sixel->reserve(sixel->reserve_data, sixel->reserved, size) &&
+	if (!sixel->reserve(sixel->reserve_data, sixel->reserved, size) &&
 	    size > sixel->reserved)
 		return false;
 
@@ -384,7 +385,7 @@ void tsm_sixel_begin(struct tsm_sixel *sixel, int p1, int p2,
 	sixel->data_seen = false;
 	sixel->ra_w = 0;
 	sixel->ra_h = 0;
-	sixel->color = 1;
+	sixel->color = sixel->pal->colors[0];
 	sixel->x = 0;
 	sixel->y = 0;
 	sixel->width = 0;
@@ -411,65 +412,54 @@ static unsigned int max_u(unsigned int a, unsigned int b)
 }
 
 /*
- * Resizes the grid to @w x @h cells, both at least the current size, keeping
- * what is drawn. Returns false when the memory is refused or unavailable.
+ * Moves the picture into a buffer of @w x @h pixels, both at least the current
+ * size, keeping what is drawn. Both buffers are reserved while the rows move
+ * across, so memory never exceeds the reservation. Returns false when the
+ * memory is refused or unavailable.
  */
 static bool resize(struct tsm_sixel *sixel, unsigned int w, unsigned int h)
 {
-	uint16_t *buf;
+	uint32_t *buf;
 	size_t size;
 	unsigned int row;
 
-	if ((size_t)w > SIZE_MAX / sizeof(*buf) / (h ? h : 1))
+	if ((size_t)w > SIZE_MAX / 2 / sizeof(*buf) / (h ? h : 1))
 		return false;
 	size = (size_t)w * h * sizeof(*buf);
-	if (!reserve_bytes(sixel, size))
+	if (!reserve_bytes(sixel, sixel->reserved + size))
 		return false;
 
-	if (w == sixel->cap_w && sixel->buf) {
-		buf = realloc(sixel->buf, size);
-		if (!buf)
-			return false;
-		memset(buf + (size_t)w * sixel->cap_h, 0,
-		       (size_t)w * (h - sixel->cap_h) * sizeof(*buf));
-	} else {
-		buf = calloc((size_t)w * h, sizeof(*buf));
-		if (!buf)
-			return false;
-		/* rows at and below height hold nothing yet */
-		for (row = 0; row < sixel->height; ++row)
-			memcpy(buf + (size_t)row * w,
-			       sixel->buf + (size_t)row * sixel->cap_w,
-			       sixel->cap_w * sizeof(*buf));
-		free(sixel->buf);
-	}
+	buf = calloc((size_t)w * h, sizeof(*buf));
+	if (!buf)
+		return false;
+	/* rows at and below height hold nothing yet */
+	for (row = 0; row < sixel->height; ++row)
+		memcpy(buf + (size_t)row * w,
+		       sixel->buf + (size_t)row * sixel->cap_w,
+		       sixel->cap_w * sizeof(*buf));
+	free(sixel->buf);
 
 	sixel->buf = buf;
 	sixel->cap_w = w;
 	sixel->cap_h = h;
+	reserve_bytes(sixel, size);
 	return true;
 }
 
 /*
- * Grows the grid to hold columns below @need_w and rows below @need_h. Raster
- * attributes size the first allocation; after that each dimension at least
- * doubles, so a picture without them is copied O(log size) times.
+ * Grows the picture to hold columns below @need_w and rows below @need_h. Each
+ * dimension grows by at least a quarter, so a picture that outgrows its
+ * raster attributes, or has none, is copied O(log size) times.
  */
 static bool grow(struct tsm_sixel *sixel, unsigned int need_w,
 		 unsigned int need_h)
 {
-	unsigned int w = sixel->cap_w, h = sixel->cap_h, band;
+	unsigned int w = sixel->cap_w, h = sixel->cap_h;
 
 	if (need_w > w)
-		w = max_u(max_u(need_w, sixel->ra_w),
-			  min_u(2 * w, sixel->max_w));
-	if (need_h > h) {
-		/* whole bands: the raster height rounded up to one */
-		band = 6 * sixel->vs;
-		h = sixel->ra_h + band - 1;
-		h = min_u(h - h % band, sixel->max_h);
-		h = max_u(max_u(need_h, h), min_u(2 * sixel->cap_h, sixel->max_h));
-	}
+		w = max_u(need_w, min_u(w + w / 4, sixel->max_w));
+	if (need_h > h)
+		h = max_u(need_h, min_u(h + h / 4, sixel->max_h));
 
 	return resize(sixel, w, h);
 }
@@ -481,7 +471,7 @@ static bool grow(struct tsm_sixel *sixel, unsigned int need_w,
 static void put(struct tsm_sixel *sixel, unsigned int bits, unsigned int count)
 {
 	unsigned int x0 = sixel->x, x1, y, end, bit, row, col, stride;
-	uint16_t color, *line;
+	uint32_t color, *line;
 
 	sixel->data_seen = true;
 	if (sixel->y >= sixel->max_h)
@@ -521,9 +511,9 @@ static void put(struct tsm_sixel *sixel, unsigned int bits, unsigned int count)
 }
 
 /* Sets *@p to @color if bit 0 of @bit is set. */
-static inline void put_masked(uint16_t *p, unsigned int bit, uint16_t color)
+static inline void put_masked(uint32_t *p, unsigned int bit, uint32_t color)
 {
-	uint16_t m = -(uint16_t)(bit & 1);
+	uint32_t m = -(uint32_t)(bit & 1);
 
 	*p = (*p & ~m) | (color & m);
 }
@@ -535,7 +525,7 @@ static inline void put_masked(uint16_t *p, unsigned int bit, uint16_t color)
 static inline bool put_one(struct tsm_sixel *sixel, unsigned int bits)
 {
 	unsigned int x = sixel->x, y = sixel->y, stride = sixel->cap_w, end;
-	uint16_t color, *p;
+	uint32_t color, *p;
 
 	if (!sixel->unit || x >= stride || y + 6 > sixel->cap_h)
 		return false;
@@ -575,13 +565,20 @@ static void end_params(struct tsm_sixel *sixel, enum sixel_state state)
 			pal->colors[reg] = hls_pct(p[2], p[3], p[4]);
 		else if (n >= 5 && p[1] == 2)
 			pal->colors[reg] = rgb_pct(p[2], p[3], p[4]);
-		sixel->color = reg + 1;
+		sixel->color = pal->colors[reg];
 	} else if (state == SIXEL_RASTER && !sixel->data_seen) {
 		set_aspect(sixel, p[0], n >= 2 ? p[1] : 1);
 		sixel->ra_w = n >= 3 ?
 			min_u(min_u(p[2], sixel->max_w) * sixel->hs, sixel->max_w) : 0;
 		sixel->ra_h = n >= 4 ?
 			min_u(min_u(p[3], sixel->max_h) * sixel->vs, sixel->max_h) : 0;
+
+		/* the raster area is reserved now, so a picture that cannot
+		 * fit is refused before it is decoded */
+		release(sixel);
+		if (sixel->ra_w && sixel->ra_h &&
+		    !resize(sixel, sixel->ra_w, sixel->ra_h))
+			fail(sixel);
 	}
 }
 
@@ -667,6 +664,9 @@ static void step(struct tsm_sixel *sixel, unsigned char c)
 	}
 
 	end_params(sixel, state);
+	/* raster attributes refused their memory */
+	if (sixel->state == SIXEL_FAILED)
+		return;
 	data(sixel, c);
 }
 
@@ -688,27 +688,24 @@ void tsm_sixel_feed(struct tsm_sixel *sixel, const char *buf, size_t len)
 
 int tsm_sixel_finish(struct tsm_sixel *sixel, struct tsm_sixel_image *image)
 {
-	struct tsm_sixel_palette *pal;
 	unsigned int w, h, row;
-	size_t n, i, have, size;
+	size_t n, i, size;
 	uint32_t bg, *px;
-	uint16_t *idx;
 	enum sixel_state state;
 
 	if (!sixel || !image)
 		return -EINVAL;
 
-	state = sixel->state;
-	if (state == SIXEL_IDLE)
-		return -EINVAL;
-	if (state == SIXEL_FAILED) {
-		sixel->state = SIXEL_IDLE;
-		return -ENOMEM;
-	}
-	if (state != SIXEL_DATA)
+	if (sixel->state != SIXEL_DATA && sixel->state != SIXEL_IDLE &&
+	    sixel->state != SIXEL_FAILED)
 		/* parameters ended by ST still act, as any other end */
 		step(sixel, '\0');
+	state = sixel->state;
 	sixel->state = SIXEL_IDLE;
+	if (state == SIXEL_IDLE)
+		return -EINVAL;
+	if (state == SIXEL_FAILED)
+		return -ENOMEM;
 
 	w = max_u(sixel->width, sixel->ra_w);
 	h = max_u(sixel->height, sixel->ra_h);
@@ -717,50 +714,35 @@ int tsm_sixel_finish(struct tsm_sixel *sixel, struct tsm_sixel_image *image)
 		return -ENODATA;
 	}
 
+	/* '?' columns past the last set bit widen the picture at the end */
 	if ((w > sixel->cap_w || h > sixel->cap_h) &&
 	    !resize(sixel, max_u(w, sixel->cap_w), max_u(h, sixel->cap_h))) {
 		release(sixel);
 		return -ENOMEM;
 	}
 
-	/* pack the rows, then widen each cell to ARGB32 in place, last first */
-	idx = sixel->buf;
+	px = sixel->buf;
 	if (w != sixel->cap_w)
 		for (row = 1; row < h; ++row)
-			memmove(idx + (size_t)row * w,
-				idx + (size_t)row * sixel->cap_w,
-				w * sizeof(*idx));
+			memmove(px + (size_t)row * w,
+				px + (size_t)row * sixel->cap_w,
+				w * sizeof(*px));
 
 	n = (size_t)w * h;
-	have = (size_t)sixel->cap_w * sixel->cap_h * sizeof(*idx);
-	if (n > SIZE_MAX / sizeof(*px)) {
-		release(sixel);
-		return -ENOMEM;
+	if (!sixel->transparent) {
+		bg = sixel->pal->colors[0];
+		for (i = 0; i < n; ++i)
+			if (!px[i])
+				px[i] = bg;
 	}
+
 	size = n * sizeof(*px);
-	if (size > have) {
-		if (!reserve_bytes(sixel, size)) {
-			release(sixel);
-			return -ENOMEM;
-		}
-		idx = realloc(sixel->buf, size);
-		if (!idx) {
-			release(sixel);
-			return -ENOMEM;
-		}
-		sixel->buf = idx;
-	}
-
-	pal = sixel->pal;
-	bg = sixel->transparent ? 0 : pal->colors[0];
-	px = (uint32_t *)idx;
-	for (i = n; i-- > 0; )
-		px[i] = idx[i] ? pal->colors[idx[i] - 1] : bg;
-
-	if (size < have) {
+	if (size < sixel->reserved) {
+		/* shrinking returns the tail of the block; nothing is copied
+		 * beside it */
 		px = realloc(px, size);
 		if (!px)
-			px = (uint32_t *)sixel->buf;
+			px = sixel->buf;
 		reserve_bytes(sixel, size);
 	}
 

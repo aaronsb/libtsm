@@ -22,6 +22,7 @@
  * corpus, sixel-seeds/ (gen-seeds.py).
  */
 
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -113,6 +114,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	size -= 3;
 
 	held = 0;
+	/* no decoder without a budget */
+	lim.reserve = NULL;
+	check(tsm_sixel_new(&s, &lim) == -EINVAL);
+	lim.reserve = reserve;
 	check(tsm_sixel_new(&s, &lim) == 0);
 	if (data[-1] & 0x80)
 		check(tsm_sixel_palette_new(&shared, 16) == 0);

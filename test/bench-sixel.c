@@ -140,6 +140,15 @@ static struct buf load(const char *path)
 	return b;
 }
 
+/* The bench measures decoding; its budget admits everything. */
+static bool reserve(void *data, size_t old_size, size_t new_size)
+{
+	(void)data;
+	(void)old_size;
+	(void)new_size;
+	return true;
+}
+
 static double now(void)
 {
 	struct timespec ts;
@@ -169,7 +178,9 @@ int main(int argc, char **argv)
 		end -= 2;
 	len = end - payload;
 
-	if (tsm_sixel_new(&s, NULL))
+	struct tsm_sixel_limits lim = { .reserve = reserve };
+
+	if (tsm_sixel_new(&s, &lim))
 		return 1;
 
 	start = now();
