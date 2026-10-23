@@ -1,0 +1,16 @@
+size 12x4
+cursor 3,0
+flags AUTO_WRAP|ALTERNATE
+palette legacy fg=#e5e5e5 bg=#000000
+changed 48
+frame-cursor 3,0 default visible w=1 fg=#000000 bg=#ffffff ul=#000000
+row 0 |alt|
+cells 0 3-11 w=1 fg=#ffffff bg=#000000 ul=#ffffff
+row 1 ||
+cells 1 0-11 w=1 fg=#ffffff bg=#000000 ul=#ffffff
+row 2 ||
+cells 2 0-11 w=1 fg=#ffffff bg=#000000 ul=#ffffff
+row 3 ||
+cells 3 0-11 w=1 fg=#ffffff bg=#000000 ul=#ffffff
+placement 0 row 2 col 0 box 3x2 at 0,0 size 24x32 src 0,0 24x32 cell 8x16 z 0 above-text sixel image 0 opaque changed
+image 0 24x32 digest fcb943c5

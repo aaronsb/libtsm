@@ -179,6 +179,112 @@ struct line {
 	struct cell *cells;		/* actuall cells */
 	uint64_t sb_id;			/* sb ID, 0 if not in sb */
 	tsm_age_t age;			/* age of the whole line */
+	struct shl_dlist placements;	/* the image placements anchored here */
+};
+
+/*
+ * Images (ADR-103 in aaronsb/kmscon; tsm-image.c). Each screen buffer has a
+ * store of images and of the placements that show them. A placement is
+ * anchored to the line holding its top row and listed on that line, so it
+ * moves wherever the line moves: into scrollback and back, or up and down
+ * the screen.
+ *
+ * A placement keeps its picture uncut: @ox, @oy, @dw and @dh place the whole
+ * source rectangle @sx, @sy, @sw, @sh, scaled, relative to the box's top left,
+ * in pixels of the cell size it was made with. Clipping and splitting move
+ * the box and the anchor and leave the picture, so the part shown is always
+ * the picture inside the box, and cuts never accumulate rounding.
+ */
+struct tsm_image_store;
+
+struct tsm_image {
+	struct shl_dlist list;		/* in its store */
+	struct tsm_image_store *store;
+	uint64_t key;			/* slot and generation */
+	uint32_t id;			/* kitty: 1 to 2^32-1; 0 for a sixel */
+	uint32_t number;		/* kitty's I, or 0 */
+	unsigned int width;
+	unsigned int height;
+	uint32_t *pixels;		/* premultiplied ARGB32 */
+	size_t bytes;			/* reserved from the budget */
+	uint8_t kind;			/* enum tsm_image_kind */
+	bool opaque;
+	bool transient;
+	bool pinned;			/* scratch: placed on a screen's own lines */
+	unsigned int placements;	/* placements showing it */
+	uint64_t last_use;
+	tsm_age_t age;			/* when its pixels last changed */
+};
+
+struct tsm_placement {
+	struct shl_dlist line_link;	/* in its line's placements, or pending */
+	struct shl_dlist store_link;	/* in its store */
+	struct tsm_image *image;
+	uint64_t key;			/* never reused */
+	uint64_t seq;			/* creation order, which its pieces share */
+	uint32_t id;			/* kitty placement id, or 0 */
+	struct line *line;		/* the anchor, or NULL while pending */
+	unsigned int col;
+	unsigned int cols;		/* the box in cells */
+	unsigned int rows;
+	int ox;				/* the uncut picture, from the box's top left */
+	int oy;
+	unsigned int dw;
+	unsigned int dh;
+	unsigned int sx;		/* the uncut source rectangle */
+	unsigned int sy;
+	unsigned int sw;
+	unsigned int sh;
+	unsigned int cw;		/* the cell size it was made with */
+	unsigned int ch;
+	int32_t z;
+	tsm_age_t age;			/* when it was added, moved or cut */
+	int row;			/* scratch: its top's screen row */
+};
+
+struct tsm_image_store {
+	struct shl_dlist images;
+	struct shl_dlist placements;
+	unsigned int sixels;		/* sixel placements, which text cuts */
+	unsigned int max_rows;		/* at least the tallest placement's rows */
+	unsigned int max_sixel_rows;	/* and the tallest sixel's */
+	bool max_rows_stale;		/* a placement went since they were counted */
+};
+
+struct tsm_image_slot {
+	struct tsm_image *image;
+	uint32_t generation;
+};
+
+struct tsm_images {
+	struct tsm_image_store main;
+	struct tsm_image_store alt;
+
+	/* image keys: slot + 1 in the low half, its generation in the high */
+	struct tsm_image_slot *slots;
+	unsigned int slot_count;
+	unsigned int slot_free;		/* a hint: no free slot below it */
+
+	uint64_t last_placement_key;
+	uint64_t last_seq;
+
+	/* the budget: a host's, else the screen's own limit */
+	tsm_screen_image_reserve_cb reserve;
+	tsm_screen_image_release_cb release;
+	void *budget_data;
+	size_t limit;
+	size_t bytes;
+	struct tsm_image *keep;		/* never evicted: a replacement frees it */
+
+	unsigned int cell_width;
+	unsigned int cell_height;
+
+	/* pieces a screen event detached, to anchor once lines have moved */
+	struct shl_dlist pending;
+
+	/* the frame's placement list */
+	struct tsm_frame_placement *frame;
+	unsigned int frame_size;
 };
 
 struct selection_pos {
@@ -270,6 +376,9 @@ struct tsm_screen {
 	struct tsm_screen_cell *cells;
 	unsigned int cells_count;
 
+	/* images and their placements */
+	struct tsm_images img;
+
 	/* frame interface */
 	struct tsm_frame frame;
 	struct tsm_frame_cell *frame_cells;
@@ -292,6 +401,48 @@ void tsm_screen_repeat_char(struct tsm_screen *con, unsigned int num,
 			    const struct cell_attr *attr);
 
 void screen_age_wrap(struct tsm_screen *con);
+
+/*
+ * Images: what each screen event does to placements (ADR-103's table). Each
+ * acts on the store of the buffer in use.
+ */
+void screen_images_init(struct tsm_screen *con);
+void screen_images_destroy(struct tsm_screen *con);
+/* a line is freed: the placements anchored on it go */
+void screen_images_line_free(struct tsm_screen *con, struct line *line);
+/* a line is discarded: its placements lose their top row and move to @next */
+void screen_images_discard_line(struct tsm_screen *con, struct line *line,
+				struct line *next);
+/*
+ * Rows @top to @bottom of the screen are about to scroll @num rows, up or
+ * down; screen_images_scroll_done anchors what moved once they have.
+ */
+void screen_images_scroll(struct tsm_screen *con, unsigned int top,
+			  unsigned int bottom, unsigned int num, bool up);
+void screen_images_scroll_done(struct tsm_screen *con);
+/* cells @x0 to @x1 of screen row @y are written or erased: sixels lose them */
+void screen_images_cut(struct tsm_screen *con, unsigned int y,
+		       unsigned int x0, unsigned int x1);
+/* ED 2: kitty placements on the screen's lines go (sixels are cut by the erase) */
+void screen_images_erase_screen(struct tsm_screen *con);
+/* the alternate screen is entered or left */
+void screen_images_clear_alt(struct tsm_screen *con);
+/* RIS */
+void screen_images_reset(struct tsm_screen *con);
+void screen_images_age_wrap(struct tsm_screen *con);
+/*
+ * An image as a protocol stores it, and a placement of it, which the test
+ * calls (tsm-image-test.c) describe in the same structs. A kitty id already
+ * in the store is replaced once the new image has its bytes.
+ */
+struct tsm_image *screen_image_find(struct tsm_screen *con, uint64_t key);
+int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
+		     struct tsm_image **out);
+int screen_image_place(struct tsm_screen *con, struct tsm_image *image,
+		       const struct tsm_test_placement *pl, struct tsm_placement **out);
+/* the frame's placement list, flagged changed against @since */
+int screen_images_frame(struct tsm_screen *con, const struct tsm_frame_age *since,
+			bool all_changed);
 
 static inline void screen_inc_age(struct tsm_screen *con)
 {

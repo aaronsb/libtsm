@@ -423,6 +423,272 @@ def _():
     return sgr(1, 31) + "red" + CSI + "?1049h" + CSI + "3;4r" + ESC + "c" + "clean"
 
 
+# Images (ADR-103 step 3a in aaronsb/kmscon). No protocol makes images yet,
+# so these streams make them through tsm-replay's test commands, an APC that
+# only a tsm-replay built against the fork's libtsm runs (see tsm-replay.c).
+# Each case judges one row of ADR-103's screen-event table for both kinds: a
+# sixel, image 1, and a kitty image, image 2, each 24x32 pixels, 3x2 cells of
+# 8x16.
+
+def tt(cmd, **kv):
+    return APC + "tsm-test;" + cmd + "".join(f";{k}={v}" for k, v in kv.items()) + ST
+
+
+def img_setup(sb=0):
+    out = tt("cell", w=8, h=16)
+    if sb:
+        out += tt("sb-max", n=sb)
+    return (out + tt("image", n=1, w=24, h=32, fill="ff0000ff") +
+            tt("image", n=2, w=24, h=32, kitty=1, fill="ff00ff00"))
+
+
+def put(img, col, row, **kv):
+    return tt("place", img=img, col=col, row=row, **kv)
+
+
+@case("img-print", 12, 4)
+def _():
+    # Text written over a sixel removes the cells it covers; a kitty
+    # placement is untouched.
+    return (img_setup() + put(1, 1, 1) + put(2, 5, 1) +
+            cup(2, 3) + "xy" + cup(2, 7) + "z")
+
+
+@case("img-sixel-over", 12, 4)
+def _():
+    # An opaque sixel removes the parts of older sixels under it; a
+    # transparent one leaves them; neither touches a kitty placement.
+    return (img_setup() + tt("image", n=3, w=16, h=16, fill="ff00ffff") +
+            tt("image", n=4, w=8, h=16, fill="80000080") +
+            tt("image", n=5, w=16, h=16, fill="ffffff00") +
+            put(1, 1, 1) + put(2, 6, 1) + put(3, 2, 2) + put(4, 1, 1) + put(5, 6, 1))
+
+
+def erase_case(op):
+    # a sixel at columns 2-4 and a kitty image at 7-9, rows 1-2; the erase
+    # runs with the cursor at row 1, column 3
+    return img_setup() + put(1, 2, 1) + put(2, 7, 1) + cup(2, 4) + op
+
+
+@case("img-el0", 12, 4)
+def _():
+    return erase_case(CSI + "K")
+
+
+@case("img-el1", 12, 4)
+def _():
+    return erase_case(CSI + "1K")
+
+
+@case("img-el2", 12, 4)
+def _():
+    return erase_case(CSI + "2K")
+
+
+@case("img-ech", 12, 4)
+def _():
+    return erase_case(CSI + "X")
+
+
+@case("img-ed0", 12, 4)
+def _():
+    return erase_case(CSI + "J")
+
+
+@case("img-ed1", 12, 4)
+def _():
+    return erase_case(CSI + "1J")
+
+
+# The parser sets no protected cells (DECSCA is not parsed), so selective
+# erase erases what ED and EL do; test_image.c covers a protected cell.
+@case("img-decsed", 12, 4)
+def _():
+    return erase_case(CSI + "?J")
+
+
+@case("img-decsel", 12, 4)
+def _():
+    return erase_case(CSI + "?2K")
+
+
+@case("img-ich", 12, 4)
+def _():
+    return erase_case(CSI + "@")
+
+
+@case("img-dch", 12, 4)
+def _():
+    return erase_case(CSI + "P")
+
+
+@case("img-ed2", 12, 4)
+def _():
+    # ED 2 removes every placement on the screen's lines: the kitty
+    # placements whole, the sixels where they lie on the screen. A kitty
+    # image wholly in scrollback stays; the view is scrolled back to show it.
+    return (img_setup(sb=10) + tt("image", n=3, w=8, h=16, kitty=1, fill="ffffffff") +
+            tt("image", n=4, w=8, h=16, fill="ff00ffff") +
+            put(3, 0, 0) + cup(4, 1) + "\n" +
+            put(1, 2, 0) + put(2, 7, 0) + put(4, 0, 2) + put(3, 0, 3) +
+            "\n" + CSI + "2J" + tt("sb-up", n=2))
+
+
+@case("img-ed3", 12, 4)
+def _():
+    # ED 3 drops the scrollback, and the placements anchored on it, even
+    # those reaching onto the screen
+    return (img_setup(sb=10) + tt("image", n=3, w=8, h=16, kitty=1, fill="ffffffff") +
+            tt("image", n=4, w=8, h=16, fill="ff00ffff") +
+            put(1, 0, 0) + put(2, 4, 0) + cup(4, 1) + "\n" +
+            put(3, 5, 1) + put(4, 0, 2) + CSI + "3J")
+
+
+@case("img-scroll-up", 12, 4)
+def _():
+    # LF at the bottom, IND and SU scroll the whole screen: placements move
+    # with their lines into scrollback, whole, and the view brings them back
+    return (img_setup(sb=10) + put(1, 0, 1) + put(2, 4, 1) +
+            cup(4, 1) + "\n" + ESC + "D" + CSI + "2S" + tt("sb-up", n=3))
+
+
+@case("img-scroll-up-bottom", 20, 5)
+def _():
+    # Placements reaching past the screen's bottom move up with their
+    # lines: the bottom of the screen is no region edge (aaronsb/libtsm#17)
+    return (tt("cell", w=8, h=16) +
+            tt("image", n=1, w=24, h=64, kitty=1, fill="ff00ff00") +
+            tt("image", n=2, w=24, h=64, fill="ff0000ff") +
+            put(1, 0, 3) + put(2, 4, 3) + cup(5, 1) + "\n\n\n")
+
+
+@case("img-scroll-down", 12, 5)
+def _():
+    # SD and RI at the top: placements move down with their lines; the part
+    # pushed past the bottom is clipped
+    return (img_setup() + put(1, 0, 1) + put(2, 4, 1) +
+            CSI + "T" + cup(1, 1) + ESC + "M" + CSI + "T")
+
+
+@case("img-scroll-down-sb", 12, 4)
+def _():
+    # SD with placements reaching from scrollback onto the screen: the sixel
+    # splits at the screen's top, its screen part moving down; the kitty
+    # placement, not wholly on the screen, stays
+    return (img_setup(sb=10) + put(1, 0, 0) + put(2, 4, 0) +
+            cup(4, 1) + "\n" + CSI + "T" + tt("sb-up", n=1))
+
+
+def region_images():
+    return (img_setup() + tt("image", n=3, w=8, h=32, kitty=1, fill="ffffffff") +
+            tt("image", n=4, w=8, h=32, kitty=1, fill="ff00ffff"))
+
+
+@case("img-region", 16, 8)
+def _():
+    # Two lines scroll in the region of rows 2-5. A sixel splits at the
+    # region's edges, the part inside moving and clipped where it leaves; a
+    # kitty placement wholly inside moves and is clipped, one across an edge
+    # stays.
+    return (region_images() +
+            put(1, 0, 1) + put(1, 3, 3) + put(1, 6, 5) +
+            put(2, 9, 3) + put(3, 13, 5) + put(4, 14, 1) +
+            CSI + "3;6r" + cup(6, 1) + "\n\n")
+
+
+@case("img-il", 14, 6)
+def _():
+    # IL scrolls rows 3-5 down from the cursor's line
+    return (region_images() + put(1, 0, 2) + put(1, 3, 4) + put(2, 6, 4) +
+            tt("image", n=5, w=24, h=32, kitty=1, fill="ffff00ff") + put(5, 9, 2) +
+            cup(4, 1) + CSI + "L")
+
+
+@case("img-dl", 14, 6)
+def _():
+    # DL scrolls rows 3-5 up from the cursor's line
+    return (region_images() + put(1, 0, 2) + put(1, 3, 4) + put(2, 6, 4) +
+            tt("image", n=5, w=24, h=32, kitty=1, fill="ffff00ff") + put(5, 9, 2) +
+            put(3, 12, 3) + cup(4, 1) + CSI + "M")
+
+
+@case("img-discard-sb", 12, 3)
+def _():
+    # Scrollback past its size discards its oldest line: a placement on it
+    # loses that row and is anchored on the next line
+    return (tt("cell", w=8, h=16) + tt("sb-max", n=2) +
+            tt("image", n=1, w=24, h=48, fill="ff0000ff") +
+            tt("image", n=2, w=24, h=48, kitty=1, fill="ff00ff00") +
+            put(1, 0, 0) + put(2, 4, 0) + cup(3, 1) + "\n\n\n\n" + tt("sb-up", n=2))
+
+
+@case("img-discard-alt", 12, 4)
+def _():
+    # The alternate screen has no scrollback: its top line is discarded
+    return (CSI + "?1049h" + img_setup() + put(1, 0, 0) + put(2, 4, 0) +
+            cup(4, 1) + "\n")
+
+
+@case("img-resize", 12, 4)
+def _():
+    # Lines the height change brings back from scrollback carry their
+    # placements; a narrower screen keeps them, drawn clipped
+    return (img_setup(sb=10) + put(1, 0, 0) + put(2, 6, 0) +
+            tt("image", n=3, w=24, h=32, kitty=1, fill="ffffffff") + put(3, 9, 2) +
+            cup(4, 1) + "\n\n" + tt("resize", c=10, r=6))
+
+
+@case("img-resize-shrink", 12, 6)
+def _():
+    # Lines the height change sends to scrollback carry theirs
+    return (img_setup(sb=10) + put(1, 0, 3) + put(2, 4, 3) + cup(6, 1) +
+            tt("resize", c=12, r=3))
+
+
+@case("img-alt-1049", 12, 4)
+def _():
+    # The alternate screen's store is emptied on entry and on leaving, and
+    # the main screen's placements show again
+    return (img_setup() + put(1, 0, 0) + put(2, 4, 0) + CSI + "?1049h" +
+            img_setup() + put(1, 0, 1) + put(2, 4, 2) + CSI + "?1049l")
+
+
+@case("img-alt-47", 12, 4)
+def _():
+    # 47 keeps the alternate screen's text when left, but not its images:
+    # entered again, it shows only the sixel placed then
+    return (img_setup() + put(1, 0, 0) + CSI + "?47h" + "alt" +
+            img_setup() + put(2, 4, 1) + CSI + "?47l" + CSI + "?47h" +
+            img_setup() + put(1, 0, 2))
+
+
+@case("img-alt-1047", 12, 4)
+def _():
+    return (img_setup() + put(2, 4, 0) + CSI + "?1047h" +
+            img_setup() + put(1, 0, 1) + CSI + "?1047l")
+
+
+@case("img-alt-shown", 12, 4)
+def _():
+    # On the alternate screen only its own placements show
+    return (img_setup() + put(1, 0, 0) + CSI + "?1049h" +
+            img_setup() + put(2, 4, 1))
+
+
+@case("img-ris", 12, 4)
+def _():
+    # RIS empties both stores; a sixel placed after it shows alone
+    return (img_setup(sb=10) + put(1, 0, 0) + cup(4, 1) + "\n" + put(2, 4, 2) +
+            CSI + "?1049h" + img_setup() + put(2, 4, 1) + ESC + "c" +
+            img_setup() + put(1, 0, 1))
+
+
+@case("img-decstr", 12, 4)
+def _():
+    # A soft reset leaves text, so it leaves pictures
+    return img_setup() + "text" + put(1, 0, 1) + put(2, 4, 1) + CSI + "!p"
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)

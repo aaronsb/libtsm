@@ -174,6 +174,7 @@ static int line_new(struct tsm_screen *con, struct line **out,
 	line->sb_id = 0;
 	line->size = width;
 	line->age = con->age_cnt;
+	shl_dlist_init(&line->placements);
 
 	line->cells = malloc(sizeof(struct cell) * width);
 	if (!line->cells) {
@@ -192,6 +193,7 @@ static void line_free(struct tsm_screen *con, struct line *line)
 {
 	unsigned int i;
 
+	screen_images_line_free(con, line);
 	for (i = 0; i < line->size; ++i)
 		cell_release(con, &line->cells[i]);
 	free(line->cells);
@@ -226,6 +228,7 @@ void screen_age_wrap(struct tsm_screen *con)
 	}
 	shl_dlist_for_each(iter, &con->sb.list)
 		line_set_age(shl_dlist_entry(iter, struct line, list), 1);
+	screen_images_age_wrap(con);
 	con->age = 1;
 	con->age_cnt = 2;
 	con->age_reset = 1;
@@ -298,6 +301,9 @@ static void link_to_scrollback(struct tsm_screen *con, struct line *line)
 			con->sb.pos_num--;
 		}
 		clear_selection_on_line(con, tmp);
+		/* its placements lose that row and go on from the next line */
+		screen_images_discard_line(con, tmp,
+			shl_dlist_first(&con->sb.list, struct line, list));
 		line_free(con, tmp);
 	}
 
@@ -330,6 +336,9 @@ static void remove_from_sb(struct tsm_screen *con, unsigned int num)
 				goto end_sbpos;
 		shl_dlist_unlink(&tmp->list);
 		--con->sb.count;
+		/* ids stay contiguous, so a line's distance from the end of
+		 * scrollback is a difference of ids */
+		con->sb.last_id = tmp->sb_id - 1;
 
 		if (con->sb.pos == tmp) {
 			con->sb.pos_num = con->sb.count;
@@ -346,7 +355,12 @@ end_sbpos:
 		con->sb.pos_num = con->sb.count;
 }
 
-static void screen_scroll_up(struct tsm_screen *con, unsigned int num)
+/*
+ * Moves rows margin_top to margin_bottom up @num rows. The lines leaving the
+ * top enter scrollback, on the main screen with one; others are cleared and
+ * come back at the bottom.
+ */
+static void screen_rotate_up(struct tsm_screen *con, unsigned int num)
 {
 	unsigned int i, j, max, pos;
 	int ret;
@@ -368,8 +382,8 @@ static void screen_scroll_up(struct tsm_screen *con, unsigned int num)
 	 * 128 seems to be a sane limit that should never be reached but should
 	 * also be small enough so we do not get stack overflows. */
 	if (num > 128) {
-		screen_scroll_up(con, 128);
-		return screen_scroll_up(con, num - 128);
+		screen_rotate_up(con, 128);
+		return screen_rotate_up(con, num - 128);
 	}
 	struct line *cache[num];
 
@@ -384,6 +398,7 @@ static void screen_scroll_up(struct tsm_screen *con, unsigned int num)
 			link_to_scrollback(con, con->lines[pos]);
 		} else {
 			cache[i] = con->lines[pos];
+			screen_images_line_free(con, cache[i]);
 			for (j = 0; j < cache[i]->size; ++j)
 				screen_cell_clear(con, &cache[i]->cells[j]);
 		}
@@ -399,7 +414,21 @@ static void screen_scroll_up(struct tsm_screen *con, unsigned int num)
 	       cache, num * sizeof(struct line*));
 }
 
-static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
+/* a scroll up of the margins, which placements follow (ADR-103) */
+static void screen_scroll_up(struct tsm_screen *con, unsigned int num)
+{
+	if (!num)
+		return;
+	screen_images_scroll(con, con->margin_top, con->margin_bottom, num, true);
+	screen_rotate_up(con, num);
+	screen_images_scroll_done(con);
+}
+
+/*
+ * Moves rows margin_top to margin_bottom down @num rows; the lines leaving
+ * the bottom are cleared and come back at the top.
+ */
+static void screen_rotate_down(struct tsm_screen *con, unsigned int num)
 {
 	unsigned int i, j, max;
 
@@ -416,8 +445,8 @@ static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
 
 	/* see screen_scroll_up() for an explanation */
 	if (num > 128) {
-		screen_scroll_down(con, 128);
-		return screen_scroll_down(con, num - 128);
+		screen_rotate_down(con, 128);
+		return screen_rotate_down(con, num - 128);
 	}
 	struct line *cache[num];
 
@@ -435,6 +464,16 @@ static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
 
 	memcpy(&con->lines[con->margin_top],
 	       cache, num * sizeof(struct line*));
+}
+
+/* a scroll down of the margins, which placements follow (ADR-103) */
+static void screen_scroll_down(struct tsm_screen *con, unsigned int num)
+{
+	if (!num)
+		return;
+	screen_images_scroll(con, con->margin_top, con->margin_bottom, num, false);
+	screen_rotate_down(con, num);
+	screen_images_scroll_done(con);
 }
 
 /*
@@ -470,6 +509,11 @@ static void screen_write(struct tsm_screen *con, unsigned int x,
 	}
 
 	line = con->lines[y];
+
+	/* text written over a sixel removes the part it covers; in insert
+	 * mode the rest of the row shifts, as ICH does */
+	screen_images_cut(con, y, x, (con->flags & TSM_SCREEN_INSERT_MODE) ?
+			  con->size_x - 1 : x + len - 1);
 
 	/* a wide character the write cuts goes whole: at @x, and where the
 	 * write ends or, in insert mode, where the margin cuts the cells it
@@ -519,7 +563,7 @@ static void screen_erase_region(struct tsm_screen *con,
 				 unsigned int y_to,
 				 bool protect)
 {
-	unsigned int to;
+	unsigned int to, run;
 	struct line *line;
 
 	/* each cleared cell takes the age the caller moved to; the rest of the
@@ -549,12 +593,21 @@ static void screen_erase_region(struct tsm_screen *con,
 		if (to + 1 < line->size && line->cells[to].width == 2 &&
 		    !line->cells[to + 1].width)
 			++to;
+		/* sixels lose the cells erased, run by run between the
+		 * protected cells a selective erase skips */
+		run = x_from;
 		for ( ; x_from <= to; ++x_from) {
-			if (protect && line->cells[x_from].attr.protect)
+			if (protect && line->cells[x_from].attr.protect) {
+				if (run < x_from)
+					screen_images_cut(con, y_from, run, x_from - 1);
+				run = x_from + 1;
 				continue;
+			}
 
 			screen_cell_clear(con, &line->cells[x_from]);
 		}
+		if (run <= to)
+			screen_images_cut(con, y_from, run, to);
 		x_from = 0;
 	}
 }
@@ -593,6 +646,7 @@ int tsm_screen_new(struct tsm_screen **out, tsm_log_t log, void *log_data)
 		return -ENOMEM;
 
 	memset(con, 0, sizeof(*con));
+	screen_images_init(con);
 	con->ref = 1;
 	con->llog = log;
 	con->llog_data = log_data;
@@ -629,6 +683,7 @@ err_free:
 	free(con->main_lines);
 	free(con->alt_lines);
 	free(con->tab_ruler);
+	screen_images_destroy(con);
 	tsm_symbol_table_unref(con->sym_table);
 	free(con);
 	return ret;
@@ -661,6 +716,7 @@ void tsm_screen_unref(struct tsm_screen *con)
 	free(con->main_lines);
 	free(con->alt_lines);
 	free(con->tab_ruler);
+	screen_images_destroy(con);
 	tsm_symbol_table_unref(con->sym_table);
 	free(con->cells);
 	free(con->frame_cells);
@@ -848,7 +904,10 @@ int tsm_screen_resize(struct tsm_screen *con, unsigned int x,
 		if (diff && !(con->flags & TSM_SCREEN_ALTERNATE)) {
 			con->size_y = y;
 			con->margin_bottom = con->size_y - 1;
-			tsm_screen_scroll_down(con, diff);
+			/* the lines rotated to the top are replaced by those
+			 * from scrollback: what the screen showed keeps its
+			 * placements, and nothing scrolls */
+			screen_rotate_down(con, diff);
 			remove_from_sb(con, diff);
 			move_cursor(con, con->cursor_x, con->cursor_y + diff);
 		}
@@ -929,6 +988,9 @@ void tsm_screen_set_max_sb(struct tsm_screen *con,
 		}
 
 		clear_selection_on_line(con, line);
+		screen_images_discard_line(con, line, con->sb.count ?
+			shl_dlist_first(&con->sb.list, struct line, list) :
+			con->main_lines[0]);
 		line_free(con, line);
 	}
 	con->sb.max = max;
@@ -1111,6 +1173,8 @@ void tsm_screen_reset(struct tsm_screen *con)
 	con->age = con->age_cnt;
 
 	con->last_printed = 0;
+	if (con->lines == con->alt_lines)
+		screen_images_clear_alt(con);
 	con->flags = 0;
 	con->margin_top = 0;
 	con->margin_bottom = con->size_y - 1;
@@ -1144,6 +1208,7 @@ void tsm_screen_set_flags(struct tsm_screen *con, unsigned int flags)
 		con->age = con->age_cnt;
 		screen_seg_reset(con);
 		con->lines = con->alt_lines;
+		screen_images_clear_alt(con);
 		tsm_screen_selection_reset(con);
 		reset_scrollback_position(con);
 
@@ -1179,6 +1244,7 @@ void tsm_screen_reset_flags(struct tsm_screen *con, unsigned int flags)
 		con->age = con->age_cnt;
 		screen_seg_reset(con);
 		con->lines = con->main_lines;
+		screen_images_clear_alt(con);
 		tsm_screen_selection_reset(con);
 		reset_scrollback_position(con);
 	}
@@ -1308,6 +1374,9 @@ static void widen_cell(struct tsm_screen *con, unsigned int x, unsigned int y)
 
 	if (x + 1 < con->size_x) {
 		next = &line->cells[x + 1];
+		screen_images_cut(con, y, x + 1,
+				  (con->flags & TSM_SCREEN_INSERT_MODE) ?
+				  con->size_x - 1 : x + 1);
 		if (con->flags & TSM_SCREEN_INSERT_MODE) {
 			/* the rest of the line moves right one cell, as for an
 			 * inserted wide character, and the last cell goes; a
@@ -1762,6 +1831,9 @@ void tsm_screen_insert_lines(struct tsm_screen *con, unsigned int num)
 	if (num > max)
 		num = max;
 
+	/* the cursor's line to the bottom margin scroll down */
+	screen_images_scroll(con, con->cursor_y, con->margin_bottom, num, false);
+
 	struct line *cache[num];
 
 	for (i = 0; i < num; ++i) {
@@ -1778,6 +1850,7 @@ void tsm_screen_insert_lines(struct tsm_screen *con, unsigned int num)
 		memcpy(&con->lines[con->cursor_y],
 		       cache, num * sizeof(struct line*));
 	}
+	screen_images_scroll_done(con);
 
 	con->cursor_x = 0;
 }
@@ -1803,6 +1876,9 @@ void tsm_screen_delete_lines(struct tsm_screen *con, unsigned int num)
 	if (num > max)
 		num = max;
 
+	/* the cursor's line to the bottom margin scroll up */
+	screen_images_scroll(con, con->cursor_y, con->margin_bottom, num, true);
+
 	struct line *cache[num];
 
 	for (i = 0; i < num; ++i) {
@@ -1819,6 +1895,7 @@ void tsm_screen_delete_lines(struct tsm_screen *con, unsigned int num)
 		memcpy(&con->lines[con->cursor_y + (max - num)],
 		       cache, num * sizeof(struct line*));
 	}
+	screen_images_scroll_done(con);
 
 	con->cursor_x = 0;
 }
@@ -1846,6 +1923,10 @@ void tsm_screen_insert_chars(struct tsm_screen *con, unsigned int num)
 	if (num > max)
 		num = max;
 	mv = max - num;
+
+	/* a sixel loses the row from the cursor on: shifting part of a
+	 * picture by whole cells would tear it */
+	screen_images_cut(con, con->cursor_y, con->cursor_x, con->size_x - 1);
 
 	/* a wide character at the insertion point, where the margin cuts
 	 * the moved cells, or across the margin itself goes whole */
@@ -1911,6 +1992,9 @@ void tsm_screen_delete_chars(struct tsm_screen *con, unsigned int num)
 	if (num > max)
 		num = max;
 	mv = max - num;
+
+	/* as for ICH */
+	screen_images_cut(con, con->cursor_y, con->cursor_x, con->size_x - 1);
 
 	/* a wide character at either end of the deleted cells, or across the
 	 * margin, goes whole */
@@ -2053,6 +2137,11 @@ void tsm_screen_erase_screen(struct tsm_screen *con, bool protect)
 		return;
 
 	screen_inc_age(con);
+
+	/* ED 2 removes kitty placements, which no other erase touches; the
+	 * erase cuts the sixels (ADR-103) */
+	if (!protect)
+		screen_images_erase_screen(con);
 
 	screen_erase_region(con, 0, 0, con->size_x - 1, con->size_y - 1,
 			     protect);

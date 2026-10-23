@@ -1,0 +1,13 @@
+size 12x4
+cursor 3,0
+flags AUTO_WRAP|ALTERNATE
+row 0 |alt|
+attr 0 3-11 fg=0 bg=0
+row 1 ||
+attr 1 0-11 fg=0 bg=0
+row 2 ||
+attr 2 0-11 fg=0 bg=0
+row 3 ||
+attr 3 0-11 fg=0 bg=0
+placement 0 row 2 col 0 box 3x2 at 0,0 size 24x32 src 0,0 24x32 cell 8x16 z 0 above-text sixel image 0 opaque
+image 0 24x32 digest fcb943c5

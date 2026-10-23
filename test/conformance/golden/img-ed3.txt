@@ -1,0 +1,11 @@
+size 12x4
+cursor 0,3
+flags AUTO_WRAP
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+placement 0 row 1 col 5 box 1x1 at 0,0 size 8x16 src 0,0 8x16 cell 8x16 z 0 above-text kitty image 0 opaque
+placement 1 row 2 col 0 box 1x1 at 0,0 size 8x16 src 0,0 8x16 cell 8x16 z 0 above-text sixel image 1 opaque
+image 0 8x16 digest 1dfdf7c5
+image 1 8x16 digest 838ad1c5

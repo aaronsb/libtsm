@@ -702,6 +702,9 @@ static const struct tsm_frame *screen_frame(struct tsm_screen *con,
 	cur->x = cur_x;
 	cur->y = cur->visible ? cur_row : cur_y;
 
+	if (screen_images_frame(con, since, all_changed))
+		return NULL;
+
 	/* later changes take a newer age than this frame */
 	since->age = con->age_cnt;
 	since->epoch = con->age_epoch;

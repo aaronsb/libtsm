@@ -907,6 +907,8 @@ void tsm_vte_hard_reset(struct tsm_vte *vte)
 	tsm_vte_reset(vte);
 	tsm_screen_erase_screen(vte->con, false);
 	tsm_screen_clear_sb(vte->con);
+	/* both image stores are emptied (ADR-103) */
+	screen_images_reset(vte->con);
 	tsm_screen_move_to(vte->con, 0, 0);
 }
 
@@ -2063,6 +2065,10 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 							      protect);
 		else if (vte->csi_argv[0] == 2)
 			tsm_screen_erase_screen(vte->con, protect);
+		else if (vte->csi_argv[0] == 3)
+			/* ED 3 (xterm): the scrollback, and the placements
+			 * anchored on it */
+			tsm_screen_clear_sb(vte->con);
 		else
 			llog_debug(vte, "unknown parameter to CSI-J: %d",
 				   vte->csi_argv[0]);
