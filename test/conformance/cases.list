@@ -49,6 +49,37 @@ dcs-sixel 80 24
 apc-kitty-graphics 80 24
 scrollback 20 5
 reset 20 4
+# Images (ADR-103 step 3a), made by tsm-replay's test commands:
+img-print 12 4
+img-sixel-over 12 4
+img-el0 12 4
+img-el1 12 4
+img-el2 12 4
+img-ech 12 4
+img-ed0 12 4
+img-ed1 12 4
+img-decsed 12 4
+img-decsel 12 4
+img-ich 12 4
+img-dch 12 4
+img-ed2 12 4
+img-ed3 12 4
+img-scroll-up 12 4
+img-scroll-down 12 5
+img-scroll-down-sb 12 4
+img-region 16 8
+img-il 14 6
+img-dl 14 6
+img-discard-sb 12 3
+img-discard-alt 12 4
+img-resize 12 4
+img-resize-shrink 12 6
+img-alt-1049 12 4
+img-alt-47 12 4
+img-alt-1047 12 4
+img-alt-shown 12 4
+img-ris 12 4
+img-decstr 12 4
 # Real programs, recorded by record-programs.py (checkpoints in cases/<name>.cuts):
 prog-shell 80 24
 prog-less 80 24

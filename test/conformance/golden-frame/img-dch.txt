@@ -1,0 +1,15 @@
+size 12x4
+cursor 3,1
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 48
+frame-cursor 3,1 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+placement 0 row 1 col 7 box 3x2 at 0,0 size 24x32 src 0,0 24x32 cell 8x16 z 0 above-text kitty image 0 opaque changed
+placement 1 row 1 col 2 box 1x1 at 0,0 size 8x16 src 0,0 8x16 cell 8x16 z 0 above-text sixel image 1 opaque changed
+placement 2 row 2 col 2 box 3x1 at 0,0 size 24x16 src 0,16 24x16 cell 8x16 z 0 above-text sixel image 1 opaque changed
+image 0 24x32 digest 849a65c5
+image 1 24x32 digest fcb943c5
