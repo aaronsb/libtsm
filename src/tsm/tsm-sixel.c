@@ -515,6 +515,7 @@ static void end_params(struct tsm_sixel *sixel, enum sixel_state state)
 {
 	unsigned int *p = sixel->params, n = sixel->nparams, reg;
 	struct tsm_sixel_palette *pal = sixel->pal;
+	uint64_t area;
 
 	if (state == SIXEL_COLOR) {
 		reg = min_u(p[0], pal->count - 1);
@@ -532,9 +533,9 @@ static void end_params(struct tsm_sixel *sixel, enum sixel_state state)
 		 * fit is refused before it is decoded; the first sixel
 		 * allocates it, so raster attributes alone cost no memory */
 		release(sixel);
+		area = (uint64_t)sixel->ra_w * sixel->ra_h * sizeof(*sixel->buf);
 		if (sixel->ra_w && sixel->ra_h &&
-		    !reserve_bytes(sixel, (size_t)sixel->ra_w * sixel->ra_h *
-				   sizeof(*sixel->buf)))
+		    (area > SIZE_MAX || !reserve_bytes(sixel, area)))
 			fail(sixel);
 	}
 }
