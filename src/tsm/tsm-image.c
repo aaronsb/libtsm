@@ -271,6 +271,7 @@ static void placement_free(struct tsm_screen *con, struct tsm_placement *p,
 {
 	struct tsm_image *image = p->image;
 
+	con->img.removed_age = con->age_cnt;
 	placement_unlink_line(p);
 	shl_dlist_unlink(&p->store_link);
 	if (image->kind == TSM_IMAGE_SIXEL)
@@ -877,6 +878,28 @@ void screen_images_age_wrap(struct tsm_screen *con)
 		shl_dlist_for_each(iter, &stores[i]->images)
 			shl_dlist_entry(iter, struct tsm_image, list)->age = 1;
 	}
+	con->img.removed_age = 1;
+}
+
+/* a placement was added, moved by an event that ages it, given a new
+ * picture, or removed since @since */
+bool screen_images_changed_since(struct tsm_screen *con, const struct tsm_frame_age *since)
+{
+	struct tsm_image_store *stores[] = { &con->img.main, &con->img.alt };
+	struct tsm_placement *p;
+	struct shl_dlist *iter;
+	unsigned int i;
+
+	if (con->img.removed_age > since->age)
+		return true;
+	for (i = 0; i < 2; ++i) {
+		shl_dlist_for_each(iter, &stores[i]->placements) {
+			p = shl_dlist_entry(iter, struct tsm_placement, store_link);
+			if (p->age > since->age || p->image->age > since->age)
+				return true;
+		}
+	}
+	return false;
 }
 
 /*

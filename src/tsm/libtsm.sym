@@ -210,3 +210,8 @@ LIBTSM_4_8_FORK6 {
 global:
 	tsm_screen_image_victims;
 } LIBTSM_4_8_FORK5;
+
+LIBTSM_4_8_FORK7 {
+global:
+	tsm_screen_frame_changed_since;
+} LIBTSM_4_8_FORK6;

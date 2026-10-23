@@ -526,6 +526,25 @@ const struct tsm_frame *tsm_screen_frame_since(struct tsm_screen *con,
 					       struct tsm_frame_age *since);
 
 /*
+ * Defined when tsm_screen_frame_changed_since exists.
+ */
+#define TSM_SCREEN_FRAME_CHANGED_SINCE 1
+
+/*
+ * Whether tsm_screen_frame_since(@con, @since) would differ from the frame
+ * that last advanced @since: a cell, the cursor, the selection, the view, a
+ * placement or its picture changed, or one was removed. It reads the ages
+ * the frame reads and builds nothing, so a caller can skip a frame that
+ * would draw nothing. It neither advances @since nor changes @con.
+ *
+ * True whenever it cannot be sure: @con or @since NULL, @since zeroed, the
+ * screen resized or its age counter wrapped since. A true answer can be
+ * spurious (a cell rewritten with what it held); a false one is not.
+ */
+bool tsm_screen_frame_changed_since(struct tsm_screen *con,
+				    const struct tsm_frame_age *since);
+
+/*
  * The codepoints of the cluster @key names, and their count in @len. NULL if
  * @key is a codepoint, 0, or a cluster no cell holds any more. The pointer is
  * valid until the screen next changes (any input, write, erase, scroll,
