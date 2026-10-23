@@ -302,6 +302,9 @@ struct tsm_images {
 	/* the frame's placement list */
 	struct tsm_frame_placement *frame;
 	unsigned int frame_size;
+	/* the screen's age when a placement was last freed, for
+	 * tsm_screen_frame_changed_since: a removal leaves no age behind */
+	tsm_age_t removed_age;
 };
 
 struct selection_pos {
@@ -479,6 +482,7 @@ void screen_image_drop(struct tsm_screen *con, struct tsm_image *image);
  */
 void screen_images_settle(struct tsm_screen *con);
 /* the frame's placement list, flagged changed against @since */
+bool screen_images_changed_since(struct tsm_screen *con, const struct tsm_frame_age *since);
 int screen_images_frame(struct tsm_screen *con, const struct tsm_frame_age *since,
 			bool all_changed);
 

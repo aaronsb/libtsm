@@ -732,6 +732,46 @@ const struct tsm_frame *tsm_screen_frame_since(struct tsm_screen *con,
 	return screen_frame(con, since);
 }
 
+/*
+ * The frame's own test, age > since->age, over the lines and cells it would
+ * show, stopping at the first; the cursor's moves, style and visibility and
+ * the selection age cells or the screen as they change.
+ */
+SHL_EXPORT
+bool tsm_screen_frame_changed_since(struct tsm_screen *con,
+				    const struct tsm_frame_age *since)
+{
+	struct line *line, *next_line;
+	unsigned int i, j, k, n;
+
+	if (!con || !since)
+		return true;
+	if (!since->age || since->epoch != con->age_epoch ||
+	    con->frame.cols != con->size_x || con->frame.rows != con->size_y ||
+	    con->age > since->age)
+		return true;
+
+	k = 0;
+	next_line = con->sb.pos;
+	for (i = 0; i < con->size_y; ++i) {
+		if (next_line) {
+			line = next_line;
+			next_line = shl_dlist_next(next_line, &con->sb.list, list);
+		} else {
+			line = con->lines[k++];
+		}
+		if (line->age > since->age)
+			return true;
+		n = line->size < con->size_x ? line->size : con->size_x;
+		for (j = 0; j < n; ++j) {
+			if (line->cells[j].age > since->age)
+				return true;
+		}
+	}
+
+	return screen_images_changed_since(con, since);
+}
+
 SHL_EXPORT
 const uint32_t *tsm_screen_frame_cluster(struct tsm_screen *con, uint64_t key,
 					 size_t *len)

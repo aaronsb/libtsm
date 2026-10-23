@@ -1365,10 +1365,195 @@ START_TEST(test_image_frame_wrap)
 END_TEST
 
 /*
+ * tsm_screen_frame_changed_since: whether a caller's next frame would differ
+ * from its last, without building it. A kmscon display asks it before each
+ * draw, so an input call that changed nothing on screen draws nothing
+ * (aaronsb/kmscon#139).
+ */
+START_TEST(test_changed_since_screen)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct tsm_frame_age a = { 0 }, b = { 0 };
+	const struct tsm_frame *f;
+	unsigned int i, n;
+
+	setup(&screen, &vte);
+	tsm_vte_set_sixel(vte, true);
+
+	/* nothing to go on: changed */
+	ck_assert(tsm_screen_frame_changed_since(NULL, &a));
+	ck_assert(tsm_screen_frame_changed_since(screen, NULL));
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+
+	/* a frame brings the caller up to date, and asking moves nothing */
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+
+	/* a print; the answer stays until the caller's next frame, and the
+	 * frame still marks the cell */
+	input_str(vte, "x");
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert(tsm_frame_cell_at(f, 0, 0)->flags & TSM_FRAME_CHANGED);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+
+	/* a second caller sees the change until it draws itself */
+	ck_assert(tsm_screen_frame_changed_since(screen, &b));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &b), NULL);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &b));
+	input_str(vte, "y");
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &b), NULL);
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert(!tsm_screen_frame_changed_since(screen, &b));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+
+	/* a sixel arriving in parts: nothing shows until its ST */
+	input_str(vte, "\eP0;1;0q\"1;1;16;16#1;2;100;0;0#1");
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+	for (i = 0; i < 2; ++i) {
+		input_str(vte, "!16~-");
+		ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+	}
+	input_str(vte, "\e\\");
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	f = tsm_screen_frame_since(screen, &a);
+	ck_assert_uint_eq(f->placement_count, 1);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+
+	/* a cursor move, its style, hiding it */
+	input_str(vte, "\e[4;4H");
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	input_str(vte, "\e[4 q");
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	input_str(vte, "\e[?25l");
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	input_str(vte, "\e[?25h");
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+
+	/* the palette, the selection, the scrollback view, a resize */
+	ck_assert_int_eq(tsm_vte_set_palette(vte, "solarized"), 0);
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	tsm_screen_selection_start(screen, 1, 1);
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	tsm_screen_selection_reset(screen);
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	n = 0;
+	while (n++ < 8)
+		input_str(vte, "\r\n");
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	tsm_screen_sb_up(screen, 1);
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	ck_assert_int_eq(tsm_screen_resize(screen, 12, 5), 0);
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+
+	/* a caller that zeroes its age asks for everything */
+	memset(&a, 0, sizeof(a));
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+
+	teardown(screen, vte);
+}
+END_TEST
+
+/* placements: added, given a new picture, removed by an erase or evicted */
+START_TEST(test_changed_since_images)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct tsm_frame_age a = { 0 };
+	uint64_t img;
+
+	setup(&screen, &vte);
+	tsm_screen_set_max_sb(screen, 10);
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+
+	img = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff00ff00);
+	place(screen, img, 2, 1);
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+
+	/* a second placement of the picture, which is no newer */
+	place(screen, img, 6, 3);
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+
+	/* the same id transmitted again replaces the picture under it */
+	make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xffff0000);
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+
+	/* removed: evicted while scrollback shows it, it leaves the frame's
+	 * list and no age behind */
+	input_str(vte, "\e[2J\e[H");
+	place(screen, make_image(screen, 8, 16, TSM_IMAGE_SIXEL, 0, false,
+				 0xff0000ff), 5, 0);
+	input_str(vte, "\e[5;1H\n\n");
+	tsm_screen_sb_up(screen, 2);
+	ck_assert_uint_eq(tsm_screen_frame_since(screen, &a)->placement_count, 1);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+	/* the kitty image, placed nowhere since the erase, goes first and
+	 * changes nothing on screen; then the sixel */
+	ck_assert_uint_ne(tsm_screen_image_evict(screen), 0);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_uint_ne(tsm_screen_image_evict(screen), 0);
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_uint_eq(tsm_screen_frame_since(screen, &a)->placement_count, 0);
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+
+	teardown(screen, vte);
+}
+END_TEST
+
+/* across a wrap of the age counter: changed once, then settled */
+START_TEST(test_changed_since_wrap)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct tsm_frame_age a = { 0 };
+
+	setup(&screen, &vte);
+	screen->age_cnt = (tsm_age_t)-60;
+	place(screen, make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false,
+				 0xff00ff00), 0, 0);
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+	/* freed before the wrap: its removal's age is from before it too, and
+	 * must not read as newer than every frame after */
+	input_str(vte, "\e[2J");
+	ck_assert_uint_eq(tsm_screen_test_placement_count(screen), 0);
+	while (screen->age_cnt > 1000)
+		input_str(vte, "\e[3;3Hx");
+	ck_assert(tsm_screen_frame_changed_since(screen, &a));
+	ck_assert_ptr_ne(tsm_screen_frame_since(screen, &a), NULL);
+	ck_assert(!tsm_screen_frame_changed_since(screen, &a));
+
+	teardown(screen, vte);
+}
+END_TEST
+
+/*
  * Random screen events over random placements, from fixed seeds. After each
  * event every placement is anchored on a line of its own buffer and listed
  * there, shows some of its picture, and the counts of placements per image,
- * of sixels per store and of bytes held agree with what is stored.
+ * of sixels per store and of bytes held agree with what is stored. Each frame
+ * a caller takes is one tsm_screen_frame_changed_since said was unchanged
+ * only if it is.
  */
 
 static uint32_t rnd_state;
@@ -1459,8 +1644,78 @@ static void check_invariants(struct tsm_screen *con)
 	ck_assert_uint_eq(bytes, tsm_screen_get_image_bytes(con));
 }
 
+/*
+ * What one caller's last frame showed besides its cells, for the check that
+ * tsm_screen_frame_changed_since never says unchanged when the frame changed.
+ */
+struct caller {
+	struct tsm_frame_age age;
+	unsigned int cols, rows;
+	struct tsm_frame_cell cells[14 * 12];
+	struct tsm_frame_cursor cursor;
+	struct tsm_frame_placement places[64];
+	unsigned int nplaces;
+};
+
+/* @c's next frame, and when the query said unchanged, a frame identical to
+ * its last: no cell or placement flagged, and the same cells, cursor and
+ * placements, compared by content as well as by the flags the ages set */
+static void caller_frame(struct tsm_screen *screen, struct caller *c)
+{
+	const struct tsm_frame_placement *p;
+	struct tsm_frame_placement q;
+	struct tsm_frame_cursor cur;
+	struct tsm_frame_cell cell;
+	const struct tsm_frame *f;
+	bool same = !tsm_screen_frame_changed_since(screen, &c->age);
+	unsigned int x, y, i;
+
+	f = tsm_screen_frame_since(screen, &c->age);
+	ck_assert_ptr_ne(f, NULL);
+	if (same) {
+		ck_assert_uint_eq(f->cols, c->cols);
+		ck_assert_uint_eq(f->rows, c->rows);
+		for (y = 0; y < f->rows; ++y)
+			for (x = 0; x < f->cols; ++x) {
+				cell = *tsm_frame_cell_at(f, x, y);
+				ck_assert(!(cell.flags & TSM_FRAME_CHANGED));
+				ck_assert_mem_eq(&cell, &c->cells[y * f->cols + x],
+						 sizeof(cell));
+			}
+		/* a hidden cursor moves without drawing */
+		cur = f->cursor;
+		cur.cell.flags &= ~TSM_FRAME_CHANGED;
+		if (cur.visible || c->cursor.visible)
+			ck_assert_mem_eq(&cur, &c->cursor, sizeof(cur));
+		ck_assert_uint_eq(f->placement_count, c->nplaces);
+		for (i = 0; i < f->placement_count; ++i) {
+			p = tsm_frame_placement_at(f, i);
+			ck_assert(!(p->flags & TSM_FRAME_CHANGED));
+			ck_assert_mem_eq(p, &c->places[i], sizeof(*p));
+		}
+	}
+	ck_assert_uint_le((size_t)f->cols * f->rows, 14 * 12);
+	c->cols = f->cols;
+	c->rows = f->rows;
+	for (y = 0; y < f->rows; ++y)
+		for (x = 0; x < f->cols; ++x) {
+			cell = *tsm_frame_cell_at(f, x, y);
+			cell.flags &= ~TSM_FRAME_CHANGED;
+			c->cells[y * f->cols + x] = cell;
+		}
+	c->cursor = f->cursor;
+	c->cursor.cell.flags &= ~TSM_FRAME_CHANGED;
+	ck_assert_uint_le(f->placement_count, 64);
+	c->nplaces = f->placement_count;
+	for (i = 0; i < f->placement_count; ++i) {
+		q = *tsm_frame_placement_at(f, i);
+		q.flags &= ~TSM_FRAME_CHANGED;
+		c->places[i] = q;
+	}
+}
+
 static void random_event(struct tsm_screen *screen, struct tsm_vte *vte,
-			 struct tsm_frame_age *ages)
+			 struct caller *callers)
 {
 	static const char *const seqs[] = {
 		"\e[K", "\e[1K", "\e[2K", "\e[J", "\e[1J", "\e[2J", "\e[3J",
@@ -1521,7 +1776,7 @@ static void random_event(struct tsm_screen *screen, struct tsm_vte *vte,
 	} else if (op < 87) {
 		input_str(vte, "\ec");
 	} else {
-		ck_assert_ptr_ne(tsm_screen_frame_since(screen, &ages[rnd(2)]), NULL);
+		caller_frame(screen, &callers[rnd(2)]);
 	}
 }
 
@@ -1529,18 +1784,18 @@ START_TEST(test_image_random_events)
 {
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
-	struct tsm_frame_age ages[2];
+	struct caller callers[2];
 	const struct tsm_frame *f;
 	unsigned int seed, i, j;
 
 	for (seed = 1; seed <= 40; ++seed) {
 		rnd_state = seed;
-		memset(ages, 0, sizeof(ages));
+		memset(callers, 0, sizeof(callers));
 		setup(&screen, &vte);
 		tsm_screen_set_max_sb(screen, 4);
 		tsm_screen_set_image_limit(screen, 40000);
 		for (i = 0; i < 400; ++i) {
-			random_event(screen, vte, ages);
+			random_event(screen, vte, callers);
 			check_invariants(screen);
 		}
 		/* every listed placement shows something, in draw order */
@@ -1591,6 +1846,12 @@ TEST_END_CASE
 /* 16000 events with the invariants checked after each: under a second here,
  * but close to four on a macOS runner, where check's default timeout of 4 s
  * failed it */
+TEST_DEFINE_CASE(changed)
+	TEST(test_changed_since_screen)
+	TEST(test_changed_since_images)
+	TEST(test_changed_since_wrap)
+TEST_END_CASE
+
 TEST_DEFINE_CASE(events)
 	TIMEOUT(20)
 	TEST(test_image_random_events)
@@ -1600,6 +1861,7 @@ TEST_DEFINE(
 	TEST_SUITE(image,
 		TEST_CASE(store),
 		TEST_CASE(frame),
+		TEST_CASE(changed),
 		TEST_CASE(events),
 		TEST_END
 	)
