@@ -227,6 +227,24 @@ START_TEST(test_symbol_siphash)
 }
 END_TEST
 
+/* The cluster table's key comes from the kernel. A configure check that found
+ * no source would leave every table on the clock-and-pid fallback, which
+ * nothing else would notice. */
+START_TEST(test_symbol_entropy)
+{
+	uint64_t a[2] = { 0, 0 }, b[2] = { 0, 0 };
+
+#if !defined(HAVE_GETRANDOM) && !defined(HAVE_GETENTROPY) && \
+	!defined(HAVE_ARC4RANDOM_BUF)
+	ck_abort_msg("no entropy source configured");
+#endif
+	ck_assert(tsm_entropy(a, sizeof(a)));
+	ck_assert(tsm_entropy(b, sizeof(b)));
+	ck_assert(a[0] || a[1]);
+	ck_assert(memcmp(a, b, sizeof(a)));
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_symbol_null)
 	TEST(test_symbol_init)
@@ -235,6 +253,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_symbol_width)
 	TEST(test_symbol_grapheme_breaks)
 	TEST(test_symbol_siphash)
+	TEST(test_symbol_entropy)
 TEST_END_CASE
 
 TEST_DEFINE(

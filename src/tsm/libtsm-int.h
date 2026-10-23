@@ -85,6 +85,9 @@ struct tsm_gb_state {
 	uint8_t linker;		/* InCB=Linker InCB=Extend* */
 };
 
+/* @len bytes of the kernel's randomness into @buf; false when unavailable */
+bool tsm_entropy(void *buf, size_t len);
+
 /* SipHash-c-d of @in under the 128-bit @key */
 uint64_t tsm_siphash(const uint64_t key[2], const uint8_t *in, size_t len,
 		     unsigned int crounds, unsigned int drounds);
