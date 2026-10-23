@@ -59,6 +59,8 @@
 #define CHECKED_FIXTURE(_setup, _teardown) tcase_add_checked_fixture(tc, _setup, _teardown);
 #define FIXTURE(_setup, _teardown) tcase_add_fixture(tc, _setup, _teardown);
 #define TEST(_name) tcase_add_test(tc, _name);
+/* seconds the case's tests may each take, instead of check's default of 4 */
+#define TIMEOUT(_s) tcase_set_timeout(tc, _s);
 
 #define TEST_END_CASE						\
 		return tc;					\
