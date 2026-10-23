@@ -286,6 +286,90 @@ START_TEST(test_image_eviction_order)
 }
 END_TEST
 
+/* the victims a walk saw, up to @stop of them */
+struct walk {
+	struct tsm_image_victim seen[8];
+	unsigned int n, stop;
+};
+
+static bool walk_cb(const struct tsm_image_victim *v, void *data)
+{
+	struct walk *w = data;
+
+	ck_assert_uint_lt(w->n, 8);
+	w->seen[w->n++] = *v;
+	return w->n < w->stop;
+}
+
+/*
+ * The victim walk names every image the screen may evict, in the order
+ * tsm_screen_image_evict then evicts them, and evicts none itself: a host
+ * learns what eviction would free before it evicts. It stops when the
+ * callback says so, and never names an image placed on the screen's lines.
+ */
+START_TEST(test_image_victim_walk)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct walk w = { .stop = 8 };
+	uint64_t on_screen, sb, old, transient, newer;
+	unsigned int i;
+
+	setup(&screen, &vte);
+	tsm_screen_set_max_sb(screen, 100);
+	tsm_screen_set_image_limit(screen, 5 * COST(8, 16));
+	ck_assert_int_eq(tsm_screen_image_victims(NULL, walk_cb, &w), -EINVAL);
+	ck_assert_int_eq(tsm_screen_image_victims(screen, NULL, &w), -EINVAL);
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
+	ck_assert_uint_eq(w.n, 0);
+
+	sb = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	place(screen, sb, 0, 0);
+	on_screen = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff00ff00);
+	place(screen, on_screen, 0, 4);
+	old = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 3, false, 0xffff0000);
+	transient = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 4, true, 0xffffffff);
+	newer = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 5, false, 0xff123456);
+	input_str(vte, "\e[5;1H\n\n");
+
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
+	ck_assert_uint_eq(w.n, 4);
+	ck_assert_uint_eq(w.seen[0].key, transient);
+	ck_assert_uint_eq(w.seen[0].rank, TSM_IMAGE_UNPLACED_TRANSIENT);
+	ck_assert_uint_eq(w.seen[1].key, old);
+	ck_assert_uint_eq(w.seen[1].rank, TSM_IMAGE_UNPLACED);
+	ck_assert_uint_eq(w.seen[2].key, newer);
+	ck_assert_uint_eq(w.seen[3].key, sb);
+	ck_assert_uint_eq(w.seen[3].rank, TSM_IMAGE_SCROLLBACK);
+	for (i = 0; i < 4; ++i)
+		ck_assert_uint_eq(w.seen[i].bytes, COST(8, 16));
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 5 * COST(8, 16));
+	ck_assert(image_exists(screen, transient) && image_exists(screen, sb));
+
+	/* stopped after two */
+	w.n = 0;
+	w.stop = 2;
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
+	ck_assert_uint_eq(w.n, 2);
+	ck_assert_uint_eq(w.seen[1].key, old);
+
+	/* eviction follows the walk, and the image on screen is never named */
+	w.n = 0;
+	w.stop = 8;
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
+	for (i = 0; i < 4; ++i) {
+		ck_assert_uint_eq(tsm_screen_image_evict(screen), COST(8, 16));
+		ck_assert(!image_exists(screen, w.seen[i].key));
+	}
+	ck_assert(image_exists(screen, on_screen));
+	w.n = 0;
+	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
+	ck_assert_uint_eq(w.n, 0);
+
+	teardown(screen, vte);
+}
+END_TEST
+
 /*
  * A store holds at most TSM_SCREEN_IMAGES_PER_STORE images: one more evicts
  * in the usual order, from that store, or is refused when every image there
@@ -1389,6 +1473,7 @@ END_TEST
 TEST_DEFINE_CASE(store)
 	TEST(test_image_store)
 	TEST(test_image_eviction_order)
+	TEST(test_image_victim_walk)
 	TEST(test_image_eviction_partly_on_screen)
 	TEST(test_image_lru)
 	TEST(test_image_store_cap)

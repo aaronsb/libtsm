@@ -743,6 +743,15 @@ bool tsm_screen_image_victim(struct tsm_screen *con, struct tsm_image_victim *ou
 size_t tsm_screen_image_evict(struct tsm_screen *con);
 
 /*
+ * Calls @cb with each image this screen may evict, in the order
+ * tsm_screen_image_evict would evict them, until @cb returns false. Nothing
+ * is evicted, so a host can learn what eviction would free before it evicts.
+ * Returns 0, -EINVAL for NULL arguments, or -ENOMEM.
+ */
+typedef bool (*tsm_image_victim_cb)(const struct tsm_image_victim *victim, void *data);
+int tsm_screen_image_victims(struct tsm_screen *con, tsm_image_victim_cb cb, void *data);
+
+/*
  * For tests only (ADR-103 step 3a): an image and a placement made without a
  * protocol, as the sixel and kitty parsers will make them. Each acts on the
  * store of the screen buffer in use. They are not in the library: tests
