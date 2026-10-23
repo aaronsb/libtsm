@@ -655,6 +655,19 @@ int tsm_screen_frame_image(struct tsm_screen *con, uint64_t key,
 #define TSM_SCREEN_IMAGES_PER_STORE	1024
 
 /*
+ * The image's overhead pays for its first placement. Each further one (a
+ * kitty image placed again, a piece text or a scroll cuts from a sixel)
+ * costs TSM_SCREEN_PLACEMENT_OVERHEAD more, and each store holds at most
+ * TSM_SCREEN_PLACEMENTS_PER_STORE placements. A cut or scroll that would pass
+ * that keeps the largest pieces and drops the smallest, as if their cells
+ * were erased; pieces the budget then refuses are dropped the same way,
+ * smallest first. A new placement past it evicts images as above, or is
+ * refused.
+ */
+#define TSM_SCREEN_PLACEMENT_OVERHEAD	256
+#define TSM_SCREEN_PLACEMENTS_PER_STORE	4096
+
+/*
  * The cell size in pixels, the size the host reports through TIOCSWINSZ.
  * Placements made from now on measure their pixel quantities in it; those
  * made before keep the size they were made with. 8x16 until set.
@@ -664,7 +677,11 @@ int tsm_screen_set_cell_size(struct tsm_screen *con, unsigned int width,
 
 /*
  * The image budget. An image costs width x height x 4 bytes, plus
- * TSM_SCREEN_IMAGE_OVERHEAD, reserved before it is allocated. With a host budget, libtsm asks @reserve for each
+ * TSM_SCREEN_IMAGE_OVERHEAD, plus TSM_SCREEN_PLACEMENT_OVERHEAD for each
+ * placement past its first, reserved before it is allocated. Pieces a screen
+ * event cuts are reserved once the event is over (at the end of an input
+ * call, or before the next reservation). tsm_screen_get_image_bytes counts
+ * them from when they are cut. With a host budget, libtsm asks @reserve for each
  * reservation (0 grants it, a negative errno refuses it) and tells @release
  * of every image it frees, evictions included. A host that runs several
  * screens evicts across them in its @reserve, with tsm_screen_image_victim
@@ -748,6 +765,8 @@ int tsm_screen_test_image(struct tsm_screen *con, const struct tsm_test_image *i
 			  uint64_t *key);
 /* the images the screen holds, in both stores */
 unsigned int tsm_screen_test_image_count(struct tsm_screen *con);
+/* the placements the screen holds, in both stores */
+unsigned int tsm_screen_test_placement_count(struct tsm_screen *con);
 
 struct tsm_test_placement {
 	uint64_t image;			/* the image's key */

@@ -585,6 +585,70 @@ START_TEST(test_sixel_tiny_many)
 }
 END_TEST
 
+/*
+ * Text in a checkerboard over many pictures cuts each into pieces: each piece
+ * past a picture's first is charged, a store holds a bounded number, and
+ * pieces the budget refuses go, smallest first.
+ */
+static void checkerboard(unsigned int cols, unsigned int rows)
+{
+	char buf[32];
+	unsigned int x, y;
+
+	for (y = 0; y < rows; ++y)
+		for (x = y % 2; x < cols; x += 2) {
+			snprintf(buf, sizeof(buf), "\033[%u;%uHx", y + 1, x + 1);
+			input(buf);
+		}
+}
+
+/* @n transparent 320x192 pictures, all over the 40x12 screen */
+static void stack(unsigned int n)
+{
+	unsigned int i;
+
+	for (i = 0; i < n; ++i)
+		input("\033[H\033P0;1q\"1;1;320;192#1~\033\\");
+}
+
+START_TEST(test_sixel_pieces_bounded)
+{
+	unsigned int images, pieces;
+
+	teardown();
+	setup_size(40, 12);
+	stack(40);
+	checkerboard(40, 12);
+	images = tsm_screen_test_image_count(screen);
+	pieces = tsm_screen_test_placement_count(screen);
+	ck_assert_uint_eq(images, 40);
+	ck_assert_uint_eq(pieces, TSM_SCREEN_PLACEMENTS_PER_STORE);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
+			  images * COST(320, 192) +
+			  (size_t)(pieces - images) * TSM_SCREEN_PLACEMENT_OVERHEAD);
+}
+END_TEST
+
+START_TEST(test_sixel_pieces_budget)
+{
+	const size_t limit = 10 * COST(320, 192) + 50 * TSM_SCREEN_PLACEMENT_OVERHEAD;
+	unsigned int images, pieces;
+
+	teardown();
+	setup_size(40, 12);
+	tsm_screen_set_image_limit(screen, limit);
+	stack(10);
+	checkerboard(40, 12);
+	images = tsm_screen_test_image_count(screen);
+	pieces = tsm_screen_test_placement_count(screen);
+	ck_assert_uint_le(tsm_screen_get_image_bytes(screen), limit);
+	ck_assert_uint_le(pieces, images + 50);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
+			  images * COST(320, 192) +
+			  (size_t)(pieces - images) * TSM_SCREEN_PLACEMENT_OVERHEAD);
+}
+END_TEST
+
 /* Work per call */
 
 START_TEST(test_sixel_bounded)
@@ -733,6 +797,8 @@ TEST_DEFINE_CASE(strings)
 	TEST(test_sixel_max_size)
 	TEST(test_sixel_budget)
 	TEST(test_sixel_tiny_many)
+	TEST(test_sixel_pieces_bounded)
+	TEST(test_sixel_pieces_budget)
 	TEST(test_sixel_bounded)
 	TEST(test_sixel_split_input)
 TEST_END_CASE

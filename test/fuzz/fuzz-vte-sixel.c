@@ -14,8 +14,9 @@
  *  - tsm_vte_input_bounded consumes at least one byte and at most what it
  *    was given;
  *  - every placement a frame lists names an image the screen still has;
- *  - no store holds more than TSM_SCREEN_IMAGES_PER_STORE images, and every
- *    image pays its TSM_SCREEN_IMAGE_OVERHEAD;
+ *  - no store holds more than TSM_SCREEN_IMAGES_PER_STORE images or
+ *    TSM_SCREEN_PLACEMENTS_PER_STORE placements, and every image pays its
+ *    TSM_SCREEN_IMAGE_OVERHEAD;
  *  - freeing the vte and the screen gives every byte back.
  *
  * Input: byte 0 picks the screen size and cell size, byte 1 the
@@ -103,6 +104,8 @@ static void check_frame(struct tsm_screen *screen)
 	n = tsm_screen_test_image_count(screen);
 	check(n <= 2 * TSM_SCREEN_IMAGES_PER_STORE);
 	check(held >= (size_t)n * TSM_SCREEN_IMAGE_OVERHEAD);
+	n = tsm_screen_test_placement_count(screen);
+	check(n <= 2 * TSM_SCREEN_PLACEMENTS_PER_STORE);
 }
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)

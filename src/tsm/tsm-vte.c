@@ -3199,6 +3199,8 @@ static size_t vte_input_with(struct tsm_vte *vte, const char *u8, size_t len,
 	++vte->parse_cnt;
 	vte->work_left = work;
 	n = vte_input(vte, u8, len);
+	/* what the call's cuts and scrolls owe the budget */
+	screen_images_settle(vte->con);
 	vte->work_left = saved;
 	--vte->parse_cnt;
 	return n;
