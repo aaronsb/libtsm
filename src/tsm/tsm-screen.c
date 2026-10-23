@@ -2192,3 +2192,69 @@ void tsm_screen_set_cursor_blinking_rate_ms(struct tsm_screen *con, uint32_t ms)
 
 	con->blinking_rate_ms = ms;
 }
+
+/*
+ * A sixel at the cursor (ADR-103, Sixel). With sixel scrolling (@scroll,
+ * DECSDM reset), the picture's top left is the cursor's cell; the screen
+ * scrolls as index does wherever the picture would pass the bottom margin,
+ * and the cursor ends on the row holding the picture's last pixel row, at its
+ * left column (foot), or with @cursor_right (mode 8452) in the column after
+ * its right edge, clamped to the last column. Without it (DECSDM set), the
+ * picture sits at the screen's top left, cut to the screen, and the cursor
+ * stays where it is.
+ */
+int screen_sixel_place(struct tsm_screen *con, struct tsm_image *image,
+		       bool scroll, bool cursor_right)
+{
+	struct tsm_test_placement pl = { 0 };
+	struct tsm_placement *p;
+	unsigned int cw = con->img.cell_width, ch = con->img.cell_height;
+	unsigned int x, y, rows, n, room, s, cols;
+	int ret;
+
+	screen_inc_age(con);
+	if (!scroll) {
+		pl.src_width = image->width < (unsigned long long)con->size_x * cw ?
+			       image->width : con->size_x * cw;
+		pl.src_height = image->height < (unsigned long long)con->size_y * ch ?
+				image->height : con->size_y * ch;
+		return screen_image_place(con, image, &pl, &p);
+	}
+
+	/* a pending wrap leaves the cursor past the last column */
+	x = con->cursor_x < con->size_x ? con->cursor_x : con->size_x - 1;
+	y = con->cursor_y;
+	rows = (image->height + ch - 1) / ch;
+	n = rows - 1;
+
+	/*
+	 * Scrolled first, as far as the region allows, so a picture that fits
+	 * the region moves whole: scrolled after placing, a region's edge
+	 * would split it. Index then covers the rest, which only a picture
+	 * taller than the region needs.
+	 */
+	if (y >= con->margin_top && y <= con->margin_bottom) {
+		room = con->margin_bottom - y;
+		if (n > room) {
+			s = n - room;
+			if (s > y - con->margin_top)
+				s = y - con->margin_top;
+			screen_scroll_up(con, s);
+			y -= s;
+		}
+	}
+
+	pl.col = x;
+	pl.row = y;
+	ret = screen_image_place(con, image, &pl, &p);
+	if (ret)
+		return ret;
+	cols = p->cols;
+
+	move_cursor(con, x, y);
+	tsm_screen_move_down(con, n, true);
+	if (cursor_right)
+		x = cols < con->size_x - x ? x + cols : con->size_x - 1;
+	move_cursor(con, x, con->cursor_y);
+	return 0;
+}

@@ -1121,12 +1121,51 @@ struct tsm_image *screen_image_find(struct tsm_screen *con, uint64_t key)
 	return image_find(&con->img, key);
 }
 
+/*
+ * Fills in and stores @image, whose @bytes are reserved and whose pixels are
+ * set, in the store in use; @old, a kitty image of the same id, is replaced.
+ */
+static void image_store(struct tsm_screen *con, struct tsm_image *image,
+			const struct tsm_test_image *desc, size_t bytes,
+			struct tsm_image *old, size_t added)
+{
+	struct tsm_image_store *st = cur_store(con);
+
+	image->store = st;
+	image->id = desc->kind == TSM_IMAGE_KITTY ? desc->id : 0;
+	image->number = desc->number;
+	image->width = desc->width;
+	image->height = desc->height;
+	image->bytes = bytes;
+	image->kind = desc->kind;
+	image->transient = desc->transient;
+	image->last_use = ++image_clock;
+	image->age = con->age_cnt;
+	/* the old image's bytes beyond what was added pass to the new one;
+	 * freeing it releases only what is left over */
+	if (old) {
+		old->bytes -= bytes - added;
+		image_free(con, old);
+	}
+	shl_dlist_link_tail(&st->images, &image->list);
+}
+
+static bool pixels_opaque(const uint32_t *px, size_t n)
+{
+	size_t i;
+
+	for (i = 0; i < n; ++i)
+		if ((px[i] >> 24) != 0xff)
+			return false;
+	return true;
+}
+
 int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 		     struct tsm_image **out)
 {
 	struct tsm_image_store *st;
 	struct tsm_image *image, *old = NULL;
-	size_t i, n, bytes, added;
+	size_t n, bytes, added;
 	int ret;
 
 	if (!desc->width || !desc->height || !desc->pixels ||
@@ -1160,29 +1199,66 @@ int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 	}
 
 	memcpy(image->pixels, desc->pixels, bytes);
-	image->opaque = true;
-	for (i = 0; i < n && image->opaque; ++i)
-		image->opaque = (image->pixels[i] >> 24) == 0xff;
-	image->store = st;
-	image->id = desc->kind == TSM_IMAGE_KITTY ? desc->id : 0;
-	image->number = desc->number;
-	image->width = desc->width;
-	image->height = desc->height;
-	image->bytes = bytes;
-	image->kind = desc->kind;
-	image->transient = desc->transient;
-	image->last_use = ++image_clock;
-	image->age = con->age_cnt;
-	/* the old image's bytes beyond what was added pass to the new one;
-	 * freeing it releases only what is left over */
-	if (old) {
-		old->bytes -= bytes - added;
-		image_free(con, old);
-	}
-	shl_dlist_link_tail(&st->images, &image->list);
+	image->opaque = pixels_opaque(image->pixels, n);
+	image_store(con, image, desc, bytes, old, added);
 
 	*out = image;
 	return 0;
+}
+
+int screen_images_reserve(struct tsm_screen *con, size_t bytes)
+{
+	size_t added;
+
+	return budget_reserve(con, bytes, NULL, &added);
+}
+
+void screen_images_unreserve(struct tsm_screen *con, size_t bytes)
+{
+	budget_release(con, bytes);
+}
+
+int screen_sixel_new(struct tsm_screen *con, unsigned int width, unsigned int height,
+		     uint32_t *pixels, bool opaque, struct tsm_image **out)
+{
+	struct tsm_test_image desc = {
+		.width = width,
+		.height = height,
+		.pixels = pixels,
+		.kind = TSM_IMAGE_SIXEL,
+	};
+	struct tsm_image *image;
+	size_t bytes = (size_t)width * height * 4;
+
+	/* the decoder's limits keep it within these, unless they are set past
+	 * them */
+	if (!width || !height || width > TSM_SCREEN_IMAGE_MAX ||
+	    height > TSM_SCREEN_IMAGE_MAX ||
+	    (uint64_t)width * height * 4 > TSM_SCREEN_IMAGE_MAX_BYTES) {
+		free(pixels);
+		budget_release(con, bytes);
+		return -EINVAL;
+	}
+	image = calloc(1, sizeof(*image));
+	if (!image || slot_take(&con->img, image)) {
+		free(image);
+		free(pixels);
+		budget_release(con, bytes);
+		return -ENOMEM;
+	}
+
+	screen_inc_age(con);
+	image->pixels = pixels;
+	image->opaque = opaque || pixels_opaque(pixels, (size_t)width * height);
+	image_store(con, image, &desc, bytes, NULL, bytes);
+
+	*out = image;
+	return 0;
+}
+
+void screen_image_drop(struct tsm_screen *con, struct tsm_image *image)
+{
+	image_free(con, image);
 }
 
 static unsigned int div_up(unsigned long long a, unsigned int b)

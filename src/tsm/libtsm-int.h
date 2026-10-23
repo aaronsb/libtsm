@@ -110,6 +110,8 @@ int tsm_utf8_mach_new(struct tsm_utf8_mach **out);
 void tsm_utf8_mach_free(struct tsm_utf8_mach *mach);
 
 int tsm_utf8_mach_feed(struct tsm_utf8_mach *mach, char c);
+/* true between sequences, where an ASCII byte is accepted as it is */
+bool tsm_utf8_mach_idle(struct tsm_utf8_mach *mach);
 uint32_t tsm_utf8_mach_get(struct tsm_utf8_mach *mach);
 void tsm_utf8_mach_reset(struct tsm_utf8_mach *mach);
 
@@ -440,6 +442,21 @@ int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 		     struct tsm_image **out);
 int screen_image_place(struct tsm_screen *con, struct tsm_image *image,
 		       const struct tsm_test_placement *pl, struct tsm_placement **out);
+/*
+ * Sixel (tsm-vte.c). A picture being decoded holds its bytes through
+ * screen_images_reserve and screen_images_unreserve, under the screen's
+ * budget like any image; screen_sixel_new then stores it with those bytes,
+ * taking @pixels (freed, with the bytes released, on failure).
+ * screen_sixel_place shows it at the cursor and moves the cursor as ADR-103
+ * says, and screen_image_drop frees an image nothing placed.
+ */
+int screen_images_reserve(struct tsm_screen *con, size_t bytes);
+void screen_images_unreserve(struct tsm_screen *con, size_t bytes);
+int screen_sixel_new(struct tsm_screen *con, unsigned int width, unsigned int height,
+		     uint32_t *pixels, bool opaque, struct tsm_image **out);
+int screen_sixel_place(struct tsm_screen *con, struct tsm_image *image,
+		       bool scroll, bool cursor_right);
+void screen_image_drop(struct tsm_screen *con, struct tsm_image *image);
 /* the frame's placement list, flagged changed against @since */
 int screen_images_frame(struct tsm_screen *con, const struct tsm_frame_age *since,
 			bool all_changed);

@@ -1048,6 +1048,48 @@ void tsm_vte_reset(struct tsm_vte *vte);
 void tsm_vte_hard_reset(struct tsm_vte *vte);
 void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len);
 
+/*
+ * As tsm_vte_input, but stops once the image work this call has done passes
+ * a bound, and returns the bytes it consumed: at least one when @len is not 0.
+ * The work is counted in pixels written, allocated or copied, about 16
+ * million per call, since a few bytes of sixel can fill a large picture. A
+ * host feeds the rest in a later call, after its other events, so one read of
+ * crafted input cannot hold its event loop for long.
+ */
+size_t tsm_vte_input_bounded(struct tsm_vte *vte, const char *u8, size_t len);
+
+/*
+ * Sixel graphics (ADR-103 in aaronsb/kmscon): DCS P1;P2;P3 q ... ST makes a
+ * picture at the cursor. Defined when the calls below exist.
+ *
+ * Sixel is off until the host turns it on, and needs an image budget on the
+ * screen as well (tsm_screen_set_image_budget or tsm_screen_set_image_limit).
+ * While either is missing, sixel strings are ignored, DA1 omits attribute 4,
+ * and XTSMGRAPHICS reports no graphics. Both on, the picture's memory comes
+ * from that budget, and a picture that does not fit is dropped.
+ */
+#define TSM_VTE_SIXEL 1
+
+void tsm_vte_set_sixel(struct tsm_vte *vte, bool enable);
+
+/*
+ * max-graphic-size: the largest picture in pixels, for each dimension; pixels
+ * past it are dropped. 0 is the default, 10000; larger values are clamped to
+ * TSM_SCREEN_IMAGE_MAX. Returns 0 or -EINVAL.
+ */
+int tsm_vte_set_graphic_max_size(struct tsm_vte *vte, unsigned int width,
+				 unsigned int height);
+
+/*
+ * num-color-registers, 2 to 65535, or 0 for the default 1024; and
+ * private-color-registers, the state mode 1070 starts in and returns to on
+ * RIS: set, each picture starts from the default colours; reset, pictures
+ * share their registers until RIS. Both apply at once, as after RIS. Returns
+ * 0 or -EINVAL.
+ */
+int tsm_vte_set_sixel_registers(struct tsm_vte *vte, unsigned int count,
+				bool private_registers);
+
 /**
  * @brief Set backspace key to send either backspace or delete.
  *

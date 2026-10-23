@@ -52,6 +52,7 @@
 #include <string.h>
 #include "libtsm.h"
 #include "libtsm-int.h"
+#include "tsm-sixel.h"
 #include "shl-llog.h"
 
 #include <xkbcommon/xkbcommon-keysyms.h>
@@ -216,7 +217,28 @@ struct tsm_vte {
 	struct vte_saved_state saved_state;
 	unsigned int alt_cursor_x;
 	unsigned int alt_cursor_y;
+
+	/* sixel (ADR-103): the host's settings */
+	bool sixel_enabled;
+	unsigned int graphic_max_w;		/* max-graphic-size */
+	unsigned int graphic_max_h;
+	unsigned int sixel_max_registers;	/* num-color-registers */
+	bool sixel_private_default;		/* private-color-registers */
+	/* the client's: XTSMGRAPHICS's register count, modes 1070, 80, 8452 */
+	unsigned int sixel_registers;
+	bool sixel_private;
+	bool sixel_no_scroll;
+	bool sixel_cursor_right;
+	/* made at the first image, and again after a setting changes */
+	struct tsm_sixel *sixel;
+	struct tsm_sixel_palette *sixel_shared;
+	bool sixel_active;			/* a DCS q streams into it */
+	/* the image work tsm_vte_input_bounded has left in this call */
+	uint64_t work_left;
 };
+
+static void sixel_drop(struct tsm_vte *vte);
+static void sixel_reset(struct tsm_vte *vte);
 
 static uint8_t color_palette_legacy[TSM_COLOR_NUM][3] = {
 	[TSM_COLOR_BLACK]         = {   0,   0,   0 }, /* black */
@@ -536,6 +558,12 @@ int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
 	screen_set_palette(vte->con, vte->palette);
 	set_default_colors(&vte->def_attr);
 
+	vte->graphic_max_w = TSM_SIXEL_MAX_SIZE_DEFAULT;
+	vte->graphic_max_h = TSM_SIXEL_MAX_SIZE_DEFAULT;
+	vte->sixel_max_registers = TSM_SIXEL_REGISTERS_DEFAULT;
+	vte->sixel_private_default = true;
+	sixel_reset(vte);
+
 	ret = tsm_utf8_mach_new(&vte->mach);
 	if (ret)
 		goto err_free;
@@ -573,6 +601,8 @@ void tsm_vte_unref(struct tsm_vte *vte)
 
 	llog_debug(vte, "destroying vte object");
 	free(vte->palette_name);
+	/* a picture in progress gives its bytes back to the screen first */
+	sixel_drop(vte);
 	tsm_screen_unref(vte->con);
 	tsm_utf8_mach_free(vte->mach);
 	free(vte->custom_palette_storage);
@@ -874,6 +904,11 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	tsm_screen_set_flags(vte->con, TSM_SCREEN_AUTO_WRAP);
 
 	tsm_utf8_mach_reset(vte->mach);
+	/* leaving a DCS without its end discards the picture */
+	if (vte->sixel_active) {
+		tsm_sixel_abort(vte->sixel);
+		vte->sixel_active = false;
+	}
 	vte->state = STATE_GROUND;
 	vte->gl = &vte->g0;
 	vte->gr = &vte->g1;
@@ -907,15 +942,167 @@ void tsm_vte_hard_reset(struct tsm_vte *vte)
 	tsm_vte_reset(vte);
 	tsm_screen_erase_screen(vte->con, false);
 	tsm_screen_clear_sb(vte->con);
-	/* both image stores are emptied (ADR-103) */
+	/* both image stores are emptied, and the shared sixel registers
+	 * (ADR-103) */
 	screen_images_reset(vte->con);
+	sixel_reset(vte);
 	tsm_screen_move_to(vte->con, 0, 0);
+}
+
+/*
+ * Sixel (ADR-103 in aaronsb/kmscon). The DCS payload streams into the
+ * decoder (tsm-sixel.c), which reserves its memory from the screen's image
+ * budget; at ST the picture moves into the screen's store with that
+ * reservation and is placed at the cursor.
+ */
+
+/* the image work one tsm_vte_input_bounded call may do, in pixels */
+#define VTE_INPUT_WORK ((uint64_t)1 << 24)
+
+/* the host's switch, and a budget to pay for the pictures */
+static bool sixel_on(struct tsm_vte *vte)
+{
+	return vte->sixel_enabled && (vte->con->img.reserve || vte->con->img.limit);
+}
+
+static bool sixel_reserve(void *data, size_t old_size, size_t new_size)
+{
+	struct tsm_vte *vte = data;
+
+	if (new_size > old_size)
+		return !screen_images_reserve(vte->con, new_size - old_size);
+	screen_images_unreserve(vte->con, old_size - new_size);
+	return true;
+}
+
+/*
+ * Frees the decoder, with any picture in progress, and the shared registers;
+ * the next picture makes them again from the settings in force then.
+ */
+static void sixel_drop(struct tsm_vte *vte)
+{
+	tsm_sixel_free(vte->sixel);
+	vte->sixel = NULL;
+	tsm_sixel_palette_free(vte->sixel_shared);
+	vte->sixel_shared = NULL;
+	vte->sixel_active = false;
+}
+
+/* RIS: what the client set returns to what the host set */
+static void sixel_reset(struct tsm_vte *vte)
+{
+	sixel_drop(vte);
+	vte->sixel_registers = vte->sixel_max_registers;
+	vte->sixel_private = vte->sixel_private_default;
+	vte->sixel_no_scroll = false;
+	vte->sixel_cursor_right = false;
+}
+
+static bool sixel_ready(struct tsm_vte *vte)
+{
+	struct tsm_sixel_limits lim = {
+		.max_width = vte->graphic_max_w,
+		.max_height = vte->graphic_max_h,
+		.registers = vte->sixel_registers,
+		.reserve = sixel_reserve,
+		.reserve_data = vte,
+	};
+
+	if (!vte->sixel && tsm_sixel_new(&vte->sixel, &lim))
+		return false;
+	if (!vte->sixel_private && !vte->sixel_shared &&
+	    tsm_sixel_palette_new(&vte->sixel_shared, vte->sixel_registers))
+		return false;
+	return true;
+}
+
+/* counts @work against what this input call may still do */
+static void sixel_charge(struct tsm_vte *vte, uint64_t work)
+{
+	vte->work_left = work < vte->work_left ? vte->work_left - work : 0;
+}
+
+/* DCS P1;P2;P3 q: sixel. Every other DCS stays ignored. */
+static void do_dcs_start(struct tsm_vte *vte, uint32_t data)
+{
+	if (data != 'q' || vte->csi_flags || !sixel_on(vte) || !sixel_ready(vte))
+		return;
+
+	tsm_sixel_begin(vte->sixel, vte->csi_argv[0], vte->csi_argv[1],
+			vte->sixel_private ? NULL : vte->sixel_shared);
+	vte->sixel_active = true;
+}
+
+static void do_dcs_collect(struct tsm_vte *vte, uint32_t data)
+{
+	uint64_t work;
+	char c = data;
+
+	/* the payload is ASCII; anything else is ignored, as the decoder
+	 * ignores bytes it has no use for */
+	if (!vte->sixel_active || data >= 0x80)
+		return;
+
+	work = tsm_sixel_work(vte->sixel);
+	tsm_sixel_feed(vte->sixel, &c, 1);
+	sixel_charge(vte, tsm_sixel_work(vte->sixel) - work);
+}
+
+/* the end of the string: @data is what ended it */
+static void do_dcs_end(struct tsm_vte *vte, uint32_t data)
+{
+	struct tsm_sixel_image img;
+	struct tsm_image *image;
+	uint64_t work;
+	int ret;
+
+	if (!vte->sixel_active)
+		return;
+	vte->sixel_active = false;
+
+	/* CAN and SUB discard the picture; ST, or anything else that ends
+	 * the string, shows it */
+	if (data == 0x18 || data == 0x1a) {
+		tsm_sixel_abort(vte->sixel);
+		return;
+	}
+
+	work = tsm_sixel_work(vte->sixel);
+	ret = tsm_sixel_finish(vte->sixel, &img);
+	sixel_charge(vte, tsm_sixel_work(vte->sixel) - work);
+	if (ret)
+		return;
+
+	ret = screen_sixel_new(vte->con, img.width, img.height, img.pixels,
+			       !img.transparent, &image);
+	if (ret) {
+		llog_debug(vte, "sixel picture %ux%u not stored: %d", img.width,
+			   img.height, ret);
+		return;
+	}
+	/* a transparent picture is read once more for its opacity */
+	if (img.transparent)
+		sixel_charge(vte, (uint64_t)img.width * img.height);
+
+	ret = screen_sixel_place(vte->con, image, !vte->sixel_no_scroll,
+				 vte->sixel_cursor_right);
+	if (ret) {
+		llog_debug(vte, "sixel picture %ux%u not placed: %d", img.width,
+			   img.height, ret);
+		screen_image_drop(vte->con, image);
+	}
 }
 
 static void send_primary_da(struct tsm_vte *vte)
 {
 	const static char str[] = "\e[?60;1;6;9;15c";
-	vte_write(vte, str, sizeof(str) - 1);
+	/* attribute 4: sixel graphics */
+	const static char sixel[] = "\e[?60;1;4;6;9;15c";
+
+	if (sixel_on(vte))
+		vte_write(vte, sixel, sizeof(sixel) - 1);
+	else
+		vte_write(vte, str, sizeof(str) - 1);
 }
 
 /* execute control character (C0 or C1) */
@@ -1869,6 +2056,16 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 			    continue;
 			}
 			continue;
+		case 80: /* DECSDM: set turns sixel scrolling off, in xterm's
+			  * sense (ADR-103) */
+			vte->sixel_no_scroll = set;
+			continue;
+		case 1070: /* each sixel starts from its own default registers */
+			vte->sixel_private = set;
+			continue;
+		case 8452: /* the cursor ends right of a sixel, not below it */
+			vte->sixel_cursor_right = set;
+			continue;
 		case 2027: /* grapheme cluster width (terminal-unicode-core) */
 			screen_set_width_method(vte->con, set ? TSM_WIDTH_UNICODE :
 						TSM_WIDTH_WCWIDTH);
@@ -1931,6 +2128,106 @@ static void csi_report_window_size(struct tsm_vte *vte)
 	if (len >= sizeof(buf))
 		return;
 	vte_write(vte, buf, len);
+}
+
+/* XTWINOPS 14 (text area) and 16 (cell) in pixels, the host's cell size */
+static void csi_report_pixel_size(struct tsm_vte *vte)
+{
+	struct tsm_screen *con = vte->con;
+	unsigned int cw = con->img.cell_width, ch = con->img.cell_height;
+	char buf[64];
+	int len;
+
+	if (vte->csi_argv[0] == 14)
+		len = snprintf(buf, sizeof(buf), "\e[4;%llu;%llut",
+			       (unsigned long long)con->size_y * ch,
+			       (unsigned long long)con->size_x * cw);
+	else
+		len = snprintf(buf, sizeof(buf), "\e[6;%u;%ut", ch, cw);
+	if (len > 0 && (size_t)len < sizeof(buf))
+		vte_write(vte, buf, len);
+}
+
+/*
+ * XTSMGRAPHICS, CSI ? Pi ; Pa ; Pv S (ADR-103): item 1, the sixel colour
+ * registers, read, reset, set from 2 to num-color-registers, and read the
+ * maximum; item 2, the sixel geometry, read and read the maximum, both
+ * max-graphic-size, and a change refused (status 3), as xterm refuses one.
+ * Other items, ReGIS among them, and every item while sixel is off, answer
+ * status 1.
+ */
+static void csi_xtsmgraphics(struct tsm_vte *vte)
+{
+	int item = vte->csi_argv[0], action = vte->csi_argv[1];
+	int value = vte->csi_argv[2];
+	unsigned int status = 0, nres = 0, res[2] = { 0, 0 }, count;
+	char buf[64];
+	int len;
+
+	if (!sixel_on(vte) || (item != 1 && item != 2)) {
+		status = 1;
+	} else if (item == 1) {
+		count = vte->sixel_registers;
+		switch (action) {
+		case 1: /* read */
+			break;
+		case 2: /* reset */
+			count = vte->sixel_max_registers;
+			break;
+		case 3: /* set */
+			if (value >= TSM_SIXEL_REGISTERS_MIN &&
+			    (unsigned int)value <= vte->sixel_max_registers)
+				count = value;
+			else
+				status = 3;
+			break;
+		case 4: /* read the maximum */
+			res[0] = vte->sixel_max_registers;
+			nres = 1;
+			break;
+		default:
+			status = 2;
+			break;
+		}
+		if (!status && !nres) {
+			/* registers made at the next picture take the count */
+			if (count != vte->sixel_registers) {
+				sixel_drop(vte);
+				vte->sixel_registers = count;
+			}
+			res[0] = count;
+			nres = 1;
+		}
+	} else {
+		switch (action) {
+		case 1: /* read */
+		case 4: /* read the maximum */
+			res[0] = vte->graphic_max_w;
+			res[1] = vte->graphic_max_h;
+			nres = 2;
+			break;
+		case 2: /* reset */
+		case 3: /* set */
+			status = 3;
+			break;
+		default:
+			status = 2;
+			break;
+		}
+	}
+
+	if (item < 0)
+		item = 0;
+	if (nres == 2)
+		len = snprintf(buf, sizeof(buf), "\e[?%d;%u;%u;%uS", item,
+			       status, res[0], res[1]);
+	else if (nres)
+		len = snprintf(buf, sizeof(buf), "\e[?%d;%u;%uS", item, status,
+			       res[0]);
+	else
+		len = snprintf(buf, sizeof(buf), "\e[?%d;%uS", item, status);
+	if (len > 0 && (size_t)len < sizeof(buf))
+		vte_write(vte, buf, len);
 }
 
 /* DECRQM for mode 2027: 1 set (unicode), 2 reset (wcwidth) */
@@ -2197,8 +2494,12 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		/* device status reports */
 		csi_dsr(vte);
 		break;
-	case 'S': /* SU */
-		/* scroll up */
+	case 'S':
+		if (vte->csi_flags & CSI_WHAT) {
+			csi_xtsmgraphics(vte);
+			break;
+		}
+		/* SU: scroll up */
 		num = vte->csi_argv[0];
 		if (num <= 0)
 			num = 1;
@@ -2211,9 +2512,11 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			num = 1;
 		tsm_screen_scroll_down(vte->con, num);
 		break;
-	case 't': /* ST */
+	case 't': /* XTWINOPS */
 		if (vte->csi_argv[0] == 18 || vte->csi_argv[0] == 19)
 			csi_report_window_size(vte);
+		else if (vte->csi_argv[0] == 14 || vte->csi_argv[0] == 16)
+			csi_report_pixel_size(vte);
 		else
 			llog_debug(vte, "unhandled CSI t sequence %d", vte->csi_argv[0]);
 		break;
@@ -2422,10 +2725,13 @@ static void do_action(struct tsm_vte *vte, uint32_t data, int action)
 			do_csi(vte, data);
 			break;
 		case ACTION_DCS_START:
+			do_dcs_start(vte, data);
 			break;
 		case ACTION_DCS_COLLECT:
+			do_dcs_collect(vte, data);
 			break;
 		case ACTION_DCS_END:
+			do_dcs_end(vte, data);
 			break;
 		case ACTION_OSC_START:
 			do_clear(vte);
@@ -2817,35 +3123,137 @@ static void parse_data(struct tsm_vte *vte, uint32_t raw)
 	llog_warning(vte, "unhandled input %u in state %d", raw, vte->state);
 }
 
-SHL_EXPORT
-void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
+/* a byte that DCS passthrough hands the decoder as it is, in every mode */
+static inline bool sixel_byte(unsigned char c)
+{
+	return c < 0x7f && c != 0x18 && c != 0x1a && c != 0x1b;
+}
+
+/*
+ * Feeds the run of sixel bytes at @u8 straight to the decoder, as the parser
+ * would hand them over one at a time; returns how many it took.
+ */
+static size_t sixel_run(struct tsm_vte *vte, const char *u8, size_t len)
+{
+	uint64_t work = tsm_sixel_work(vte->sixel), limit;
+	size_t n;
+
+	for (n = 1; n < len && sixel_byte(u8[n]); ++n)
+		;
+	limit = work + vte->work_left < work ? UINT64_MAX : work + vte->work_left;
+	n = tsm_sixel_feed_some(vte->sixel, u8, n, limit);
+	sixel_charge(vte, tsm_sixel_work(vte->sixel) - work);
+	/* the UTF-8 machine ends where those bytes would have left it */
+	if (!(vte->flags & (TSM_VTE_FLAG_7BIT_MODE | TSM_VTE_FLAG_8BIT_MODE)))
+		tsm_utf8_mach_feed(vte->mach, u8[n - 1]);
+	return n;
+}
+
+/* parses until @len bytes are read or the image work runs out */
+static size_t vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 {
 	int state;
 	uint32_t ucs4;
 	size_t i;
 
-	if (!vte || !vte->con)
-		return;
-
-	++vte->parse_cnt;
-	for (i = 0; i < len; ++i) {
-		if (vte->flags & TSM_VTE_FLAG_7BIT_MODE) {
+	for (i = 0; i < len; ) {
+		if (vte->sixel_active && vte->state == STATE_DCS_PASS &&
+		    sixel_byte(u8[i]) &&
+		    ((vte->flags & (TSM_VTE_FLAG_7BIT_MODE | TSM_VTE_FLAG_8BIT_MODE)) ||
+		     tsm_utf8_mach_idle(vte->mach))) {
+			i += sixel_run(vte, u8 + i, len - i);
+		} else if (vte->flags & TSM_VTE_FLAG_7BIT_MODE) {
 			if (u8[i] & 0x80)
 				llog_debug(vte, "receiving 8bit character U+%d from pty while in 7bit mode",
 					   (int)u8[i]);
-			parse_data(vte, u8[i] & 0x7f);
+			parse_data(vte, u8[i++] & 0x7f);
 		} else if (vte->flags & TSM_VTE_FLAG_8BIT_MODE) {
-			parse_data(vte, u8[i]);
+			parse_data(vte, u8[i++]);
 		} else {
-			state = tsm_utf8_mach_feed(vte->mach, u8[i]);
+			state = tsm_utf8_mach_feed(vte->mach, u8[i++]);
 			if (state == TSM_UTF8_ACCEPT ||
 			    state == TSM_UTF8_REJECT) {
 				ucs4 = tsm_utf8_mach_get(vte->mach);
 				parse_data(vte, ucs4);
 			}
 		}
+		if (!vte->work_left)
+			break;
 	}
+	return i;
+}
+
+/* runs vte_input with @work to spend, as one call */
+static size_t vte_input_with(struct tsm_vte *vte, const char *u8, size_t len,
+			     uint64_t work)
+{
+	uint64_t saved = vte->work_left;
+	size_t n;
+
+	++vte->parse_cnt;
+	vte->work_left = work;
+	n = vte_input(vte, u8, len);
+	vte->work_left = saved;
 	--vte->parse_cnt;
+	return n;
+}
+
+SHL_EXPORT
+void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
+{
+	if (!vte || !vte->con)
+		return;
+
+	vte_input_with(vte, u8, len, UINT64_MAX);
+}
+
+SHL_EXPORT
+size_t tsm_vte_input_bounded(struct tsm_vte *vte, const char *u8, size_t len)
+{
+	if (!vte || !vte->con)
+		return len;
+
+	return vte_input_with(vte, u8, len, VTE_INPUT_WORK);
+}
+
+SHL_EXPORT
+void tsm_vte_set_sixel(struct tsm_vte *vte, bool enable)
+{
+	if (!vte)
+		return;
+
+	vte->sixel_enabled = enable;
+	if (!enable)
+		sixel_drop(vte);
+}
+
+SHL_EXPORT
+int tsm_vte_set_graphic_max_size(struct tsm_vte *vte, unsigned int width,
+				 unsigned int height)
+{
+	if (!vte)
+		return -EINVAL;
+
+	vte->graphic_max_w = !width ? TSM_SIXEL_MAX_SIZE_DEFAULT :
+			     width > TSM_SCREEN_IMAGE_MAX ? TSM_SCREEN_IMAGE_MAX : width;
+	vte->graphic_max_h = !height ? TSM_SIXEL_MAX_SIZE_DEFAULT :
+			     height > TSM_SCREEN_IMAGE_MAX ? TSM_SCREEN_IMAGE_MAX : height;
+	sixel_drop(vte);
+	return 0;
+}
+
+SHL_EXPORT
+int tsm_vte_set_sixel_registers(struct tsm_vte *vte, unsigned int count,
+				bool private_registers)
+{
+	if (!vte || (count && (count < TSM_SIXEL_REGISTERS_MIN ||
+			       count > TSM_SIXEL_REGISTERS_MAX)))
+		return -EINVAL;
+
+	vte->sixel_max_registers = count ? count : TSM_SIXEL_REGISTERS_DEFAULT;
+	vte->sixel_private_default = private_registers;
+	sixel_reset(vte);
+	return 0;
 }
 
 SHL_EXPORT
