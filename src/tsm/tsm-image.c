@@ -577,7 +577,6 @@ void screen_images_init(struct tsm_screen *con)
 	store_init(&con->img.main);
 	store_init(&con->img.alt);
 	shl_dlist_init(&con->img.pending);
-	con->img.limit = TSM_SCREEN_IMAGE_LIMIT_DEFAULT;
 	con->img.cell_width = 8;
 	con->img.cell_height = 16;
 }

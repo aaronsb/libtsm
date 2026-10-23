@@ -525,6 +525,19 @@ START_TEST(test_image_replace_refused)
 }
 END_TEST
 
+/* with neither a host budget nor a limit, a screen stores no image */
+START_TEST(test_image_closed_by_default)
+{
+	struct tsm_screen *screen;
+	uint64_t key;
+
+	ck_assert_int_eq(tsm_screen_new(&screen, log_cb, NULL), 0);
+	ck_assert_int_eq(try_image(screen, 1, 1, 1, &key), -ENOSPC);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 /* sizes are bounded, so no product of them overflows */
 START_TEST(test_image_bounds)
 {
@@ -1201,6 +1214,7 @@ TEST_DEFINE_CASE(store)
 	TEST(test_image_host_budget)
 	TEST(test_image_host_budget_install)
 	TEST(test_image_replace_refused)
+	TEST(test_image_closed_by_default)
 	TEST(test_image_bounds)
 	TEST(test_image_lifetime)
 	TEST(test_image_kitty_replace)

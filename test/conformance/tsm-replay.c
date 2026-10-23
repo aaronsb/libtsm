@@ -936,6 +936,10 @@ int main(int argc, char **argv)
 		fprintf(stderr, "tsm-replay: cannot create screen or vte\n");
 		return 2;
 	}
+#ifdef TSM_SCREEN_IMAGES
+	/* no host budget here: Ghostty's per-screen default as the limit */
+	tsm_screen_set_image_limit(screen, (size_t)320 * 1000 * 1000);
+#endif
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
 	if (view != VIEW_DRAW && tsm_vte_set_palette(vte, DRAW2_PALETTE) < 0) {
 		fprintf(stderr, "tsm-replay: cannot set palette %s\n", DRAW2_PALETTE);

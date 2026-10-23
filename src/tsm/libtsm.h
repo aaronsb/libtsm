@@ -658,8 +658,9 @@ int tsm_screen_set_cell_size(struct tsm_screen *con, unsigned int width,
  * returns. NULL callbacks remove the host budget.
  *
  * Without one, each screen holds at most the limit tsm_screen_set_image_limit
- * sets, TSM_SCREEN_IMAGE_LIMIT_DEFAULT until then, over its two stores, and
- * evicts its own images in the order tsm_screen_image_victim gives.
+ * sets, over its two stores, and evicts its own images in the order
+ * tsm_screen_image_victim gives. The limit is 0 until set, so a screen with
+ * neither stores no image: images fail closed.
  *
  * An image placed on a screen's own lines is never evicted; a new image that
  * still does not fit is refused.
@@ -680,9 +681,7 @@ int tsm_screen_set_image_budget(struct tsm_screen *con,
 				tsm_screen_image_release_cb release,
 				void *data);
 
-/* Ghostty's per-screen default */
-#define TSM_SCREEN_IMAGE_LIMIT_DEFAULT ((size_t)320 * 1000 * 1000)
-
+/* The screen's own limit, without a host budget: 0, no images, until set. */
 void tsm_screen_set_image_limit(struct tsm_screen *con, size_t bytes);
 /* the bytes this screen's images hold, in both stores */
 size_t tsm_screen_get_image_bytes(struct tsm_screen *con);
