@@ -63,6 +63,7 @@ img-dch             # DCH, as ICH
 img-ed2             # ED 2 removes kitty placements on the screen and sixels' screen parts
 img-ed3             # ED 3 drops placements anchored in scrollback
 img-scroll-up       # LF, IND and SU carry placements into scrollback whole
+img-scroll-up-bottom  # rows past the screen's bottom move up with their lines
 img-scroll-down     # SD and RI move placements down, clipped at the bottom
 img-scroll-down-sb  # SD splits a sixel at the screen's top; a kitty placement across it stays
 img-region          # a region scroll splits sixels at its edges; kitty moves only wholly inside
