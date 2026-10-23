@@ -643,6 +643,18 @@ int tsm_screen_frame_image(struct tsm_screen *con, uint64_t key,
 #define TSM_SCREEN_IMAGE_MAX_CELLS	10000
 
 /*
+ * What an image holds beside its pixels (its record, a placement, its key),
+ * rounded up: every image costs this many bytes more than its pixels, so a
+ * budget bounds the memory of many small pictures as well as of large ones.
+ * And each store, main and alternate, holds at most
+ * TSM_SCREEN_IMAGES_PER_STORE images: past that a new one evicts in the
+ * order tsm_screen_image_victim gives, from that store, or is refused when
+ * every image there is placed on the screen's lines.
+ */
+#define TSM_SCREEN_IMAGE_OVERHEAD	512
+#define TSM_SCREEN_IMAGES_PER_STORE	1024
+
+/*
  * The cell size in pixels, the size the host reports through TIOCSWINSZ.
  * Placements made from now on measure their pixel quantities in it; those
  * made before keep the size they were made with. 8x16 until set.
@@ -651,8 +663,8 @@ int tsm_screen_set_cell_size(struct tsm_screen *con, unsigned int width,
 			     unsigned int height);
 
 /*
- * The image budget. An image costs width x height x 4 bytes, reserved before
- * it is allocated. With a host budget, libtsm asks @reserve for each
+ * The image budget. An image costs width x height x 4 bytes, plus
+ * TSM_SCREEN_IMAGE_OVERHEAD, reserved before it is allocated. With a host budget, libtsm asks @reserve for each
  * reservation (0 grants it, a negative errno refuses it) and tells @release
  * of every image it frees, evictions included. A host that runs several
  * screens evicts across them in its @reserve, with tsm_screen_image_victim
@@ -734,6 +746,8 @@ struct tsm_test_image {
 /* Stores @img and returns its key in @key: 0, -EINVAL, -ENOMEM or -ENOSPC. */
 int tsm_screen_test_image(struct tsm_screen *con, const struct tsm_test_image *img,
 			  uint64_t *key);
+/* the images the screen holds, in both stores */
+unsigned int tsm_screen_test_image_count(struct tsm_screen *con);
 
 struct tsm_test_placement {
 	uint64_t image;			/* the image's key */

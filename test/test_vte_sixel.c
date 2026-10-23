@@ -30,10 +30,14 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "libtsm.h"
 #include "libtsm-int.h"
 #include "test_common.h"
+
+/* what a picture of @w x @h pixels costs the budget */
+#define COST(w, h) ((size_t)(w) * (h) * 4 + TSM_SCREEN_IMAGE_OVERHEAD)
 
 /* VT340 register 1, blue (20, 20, 80) percent */
 #define VT_BLUE 0xff3333ccu
@@ -231,7 +235,7 @@ START_TEST(test_sixel_at_cursor)
 	ck_assert_uint_eq(pixel(p, 0, 0), VT_BLUE);
 	ck_assert_uint_eq(pixel(p, 15, 39), VT_BLUE);
 	assert_cursor(2, 3);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 16 * 40 * 4);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(16, 40));
 
 	/* one row of pixels: the cursor stays on its row */
 	input("\033[1;1H");
@@ -403,7 +407,7 @@ START_TEST(test_sixel_cancel)
 	/* a picture with no pixels makes nothing */
 	input("\033Pq\033\\\033Pq#1\033\\");
 	ck_assert_uint_eq(placements(), 1);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 16 * 16 * 4);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(16, 16));
 }
 END_TEST
 
@@ -513,19 +517,19 @@ START_TEST(test_sixel_budget)
 	/* the host's budget pays for the picture as it decodes, and the
 	 * store takes the same bytes over */
 	host_held = 0;
-	host_budget = 16 * 16 * 4;
+	host_budget = COST(16, 16);
 	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve,
 						     host_release, NULL), 0);
 	show(16, 16, 1);
 	ck_assert_uint_eq(placements(), 1);
-	ck_assert_uint_eq(host_held, 16 * 16 * 4);
+	ck_assert_uint_eq(host_held, COST(16, 16));
 
 	/* a picture past the budget is dropped, its bytes given back; the
 	 * placed one stays */
 	input("\033[2;1H");
 	input(solid(buf, sizeof(buf), 16, 32, 1));
 	ck_assert_uint_eq(placements(), 1);
-	ck_assert_uint_eq(host_held, 16 * 16 * 4);
+	ck_assert_uint_eq(host_held, COST(16, 16));
 	assert_cursor(0, 1);
 
 	/* erased, the first frees its bytes, and the second fits */
@@ -533,10 +537,51 @@ START_TEST(test_sixel_budget)
 	ck_assert_uint_eq(host_held, 0);
 	input("\033[1;1H");
 	show(16, 16, 1);
-	ck_assert_uint_eq(host_held, 16 * 16 * 4);
+	ck_assert_uint_eq(host_held, COST(16, 16));
 
 	ck_assert_int_eq(tsm_screen_set_image_budget(screen, NULL, NULL, NULL), 0);
 	ck_assert_uint_eq(host_held, 0);
+}
+END_TEST
+
+/*
+ * Many tiny pictures: each costs its bookkeeping as well as its pixels, a
+ * store holds at most TSM_SCREEN_IMAGES_PER_STORE, and the scans that look
+ * for room count against one input call's work.
+ */
+START_TEST(test_sixel_tiny_many)
+{
+	static const char tiny[] = "\033P0;1qA\033\\";
+	const size_t n = 20000;
+	char *data;
+	size_t i, len, used;
+
+	/* 1x2 transparent pictures stacked on one cell: none cuts another,
+	 * so all stay placed, and past the cap the next is refused */
+	for (i = 0; i < 3000; ++i)
+		input(tiny);
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen),
+			  TSM_SCREEN_IMAGES_PER_STORE);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
+			  TSM_SCREEN_IMAGES_PER_STORE * COST(1, 2));
+	ck_assert_uint_eq(placements(), TSM_SCREEN_IMAGES_PER_STORE);
+
+	/* the alternate screen's store has its own room */
+	input("\033[?1049h");
+	input(tiny);
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen),
+			  TSM_SCREEN_IMAGES_PER_STORE + 1);
+	input("\033[?1049l");
+
+	/* at the cap, every picture costs a scan for room: one bounded call
+	 * stops long before 20000 of them */
+	data = malloc(sizeof(tiny) * n);
+	ck_assert_ptr_ne(data, NULL);
+	for (i = 0, len = 0; i < n; ++i, len += sizeof(tiny) - 1)
+		memcpy(data + len, tiny, sizeof(tiny) - 1);
+	used = tsm_vte_input_bounded(vte, data, len);
+	ck_assert_uint_lt(used, len / 2);
+	free(data);
 }
 END_TEST
 
@@ -687,6 +732,7 @@ TEST_DEFINE_CASE(strings)
 	TEST(test_sixel_registers)
 	TEST(test_sixel_max_size)
 	TEST(test_sixel_budget)
+	TEST(test_sixel_tiny_many)
 	TEST(test_sixel_bounded)
 	TEST(test_sixel_split_input)
 TEST_END_CASE

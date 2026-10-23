@@ -247,6 +247,7 @@ struct tsm_placement {
 struct tsm_image_store {
 	struct shl_dlist images;
 	struct shl_dlist placements;
+	unsigned int count;		/* images, at most TSM_SCREEN_IMAGES_PER_STORE */
 	unsigned int sixels;		/* sixel placements, which text cuts */
 	unsigned int max_rows;		/* at least the tallest placement's rows */
 	unsigned int max_sixel_rows;	/* and the tallest sixel's */
@@ -277,6 +278,9 @@ struct tsm_images {
 	size_t limit;
 	size_t bytes;
 	struct tsm_image *keep;		/* never evicted: a replacement frees it */
+	/* images and placements the eviction scans have visited, ever, which
+	 * the vte counts against one input call's work */
+	uint64_t work;
 
 	unsigned int cell_width;
 	unsigned int cell_height;

@@ -1016,6 +1016,15 @@ static bool sixel_ready(struct tsm_vte *vte)
 	return true;
 }
 
+/*
+ * The image work done so far: the decoder's, and the eviction scans' the
+ * screen's budget and store limits cost
+ */
+static uint64_t sixel_work(struct tsm_vte *vte)
+{
+	return tsm_sixel_work(vte->sixel) + vte->con->img.work;
+}
+
 /* counts @work against what this input call may still do */
 static void sixel_charge(struct tsm_vte *vte, uint64_t work)
 {
@@ -1043,9 +1052,9 @@ static void do_dcs_collect(struct tsm_vte *vte, uint32_t data)
 	if (!vte->sixel_active || data >= 0x80)
 		return;
 
-	work = tsm_sixel_work(vte->sixel);
+	work = sixel_work(vte);
 	tsm_sixel_feed(vte->sixel, &c, 1);
-	sixel_charge(vte, tsm_sixel_work(vte->sixel) - work);
+	sixel_charge(vte, sixel_work(vte) - work);
 }
 
 /* the end of the string: @data is what ended it */
@@ -1068,22 +1077,18 @@ static void do_dcs_end(struct tsm_vte *vte, uint32_t data)
 		return;
 	}
 
-	work = tsm_sixel_work(vte->sixel);
+	work = sixel_work(vte);
 	ret = tsm_sixel_finish(vte->sixel, &img);
-	sixel_charge(vte, tsm_sixel_work(vte->sixel) - work);
-	if (ret)
-		return;
-
-	ret = screen_sixel_new(vte->con, img.width, img.height, img.pixels,
-			       !img.transparent, &image);
+	if (!ret)
+		ret = screen_sixel_new(vte->con, img.width, img.height, img.pixels,
+				       !img.transparent, &image);
+	/* a transparent picture is read once more for its opacity */
+	sixel_charge(vte, sixel_work(vte) - work +
+		     (!ret && img.transparent ? (uint64_t)img.width * img.height : 0));
 	if (ret) {
-		llog_debug(vte, "sixel picture %ux%u not stored: %d", img.width,
-			   img.height, ret);
+		llog_debug(vte, "sixel picture not stored: %d", ret);
 		return;
 	}
-	/* a transparent picture is read once more for its opacity */
-	if (img.transparent)
-		sixel_charge(vte, (uint64_t)img.width * img.height);
 
 	ret = screen_sixel_place(vte->con, image, !vte->sixel_no_scroll,
 				 vte->sixel_cursor_right);
@@ -3136,14 +3141,14 @@ static inline bool sixel_byte(unsigned char c)
  */
 static size_t sixel_run(struct tsm_vte *vte, const char *u8, size_t len)
 {
-	uint64_t work = tsm_sixel_work(vte->sixel), limit;
+	uint64_t work = sixel_work(vte), start = tsm_sixel_work(vte->sixel), limit;
 	size_t n;
 
 	for (n = 1; n < len && sixel_byte(u8[n]); ++n)
 		;
-	limit = work + vte->work_left < work ? UINT64_MAX : work + vte->work_left;
+	limit = start + vte->work_left < start ? UINT64_MAX : start + vte->work_left;
 	n = tsm_sixel_feed_some(vte->sixel, u8, n, limit);
-	sixel_charge(vte, tsm_sixel_work(vte->sixel) - work);
+	sixel_charge(vte, sixel_work(vte) - work);
 	/* the UTF-8 machine ends where those bytes would have left it */
 	if (!(vte->flags & (TSM_VTE_FLAG_7BIT_MODE | TSM_VTE_FLAG_8BIT_MODE)))
 		tsm_utf8_mach_feed(vte->mach, u8[n - 1]);
