@@ -17,6 +17,12 @@ test_selection = executable(
     'test_selection.c',
     dependencies: test_deps,
 )
+test_sixel = executable(
+    'test_sixel',
+    'test_sixel.c',
+    dependencies: test_deps,
+    c_args: ['-DSIXEL_FIXTURES="@0@"'.format(meson.current_source_dir() / 'sixel')],
+)
 test_symbol = executable('test_symbol', 'test_symbol.c', dependencies: test_deps)
 test_valgrind = executable(
     'test_valgrind',
@@ -34,6 +40,7 @@ test('htable', test_htable)
 test('image', test_image)
 test('screen', test_screen)
 test('selection', test_selection)
+test('sixel', test_sixel)
 test('symbol', test_symbol)
 # In a build with -Db_sanitize=address, LeakSanitizer must catch the leak
 # test_valgrind makes on purpose: a pass there means leak checking is off.
@@ -41,6 +48,31 @@ test('valgrind', test_valgrind,
      should_fail: get_option('b_sanitize').contains('address'))
 test('vte_mouse', test_vte_mouse)
 test('vte', test_vte)
+
+# Not a test: prints sixel decode throughput (bench-sixel [FILE.six] [SECONDS]).
+executable('bench-sixel', 'bench-sixel.c', dependencies: test_deps)
+
+# The sixel decoder's fuzz target (fuzz/fuzz-sixel.c): built as a replay of
+# the seed corpus for every run, and with libFuzzer when -Dfuzz=true under
+# clang (make fuzz).
+fuzz_sixel_srcs = ['fuzz/fuzz-sixel.c', '../src/tsm/tsm-sixel.c']
+fuzz_sixel_replay = executable(
+    'fuzz-sixel-replay',
+    fuzz_sixel_srcs,
+    include_directories: '../src/tsm',
+    c_args: ['-DFUZZ_REPLAY'],
+)
+test('fuzz-sixel-seeds', fuzz_sixel_replay,
+     args: [meson.current_source_dir() / 'fuzz' / 'sixel-seeds'])
+if get_option('fuzz')
+    executable(
+        'fuzz-sixel',
+        fuzz_sixel_srcs,
+        include_directories: '../src/tsm',
+        c_args: ['-fsanitize=fuzzer'],
+        link_args: ['-fsanitize=fuzzer'],
+    )
+endif
 
 
 # Conformance replay (ADR-301 tier 1 in the kmscon fork): every recorded

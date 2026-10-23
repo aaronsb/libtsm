@@ -5,3 +5,5 @@ option('tests', type: 'boolean', value: true,
   description: 'Build unit tests')
 option('gtktsm', type: 'boolean', value: false,
   description: 'tests using gtktsm')
+option('fuzz', type: 'boolean', value: false,
+  description: 'Build libFuzzer targets (clang only; see make fuzz)')
