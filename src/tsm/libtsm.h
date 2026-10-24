@@ -668,7 +668,7 @@ int tsm_screen_frame_image(struct tsm_screen *con, uint64_t key,
  * And each store, main and alternate, holds at most
  * TSM_SCREEN_IMAGES_PER_STORE images: past that a new one evicts in the
  * order tsm_screen_image_victim gives, from that store, or is refused when
- * every image there is placed on the screen's lines.
+ * no image there may be evicted.
  */
 #define TSM_SCREEN_IMAGE_OVERHEAD	512
 #define TSM_SCREEN_IMAGES_PER_STORE	1024
@@ -712,8 +712,10 @@ int tsm_screen_set_cell_size(struct tsm_screen *con, unsigned int width,
  * tsm_screen_image_victim gives. The limit is 0 until set, so a screen with
  * neither stores no image: images fail closed.
  *
- * An image placed on a screen's own lines is never evicted; a new image that
- * still does not fit is refused.
+ * Images go in the order tsm_screen_image_victim gives, the kitty spec's
+ * storage-quota rule (ADR-103): unplaced, then placed only in scrollback, then
+ * kitty images placed on a screen's own lines. A sixel placed on a screen's
+ * own lines is never evicted; a new image that still does not fit is refused.
  */
 typedef int (*tsm_screen_image_reserve_cb)(struct tsm_screen *con,
 					   size_t bytes, void *data);
@@ -736,19 +738,32 @@ void tsm_screen_set_image_limit(struct tsm_screen *con, size_t bytes);
 /* the bytes this screen's images hold, in both stores */
 size_t tsm_screen_get_image_bytes(struct tsm_screen *con);
 
-/* the eviction order: by rank, then least recently used first */
+/*
+ * Defined when enum tsm_image_rank has TSM_IMAGE_PLACED_KITTY: an enum value
+ * cannot be tested with #ifdef, so a host tests this before naming it.
+ */
+#define TSM_SCREEN_IMAGE_PLACED_KITTY 1
+
+/* the eviction order: by rank, then by last_use, lowest first */
 enum tsm_image_rank {
 	TSM_IMAGE_UNPLACED_TRANSIENT	= 0,	/* no placement, kitty's N=1 */
 	TSM_IMAGE_UNPLACED		= 1,	/* no placement */
 	TSM_IMAGE_SCROLLBACK		= 2,	/* every placement wholly in
 						   scrollback */
+	TSM_IMAGE_PLACED_KITTY		= 3,	/* a kitty image with a placement
+						   on a screen's own lines */
 };
 
 struct tsm_image_victim {
 	uint64_t key;
 	unsigned int rank;		/* enum tsm_image_rank */
-	/* when it was last created, placed or drawn, on a clock all screens
-	 * in the process share, so a host can order victims across screens */
+	/*
+	 * The order within its rank, on a clock all screens in the process
+	 * share, so a host can order victims across screens: for ranks 0 to
+	 * 2, when it was last created, placed or drawn; for
+	 * TSM_IMAGE_PLACED_KITTY, when it was transmitted. Unique within a
+	 * rank.
+	 */
 	uint64_t last_use;
 	/* the bytes the host gets back when it is evicted: what the image
 	 * holds less what its pieces owe and the budget never granted */

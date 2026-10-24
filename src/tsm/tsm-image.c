@@ -10,7 +10,10 @@
  * Each screen buffer, main and alternate, has a store of images and of the
  * placements that show them. Images cost width x height x 4 bytes, reserved
  * from a budget before they are allocated: the host's, or the screen's own
- * limit. An image placed on a screen's own lines is never evicted.
+ * limit. Over the budget, images go in the kitty spec's storage-quota order
+ * (ADR-103, step 4): unplaced, then placed only in scrollback, then kitty
+ * images placed on a screen's own lines, oldest transmission first. A sixel
+ * placed on a screen's own lines is never evicted.
  *
  * A placement is anchored to the line holding its top row and listed on that
  * line, so it travels with the text: up and down the screen, into scrollback
@@ -535,23 +538,28 @@ static void image_free(struct tsm_screen *con, struct tsm_image *image)
 	free(image);
 }
 
+/* the kitty image @id names in @st; an anonymous one (id 0) is never found */
 static struct tsm_image *store_find_id(struct tsm_image_store *st, uint32_t id)
 {
 	struct shl_dlist *iter;
 	struct tsm_image *image;
 
+	if (!id)
+		return NULL;
 	shl_dlist_for_each(iter, &st->images) {
 		image = shl_dlist_entry(iter, struct tsm_image, list);
-		if (image->id == id)
+		if (image->kind == TSM_IMAGE_KITTY && image->id == id)
 			return image;
 	}
 	return NULL;
 }
 
 /*
- * Marks the images placed on a screen's own lines, which are never evicted:
- * every image with a placement not wholly in scrollback, and the image a
- * replacement is reserving room to free.
+ * Marks the images that are never evicted: every sixel with a placement not
+ * wholly in scrollback, every image held while it is placed, and the image a
+ * replacement is reserving room to free. A kitty image with a placement not
+ * wholly in scrollback is marked on_screen instead: under the storage-quota
+ * rule it is evicted, after every other image, as rank 3.
  */
 static void images_mark_pinned(struct tsm_screen *con)
 {
@@ -568,6 +576,7 @@ static void images_mark_pinned(struct tsm_screen *con)
 		shl_dlist_for_each(iter, &stores[i]->images) {
 			image = shl_dlist_entry(iter, struct tsm_image, list);
 			image->pinned = image->hold;
+			image->on_screen = false;
 		}
 	}
 	for (i = 0; i < 2; ++i) {
@@ -575,9 +584,13 @@ static void images_mark_pinned(struct tsm_screen *con)
 			++con->img.work;
 			p = shl_dlist_entry(iter, struct tsm_placement, store_link);
 			/* wholly in scrollback: its rows end above the screen */
-			if (!p->line || !p->line->sb_id ||
-			    last - p->line->sb_id + 1 < p->rows)
+			if (p->line && p->line->sb_id &&
+			    last - p->line->sb_id + 1 >= p->rows)
+				continue;
+			if (p->image->kind == TSM_IMAGE_SIXEL)
 				p->image->pinned = true;
+			else
+				p->image->on_screen = true;
 		}
 	}
 	if (con->img.keep)
@@ -604,17 +617,32 @@ static size_t evictable_bytes(struct tsm_screen *con)
 	return bytes;
 }
 
+/* after images_mark_pinned */
 static unsigned int image_rank(const struct tsm_image *image)
 {
+	if (image->on_screen)
+		return TSM_IMAGE_PLACED_KITTY;
 	if (image->placements)
 		return TSM_IMAGE_SCROLLBACK;
 	return image->transient ? TSM_IMAGE_UNPLACED_TRANSIENT : TSM_IMAGE_UNPLACED;
 }
 
 /*
+ * An image's order within its rank, on the clock every screen shares: when
+ * it was transmitted for rank 3, since every placement a frame draws has its
+ * last use renewed in draw order; when it was last created, placed or drawn
+ * for the others. Each value is unique within its rank.
+ */
+static uint64_t image_order(const struct tsm_image *image, unsigned int rank)
+{
+	return rank == TSM_IMAGE_PLACED_KITTY ? image->transmitted : image->last_use;
+}
+
+/*
  * The image a screen evicts next: no placement, transient first; then placed
- * only in scrollback; each least recently used first. NULL when every image
- * is pinned. With @only, from that store alone.
+ * only in scrollback; each least recently used first; then kitty images
+ * placed on a screen's own lines, oldest transmission first. NULL when every
+ * image is pinned. With @only, from that store alone.
  */
 static struct tsm_image *image_victim(struct tsm_screen *con, unsigned int *rank,
 				      struct tsm_image_store *only)
@@ -634,7 +662,8 @@ static struct tsm_image *image_victim(struct tsm_screen *con, unsigned int *rank
 				continue;
 			r = image_rank(image);
 			if (!best || r < best_rank ||
-			    (r == best_rank && image->last_use < best->last_use)) {
+			    (r == best_rank && image_order(image, r) <
+					       image_order(best, best_rank))) {
 				best = image;
 				best_rank = r;
 			}
@@ -1181,7 +1210,7 @@ bool tsm_screen_image_victim(struct tsm_screen *con, struct tsm_image_victim *ou
 	if (out) {
 		out->key = image->key;
 		out->rank = rank;
-		out->last_use = image->last_use;
+		out->last_use = image_order(image, rank);
 		out->bytes = image->bytes - image->owed;
 	}
 	return true;
@@ -1203,7 +1232,8 @@ size_t tsm_screen_image_evict(struct tsm_screen *con)
 	return bytes;
 }
 
-/* eviction order: rank, then least recently used; last_use is unique */
+/* eviction order: rank, then last_use, which image_order keeps unique within
+ * a rank: least recently used, or for rank 3 oldest transmission, first */
 static int victim_cmp(const void *a, const void *b)
 {
 	const struct tsm_image_victim *x = a, *y = b;
@@ -1241,7 +1271,7 @@ int tsm_screen_image_victims(struct tsm_screen *con, tsm_image_victim_cb cb, voi
 				continue;
 			v[n].key = image->key;
 			v[n].rank = image_rank(image);
-			v[n].last_use = image->last_use;
+			v[n].last_use = image_order(image, v[n].rank);
 			v[n].bytes = image->bytes - image->owed;
 			++n;
 		}
@@ -1282,6 +1312,7 @@ static void image_store(struct tsm_screen *con, struct tsm_image *image,
 	image->kind = desc->kind;
 	image->transient = desc->transient;
 	image->last_use = ++image_clock;
+	image->transmitted = image->last_use;
 	image->age = con->age_cnt;
 	/* the old image's bytes beyond what was added pass to the new one;
 	 * freeing it releases only what is left over */
@@ -1296,7 +1327,7 @@ static void image_store(struct tsm_screen *con, struct tsm_image *image,
 /*
  * Makes room in store @st for one more image: past
  * TSM_SCREEN_IMAGES_PER_STORE, its images go in the eviction order. Returns
- * -ENOSPC when every one left is placed on the screen's lines.
+ * -ENOSPC when none left may be evicted.
  */
 static int store_make_room(struct tsm_screen *con, struct tsm_image_store *st)
 {

@@ -202,31 +202,35 @@ END_TEST
 
 /*
  * Without a host budget the screen's limit applies, and the screen evicts in
- * ADR-103's order: unplaced images, transient ones first, least recently
- * used first; then images placed only in scrollback; never one placed on the
- * screen's lines, so a new image that still does not fit is refused.
+ * ADR-103's order, the kitty spec's storage-quota rule: unplaced images,
+ * transient ones first, least recently used first; then images placed only in
+ * scrollback; then kitty images placed on the screen's lines, oldest
+ * transmission first; never a sixel placed on the screen's lines, so a new
+ * image that still does not fit is refused.
  */
 START_TEST(test_image_eviction_order)
 {
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
 	struct tsm_image_victim v;
-	uint64_t on_screen, sb, old, transient, newer, key;
+	uint64_t on_screen, sixel, sb, old, transient, newer, key;
 	int r;
 
 	setup(&screen, &vte);
 	tsm_screen_set_max_sb(screen, 100);
-	/* 8x16 images, room for five */
-	tsm_screen_set_image_limit(screen, 5 * COST(8, 16));
+	/* 8x16 images, room for six */
+	tsm_screen_set_image_limit(screen, 6 * COST(8, 16));
 
 	sb = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
 	place(screen, sb, 0, 0);
 	on_screen = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff00ff00);
 	place(screen, on_screen, 0, 4);
+	sixel = make_image(screen, 8, 16, TSM_IMAGE_SIXEL, 0, false, 0xff00ffff);
+	place(screen, sixel, 4, 4);
 	old = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 3, false, 0xffff0000);
 	transient = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 4, true, 0xffffffff);
 	newer = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 5, false, 0xff123456);
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 5 * COST(8, 16));
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 6 * COST(8, 16));
 
 	/* two lines scroll: row 0 enters scrollback, row 4 moves to row 2 */
 	input_str(vte, "\e[5;1H\n\n");
@@ -236,11 +240,11 @@ START_TEST(test_image_eviction_order)
 	ck_assert_uint_eq(v.rank, TSM_IMAGE_UNPLACED_TRANSIENT);
 	ck_assert_uint_eq(v.bytes, COST(8, 16));
 
-	/* a sixth image evicts the transient one */
+	/* a seventh image evicts the transient one */
 	key = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 6, false, 0xff000000);
 	ck_assert(!image_exists(screen, transient));
 	ck_assert(image_exists(screen, old));
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 5 * COST(8, 16));
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 6 * COST(8, 16));
 
 	/* then the least recently used unplaced one */
 	ck_assert(tsm_screen_image_victim(screen, &v));
@@ -262,17 +266,24 @@ START_TEST(test_image_eviction_order)
 	ck_assert_uint_eq(tsm_screen_image_evict(screen), COST(8, 16));
 	ck_assert(!image_exists(screen, sb));
 
-	/* never the one on the screen */
+	/* then the kitty image placed on the screen, with its placement */
+	ck_assert(tsm_screen_image_victim(screen, &v));
+	ck_assert_uint_eq(v.key, on_screen);
+	ck_assert_uint_eq(v.rank, TSM_IMAGE_PLACED_KITTY);
+	ck_assert_uint_eq(tsm_screen_image_evict(screen), COST(8, 16));
+	ck_assert(!image_exists(screen, on_screen));
+
+	/* never the sixel on the screen */
 	ck_assert(!tsm_screen_image_victim(screen, &v));
 	ck_assert_uint_eq(tsm_screen_image_evict(screen), 0);
-	ck_assert(image_exists(screen, on_screen));
+	ck_assert(image_exists(screen, sixel));
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(8, 16));
 
 	/* a new image that cannot fit is refused, and evicts nothing */
 	tsm_screen_set_image_limit(screen, 1000);
 	r = try_image(screen, 8, 16, 7, &key);
 	ck_assert_int_eq(r, -ENOSPC);
-	ck_assert(image_exists(screen, on_screen));
+	ck_assert(image_exists(screen, sixel));
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(8, 16));
 
 	/* nor does one larger than the whole limit */
@@ -305,19 +316,20 @@ static bool walk_cb(const struct tsm_image_victim *v, void *data)
  * The victim walk names every image the screen may evict, in the order
  * tsm_screen_image_evict then evicts them, and evicts none itself: a host
  * learns what eviction would free before it evicts. It stops when the
- * callback says so, and never names an image placed on the screen's lines.
+ * callback says so, names a kitty image placed on the screen's lines last,
+ * by its transmission, and never names a sixel placed there.
  */
 START_TEST(test_image_victim_walk)
 {
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
 	struct walk w = { .stop = 8 };
-	uint64_t on_screen, sb, old, transient, newer;
+	uint64_t on_screen, sixel, sb, old, transient, newer;
 	unsigned int i;
 
 	setup(&screen, &vte);
 	tsm_screen_set_max_sb(screen, 100);
-	tsm_screen_set_image_limit(screen, 5 * COST(8, 16));
+	tsm_screen_set_image_limit(screen, 6 * COST(8, 16));
 	ck_assert_int_eq(tsm_screen_image_victims(NULL, walk_cb, &w), -EINVAL);
 	ck_assert_int_eq(tsm_screen_image_victims(screen, NULL, &w), -EINVAL);
 	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
@@ -327,13 +339,15 @@ START_TEST(test_image_victim_walk)
 	place(screen, sb, 0, 0);
 	on_screen = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff00ff00);
 	place(screen, on_screen, 0, 4);
+	sixel = make_image(screen, 8, 16, TSM_IMAGE_SIXEL, 0, false, 0xff00ffff);
+	place(screen, sixel, 4, 4);
 	old = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 3, false, 0xffff0000);
 	transient = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 4, true, 0xffffffff);
 	newer = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 5, false, 0xff123456);
 	input_str(vte, "\e[5;1H\n\n");
 
 	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
-	ck_assert_uint_eq(w.n, 4);
+	ck_assert_uint_eq(w.n, 5);
 	ck_assert_uint_eq(w.seen[0].key, transient);
 	ck_assert_uint_eq(w.seen[0].rank, TSM_IMAGE_UNPLACED_TRANSIENT);
 	ck_assert_uint_eq(w.seen[1].key, old);
@@ -341,9 +355,11 @@ START_TEST(test_image_victim_walk)
 	ck_assert_uint_eq(w.seen[2].key, newer);
 	ck_assert_uint_eq(w.seen[3].key, sb);
 	ck_assert_uint_eq(w.seen[3].rank, TSM_IMAGE_SCROLLBACK);
-	for (i = 0; i < 4; ++i)
+	ck_assert_uint_eq(w.seen[4].key, on_screen);
+	ck_assert_uint_eq(w.seen[4].rank, TSM_IMAGE_PLACED_KITTY);
+	for (i = 0; i < 5; ++i)
 		ck_assert_uint_eq(w.seen[i].bytes, COST(8, 16));
-	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 5 * COST(8, 16));
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 6 * COST(8, 16));
 	ck_assert(image_exists(screen, transient) && image_exists(screen, sb));
 
 	/* stopped after two */
@@ -353,15 +369,15 @@ START_TEST(test_image_victim_walk)
 	ck_assert_uint_eq(w.n, 2);
 	ck_assert_uint_eq(w.seen[1].key, old);
 
-	/* eviction follows the walk, and the image on screen is never named */
+	/* eviction follows the walk, and the sixel on screen is never named */
 	w.n = 0;
 	w.stop = 8;
 	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
-	for (i = 0; i < 4; ++i) {
+	for (i = 0; i < 5; ++i) {
 		ck_assert_uint_eq(tsm_screen_image_evict(screen), COST(8, 16));
 		ck_assert(!image_exists(screen, w.seen[i].key));
 	}
-	ck_assert(image_exists(screen, on_screen));
+	ck_assert(image_exists(screen, sixel));
 	w.n = 0;
 	ck_assert_int_eq(tsm_screen_image_victims(screen, walk_cb, &w), 0);
 	ck_assert_uint_eq(w.n, 0);
@@ -410,7 +426,7 @@ END_TEST
 /*
  * A store holds at most TSM_SCREEN_IMAGES_PER_STORE images: one more evicts
  * in the usual order, from that store, or is refused when every image there
- * is placed on the screen's lines. Each image also costs
+ * is a sixel placed on the screen's lines. Each image also costs
  * TSM_SCREEN_IMAGE_OVERHEAD beside its pixels.
  */
 START_TEST(test_image_store_cap)
@@ -452,11 +468,26 @@ START_TEST(test_image_store_cap)
 
 	teardown(screen, vte);
 
-	/* every image placed on the screen: the next is refused */
+	/* every image a kitty one placed on the screen: the next evicts the
+	 * oldest transmitted, as rank 3 of the storage-quota rule */
+	setup(&screen, &vte);
+	for (i = 1; i <= TSM_SCREEN_IMAGES_PER_STORE; ++i) {
+		key = make_image(screen, 1, 1, TSM_IMAGE_KITTY, i, false, 0xff0000ff);
+		place(screen, key, 0, 0);
+		if (i == 1)
+			first = key;
+	}
+	ck_assert_int_eq(try_image(screen, 1, 1, 5000, &key), 0);
+	ck_assert(!image_exists(screen, first));
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen),
+			  TSM_SCREEN_IMAGES_PER_STORE);
+	teardown(screen, vte);
+
+	/* every image a sixel placed on the screen: the next is refused */
 	setup(&screen, &vte);
 	for (i = 1; i <= TSM_SCREEN_IMAGES_PER_STORE; ++i)
-		place(screen, make_image(screen, 1, 1, TSM_IMAGE_KITTY, i, false,
-					 0xff0000ff), 0, 0);
+		place(screen, make_image(screen, 1, 1, TSM_IMAGE_SIXEL, 0, false,
+					 0x00000000), 0, 0);
 	ck_assert_int_eq(try_image(screen, 1, 1, 5000, &key), -ENOSPC);
 	ck_assert_uint_eq(tsm_screen_test_image_count(screen),
 			  TSM_SCREEN_IMAGES_PER_STORE);
@@ -501,8 +532,9 @@ START_TEST(test_image_replace_while_owed)
 END_TEST
 
 /*
- * A placement that reaches from scrollback onto the screen keeps its image;
- * so does an image with one placement in scrollback and one on the screen.
+ * A sixel placement that reaches from scrollback onto the screen keeps its
+ * image from eviction; a kitty image with one placement in scrollback and one
+ * on the screen counts as placed on the screen, rank 3.
  */
 START_TEST(test_image_eviction_partly_on_screen)
 {
@@ -516,14 +548,21 @@ START_TEST(test_image_eviction_partly_on_screen)
 	tsm_screen_set_max_sb(screen, 100);
 
 	/* two rows tall at row 0; one line scrolls, its top enters scrollback */
-	tall = make_image(screen, 8, 32, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
+	tall = make_image(screen, 8, 32, TSM_IMAGE_SIXEL, 0, false, 0xff0000ff);
 	pl.image = tall;
 	ck_assert_int_eq(tsm_screen_test_place(screen, &pl, &key), 0);
 	twice = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff0000ff);
 	place(screen, twice, 2, 0);
 	place(screen, twice, 2, 3);
 	input_str(vte, "\e[5;1H\n");
+	ck_assert(tsm_screen_image_victim(screen, &v));
+	ck_assert_uint_eq(v.key, twice);
+	ck_assert_uint_eq(v.rank, TSM_IMAGE_PLACED_KITTY);
+	ck_assert_uint_eq(tsm_screen_image_evict(screen), COST(8, 16) +
+			  TSM_SCREEN_PLACEMENT_OVERHEAD);
 	ck_assert(!tsm_screen_image_victim(screen, &v));
+	twice = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff0000ff);
+	place(screen, twice, 2, 4);
 
 	/* both wholly in scrollback now */
 	input_str(vte, "\n\n\n\n");
@@ -761,10 +800,10 @@ START_TEST(test_image_replace_refused)
 	tsm_screen_set_image_limit(screen, 2 * COST(8, 16));
 	old = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
 	place(screen, old, 0, 0);
-	other = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff0000ff);
+	other = make_image(screen, 8, 16, TSM_IMAGE_SIXEL, 0, false, 0xff0000ff);
 	place(screen, other, 2, 0);
 
-	/* an 8x32 id 1 cannot fit beside id 2's placed 8x16 */
+	/* an 8x32 id 1 cannot fit beside a placed 8x16 sixel */
 	ck_assert_int_eq(try_image(screen, 8, 32, 1, &key), -ENOSPC);
 	ck_assert(image_exists(screen, old));
 	ck_assert_uint_eq(tsm_screen_frame(screen)->placement_count, 2);
@@ -781,7 +820,7 @@ START_TEST(test_image_replace_refused)
 	ck_assert_int_eq(tsm_screen_set_image_budget(screen, host_reserve, host_release, &h), 0);
 	h.evict_from = screen;
 	old = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 1, false, 0xff0000ff);
-	other = make_image(screen, 8, 16, TSM_IMAGE_KITTY, 2, false, 0xff0000ff);
+	other = make_image(screen, 8, 16, TSM_IMAGE_SIXEL, 0, false, 0xff0000ff);
 	place(screen, other, 0, 0);
 	ck_assert_int_eq(try_image(screen, 8, 32, 1, &key), -ENOSPC);
 	ck_assert(image_exists(screen, old));

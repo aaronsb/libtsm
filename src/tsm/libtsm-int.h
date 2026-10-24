@@ -216,11 +216,16 @@ struct tsm_image {
 	uint8_t kind;			/* enum tsm_image_kind */
 	bool opaque;
 	bool transient;
-	bool pinned;			/* scratch: placed on a screen's own lines */
+	bool pinned;			/* scratch: never evicted (a sixel placed
+					   on a screen's own lines, or held) */
+	bool on_screen;			/* scratch: a kitty image placed on a
+					   screen's own lines, rank 3 */
+	bool doomed;			/* scratch: chosen by a kitty delete */
 	bool dying;			/* being freed: its placements go uncharged */
 	unsigned int hold;		/* never evicted while being placed */
 	unsigned int placements;	/* placements showing it */
 	uint64_t last_use;
+	uint64_t transmitted;		/* when it was stored, on last_use's clock */
 	tsm_age_t age;			/* when its pixels last changed */
 };
 
