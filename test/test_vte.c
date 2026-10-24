@@ -895,6 +895,36 @@ START_TEST(test_vte_modkeys_not_sgr)
 }
 END_TEST
 
+/*
+ * In 8-bit mode (DECSCL 62) a byte from 0x80 up is a C1 control or a GR
+ * character as it stands: 0x9b introduces a CSI. A char that is signed made
+ * it a codepoint past Unicode, printed as text.
+ */
+START_TEST(test_vte_8bit_c1)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_screen_cell *cells;
+	const char *input = "\e[62\"p\x9b" "1mB";
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	tsm_vte_input(vte, input, strlen(input));
+
+	cells = tsm_screen_draw2(screen);
+	ck_assert_ptr_ne(cells, NULL);
+	ck_assert_uint_eq(cells[0].ch, 'B');
+	ck_assert_uint_eq(cells[0].attr2.bold, 1);
+	ck_assert_uint_eq(cells[1].ch, ' ');
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 /* draw2 shows a cluster's base codepoint, so a combining mark does not blank
  * the letter it is on */
 START_TEST(test_vte_draw2_cluster_base)
@@ -2594,6 +2624,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_underline_color_follows_palette)
 	TEST(test_vte_underline_color_dim)
 	TEST(test_vte_modkeys_not_sgr)
+	TEST(test_vte_8bit_c1)
 	TEST(test_vte_draw2_cluster_base)
 	TEST(test_vte_cluster_release)
 	TEST(test_vte_width_method_resets)

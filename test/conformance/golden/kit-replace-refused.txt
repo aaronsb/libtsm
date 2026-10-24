@@ -1,0 +1,13 @@
+size 12x4
+cursor 2,2
+flags AUTO_WRAP
+reply 1b5f47693d313b4f4b1b5c1b5f47693d313b454e4f5350433a696d6167652073746f726167652069732066756c6c1b5c1b5f47693d313b4f4b1b5c
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+placement 0 row 0 col 0 box 2x1 at 0,0 size 16x16 src 0,0 16x16 cell 8x16 z 0 above-text kitty image 0 opaque
+placement 1 row 2 col 0 box 2x1 at 0,0 size 16x16 src 0,0 16x16 cell 8x16 z 0 above-text kitty image 0 opaque
+placement 2 row 0 col 2 box 2x1 at 0,0 size 16x16 src 0,0 16x16 cell 8x16 z 0 above-text sixel image 1 opaque
+image 0 16x16 digest 74bcf7c5
+image 1 16x16 digest 39db7fc5
