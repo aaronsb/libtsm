@@ -106,6 +106,27 @@ if get_option('fuzz')
     )
 endif
 
+# The kitty graphics protocol through the vte (fuzz/fuzz-vte-kitty.c): the
+# APC parser, uploads, deletes, the budget and placements together, built
+# the same two ways.
+fuzz_vte_kitty_replay = executable(
+    'fuzz-vte-kitty-replay',
+    'fuzz/fuzz-vte-kitty.c',
+    dependencies: [libtsm_test_dep],
+    c_args: ['-DFUZZ_REPLAY'],
+)
+test('fuzz-vte-kitty-seeds', fuzz_vte_kitty_replay,
+     args: [meson.current_source_dir() / 'fuzz' / 'vte-kitty-seeds'])
+if get_option('fuzz')
+    executable(
+        'fuzz-vte-kitty',
+        'fuzz/fuzz-vte-kitty.c',
+        dependencies: [libtsm_test_dep],
+        c_args: ['-fsanitize=fuzzer'],
+        link_args: ['-fsanitize=fuzzer'],
+    )
+endif
+
 
 # Conformance replay (ADR-301 tier 1 in the kmscon fork): every recorded
 # stream in conformance/ must reproduce its golden screen state.
