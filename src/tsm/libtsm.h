@@ -1212,7 +1212,14 @@ void tsm_vte_set_kitty_graphics(struct tsm_vte *vte, bool enable);
  * their code, anything else EBADF; parsing goes on in the same call.
  *
  * The request and what it points to are valid only during the hook call. One
- * request per vte is out at a time. tsm_vte_input never hands one out: there
+ * request per vte is out at a time.
+ *
+ * From inside the hook, a host may cancel (tsm_vte_reset, tsm_vte_hard_reset,
+ * turning kitty graphics off), which drops the request with no reply, or
+ * change the hook, which answers it EBADF; either way the hook's return is
+ * ignored. Input fed from inside the hook is refused (tsm_vte_input_bounded
+ * returns 0, tsm_vte_input drops it), tsm_vte_image_reply answers -EBUSY,
+ * and the vte must not be freed there. tsm_vte_input never hands one out: there
  * the commands answer as without a hook, t=f, t=t and t=s EBADF and PNG and
  * zlib EINVAL, and bytes it is given while a request is out are dropped.
  */

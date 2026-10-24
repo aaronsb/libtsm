@@ -466,7 +466,17 @@ static struct {
 	int ret;			/* the hook's return */
 	bool reply_inside;		/* the hook calls tsm_vte_image_reply */
 	int inside;			/* what that call returned */
+	int action;			/* what else the hook does, HOOK_* */
+	size_t fed;			/* what input from inside the hook took */
 } hook;
+
+enum {
+	HOOK_NOTHING,
+	HOOK_RESET,			/* tsm_vte_reset from inside the hook */
+	HOOK_KITTY_OFF,			/* kitty graphics off, then on */
+	HOOK_REPLACE,			/* installs itself again */
+	HOOK_INPUT,			/* feeds input */
+};
 
 static int hook_cb(struct tsm_vte *v, const struct tsm_vte_image_request *req,
 		   void *data)
@@ -486,6 +496,22 @@ static int hook_cb(struct tsm_vte *v, const struct tsm_vte_image_request *req,
 	}
 	if (hook.reply_inside)
 		hook.inside = tsm_vte_image_reply(vte, req->id, 0, 1, 1, px);
+	switch (hook.action) {
+	case HOOK_RESET:
+		tsm_vte_reset(vte);
+		break;
+	case HOOK_KITTY_OFF:
+		tsm_vte_set_kitty_graphics(vte, false);
+		tsm_vte_set_kitty_graphics(vte, true);
+		break;
+	case HOOK_REPLACE:
+		tsm_vte_set_image_cb(vte, hook_cb, &hook);
+		break;
+	case HOOK_INPUT:
+		hook.fed = tsm_vte_input_bounded(vte, "x", 1);
+		tsm_vte_input(vte, "y", 1);
+		break;
+	}
 	return hook.ret;
 }
 
@@ -894,6 +920,45 @@ START_TEST(test_kitty_size_bound)
 }
 END_TEST
 
+/*
+ * From inside the hook: a cancel drops the request with no reply, the
+ * inline buffer going with it; a hook change answers EBADF; input is refused
+ */
+START_TEST(test_hook_inside)
+{
+	static const char png[] = "\033_Ga=t,f=100,i=1;iVBORw==\033\\";
+	static const char file[] = "\033_Ga=t,t=f,f=100,i=2;L3RtcC94\033\\";
+	unsigned int action, x;
+
+	for (action = HOOK_RESET; action <= HOOK_KITTY_OFF; ++action) {
+		reply_clear();
+		hook.action = action;
+		ck_assert_uint_eq(bounded(png), strlen(png));
+		ck_assert_uint_eq(reply_len, 0);
+		ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+		ck_assert_int_eq(tsm_vte_image_reply(vte, hook.req.id, 0, 2, 2, PX2),
+				 -ENOENT);
+		ck_assert_uint_eq(bounded("x"), 1);
+	}
+
+	reply_clear();
+	hook.action = HOOK_REPLACE;
+	bounded(file);
+	ck_assert_str_eq(reply, "\033_Gi=2;EBADF:Failed to read image file\033\\");
+	ck_assert_uint_eq(bounded("x"), 1);
+
+	reply_clear();
+	hook.action = HOOK_INPUT;
+	x = tsm_screen_get_cursor_x(screen);
+	bounded(file);
+	ck_assert_uint_eq(hook.fed, 0);
+	ck_assert_int_eq(tsm_vte_image_reply(vte, hook.req.id, -EBADF, 0, 0, NULL), 0);
+	ck_assert_str_eq(reply, "\033_Gi=2;EBADF:Failed to read image file\033\\");
+	/* neither "x" nor "y" reached the screen */
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), x);
+}
+END_TEST
+
 /* tsm_vte_input buffers no inline PNG for the hook it cannot use */
 START_TEST(test_hook_unbounded_buffer)
 {
@@ -933,6 +998,7 @@ TEST_DEFINE_CASE(host)
 	TEST(test_hook_unbounded)
 	TEST(test_hook_discard)
 	TEST(test_hook_budget)
+	TEST(test_hook_inside)
 	TEST(test_hook_unbounded_buffer)
 TEST_END_CASE
 

@@ -3359,8 +3359,9 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 	if (!vte || !vte->con)
 		return;
 
-	/* the host feeds nothing while its request is out */
-	if (tsm_kitty_paused(vte->kitty)) {
+	/* the host feeds nothing while its request is out, nor from inside
+	 * the hook */
+	if (tsm_kitty_paused(vte->kitty) || tsm_kitty_in_hook(vte->kitty)) {
 		if (len)
 			llog_warning(vte, "%zu bytes dropped: a kitty image request is out",
 				     len);
@@ -3375,7 +3376,7 @@ size_t tsm_vte_input_bounded(struct tsm_vte *vte, const char *u8, size_t len)
 	if (!vte || !vte->con)
 		return len;
 
-	if (tsm_kitty_paused(vte->kitty))
+	if (tsm_kitty_paused(vte->kitty) || tsm_kitty_in_hook(vte->kitty))
 		return 0;
 	return vte_input_with(vte, u8, len, VTE_INPUT_WORK, true);
 }

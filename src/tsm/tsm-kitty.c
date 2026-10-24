@@ -145,6 +145,10 @@ struct tsm_kitty {
 	uint64_t last_request;
 	struct kitty_request req;
 	bool host_ok;			/* this input call may hand out a request */
+	/* bumped by every cancel and every hook change, so a request can tell
+	 * that one happened while its hook ran */
+	uint64_t cancels;
+	uint64_t hook_changes;
 };
 
 /*
@@ -545,6 +549,7 @@ static void request(struct tsm_kitty *k, const struct kitty_cmd *cmd, bool disca
 		.data = cmd->t != 'd' ? NULL : data ? data : (const uint8_t *)"",
 		.data_len = len,
 	};
+	uint64_t cancels, hook_changes;
 	int ret;
 
 	k->name[k->name_len] = 0;
@@ -552,9 +557,19 @@ static void request(struct tsm_kitty *k, const struct kitty_cmd *cmd, bool disca
 	k->req.cmd = *cmd;
 	k->req.discard = discard;
 	k->req.refusal = refusal;
+	cancels = k->cancels;
+	hook_changes = k->hook_changes;
 	k->in_hook = true;
 	ret = k->hook(k->vte, &r, k->hook_data);
 	k->in_hook = false;
+	/* a cancel from inside the hook dropped the request, with no reply;
+	 * a hook changed from inside it answers it EBADF, as outside */
+	if (k->cancels != cancels)
+		return;
+	if (k->hook_changes != hook_changes) {
+		request_finish(k, -EBADF, 0, 0, NULL);
+		return;
+	}
 	if (!ret) {
 		k->req.out = true;
 		return;
@@ -732,7 +747,8 @@ static void upload_finish(struct tsm_kitty *k)
 	struct kitty_upload *up = &k->up;
 	struct kitty_cmd cmd = up->cmd;
 	uint32_t *pixels;
-	size_t n;
+	uint8_t *buf;
+	size_t n, cap;
 	bool opaque;
 
 	switch (up->mode) {
@@ -746,16 +762,20 @@ static void upload_finish(struct tsm_kitty *k)
 		reply(k, &cmd, cmd.i, up->len < up->want ? -EINVAL : 0);
 		return;
 	case UPLOAD_HOST:
+		/* the buffer is this call's now: a cancel from inside the hook
+		 * finds no upload to free */
+		buf = up->buf;
+		cap = up->cap;
+		up->buf = NULL;
+		up->cap = 0;
 		up->mode = UPLOAD_NONE;
 		if (k->hook && k->host_ok)
-			request(k, &cmd, false, 0, up->buf, up->len);
+			request(k, &cmd, false, 0, buf, up->len);
 		else
 			reply(k, &cmd, cmd.i, -EINVAL);
 		/* the request's data was valid only during the hook call */
-		free(up->buf);
-		screen_images_unreserve(k->con, up->cap);
-		up->buf = NULL;
-		up->cap = 0;
+		free(buf);
+		screen_images_unreserve(k->con, cap);
 		return;
 	case UPLOAD_RAW:
 		break;
@@ -1144,6 +1164,7 @@ void tsm_kitty_cancel(struct tsm_kitty *k)
 	k->phase = PHASE_IGNORE;
 	/* a request out is dropped, with no reply to the client */
 	k->req.out = false;
+	++k->cancels;
 }
 
 bool tsm_kitty_paused(struct tsm_kitty *k)
@@ -1157,6 +1178,12 @@ void tsm_kitty_set_hook(struct tsm_kitty *k, tsm_vte_image_cb hook, void *data)
 		request_finish(k, -EBADF, 0, 0, NULL);
 	k->hook = hook;
 	k->hook_data = data;
+	++k->hook_changes;
+}
+
+bool tsm_kitty_in_hook(struct tsm_kitty *k)
+{
+	return k->in_hook;
 }
 
 int tsm_kitty_reply(struct tsm_kitty *k, uint64_t id, int error, unsigned int width,
