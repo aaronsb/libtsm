@@ -677,13 +677,14 @@ END_TEST
  */
 START_TEST(test_hook_discard)
 {
-	bounded("\033_Ga=f,t=s,s=1,v=1,i=1;L3NobQ==\033\\");
+	/* the host answers with an image that would fit s and v */
+	bounded("\033_Ga=f,t=s,s=2,v=2,i=1;L3NobQ==\033\\");
 	ck_assert_uint_eq(hook.calls, 1);
 	ck_assert(hook.req.discard);
 	ck_assert_uint_eq(hook.req.medium, TSM_VTE_IMAGE_SHM);
 	ck_assert_int_eq(tsm_vte_image_reply(vte, 1, 0, 2, 2, PX2), 0);
 	ck_assert_str_eq(reply, "\033_Gi=1;EINVAL:invalid argument\033\\");
-	ck_assert_uint_eq(placements(), 0);
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen), 0);
 
 	/* the hook refusing it changes nothing either */
 	reply_clear();
