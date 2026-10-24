@@ -103,6 +103,7 @@ six-img2sixel-gradient 12 6
 six-img2sixel-highcolor 12 4
 kit-transmit 12 4
 kit-chunked 12 4
+kit-chunk-large 12 4
 kit-chunk-abort 12 4
 kit-ids 12 4
 kit-replace 12 4
