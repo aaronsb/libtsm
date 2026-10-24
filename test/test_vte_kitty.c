@@ -831,12 +831,17 @@ START_TEST(test_hook_reply_misuse)
 	ck_assert_int_eq(answer(++id, TSM_VTE_IMAGE_OK, 0, 2, PX2, 0), -EINVAL);
 	bounded(png);
 	ck_assert_int_eq(answer(++id, TSM_VTE_IMAGE_OK, 2, 2, PX2, 15), -EINVAL);
+	/* a PNG size whose length would wrap to 0 in 64 bits */
+	bounded(png);
+	ck_assert_int_eq(answer(++id, TSM_VTE_IMAGE_OK, 0x80000000u, 0x80000000u,
+				PX2, 0), -EINVAL);
 	/* a raw format's bytes other than min_bytes, either way */
 	bounded(raw);
 	ck_assert_int_eq(answer(++id, TSM_VTE_IMAGE_OK, 0, 0, rgb4, 2), -EINVAL);
 	bounded(raw);
 	ck_assert_int_eq(answer(++id, TSM_VTE_IMAGE_OK, 0, 0, rgb4, 4), -EINVAL);
 	ck_assert_str_eq(reply, "\033_Gi=1;EBADF:Failed to read image file\033\\"
+				"\033_Gi=1;EBADF:Failed to read image file\033\\"
 				"\033_Gi=1;EBADF:Failed to read image file\033\\"
 				"\033_Gi=1;EBADF:Failed to read image file\033\\"
 				"\033_Gi=1;EBADF:Failed to read image file\033\\"

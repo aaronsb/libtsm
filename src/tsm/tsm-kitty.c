@@ -1276,6 +1276,14 @@ bool tsm_kitty_in_hook(struct tsm_kitty *k)
 	return k->in_hook;
 }
 
+/* whether @len bytes are @w x @h pixels of RGBA, computed without a wrap */
+static bool rgba_len(unsigned int w, unsigned int h, size_t len)
+{
+	uint64_t n = (uint64_t)w * h;
+
+	return w && h && n <= UINT64_MAX / 4 && n * 4 == len;
+}
+
 int tsm_kitty_reply(struct tsm_kitty *k, uint64_t id, const struct tsm_vte_image_result *res)
 {
 	const struct kitty_request *req = &k->req;
@@ -1295,8 +1303,7 @@ int tsm_kitty_reply(struct tsm_kitty *k, uint64_t id, const struct tsm_vte_image
 	    (res->status == TSM_VTE_IMAGE_OK &&
 	     (!res->data ||
 	      (req->flags & TSM_VTE_IMAGE_PNG ?
-	       !res->width || !res->height ||
-	       (uint64_t)res->width * res->height * 4 != res->len :
+	       !rgba_len(res->width, res->height, res->len) :
 	       res->len != req->min_bytes)))) {
 		request_finish(k, TSM_VTE_IMAGE_FAILED, 0, 0, NULL);
 		return -EINVAL;
