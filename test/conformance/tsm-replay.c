@@ -117,22 +117,31 @@
  * pause and resume included. Answers come from FILE's fixture directory, FILE
  * with ".bin" replaced by ".files". A request names a fixture: the last
  * component of its path or name for t=f, t=t and t=s, and direct-<n> for the
- * case's nth inline request, from 1. A discard is answered EINVAL, as the
- * image helper answers one; otherwise the first that applies:
- *   <fixture>.error           its first word, EBADF, EINVAL or ENOSPC, is the error
- *   <fixture>.rgba            a decoded image: width and height as little-endian
- *                             32-bit integers, then RGBA; it stands in for a PNG
- *                             or compressed fixture, as tsm-replay decodes nothing
- *   <fixture>                 for f=24 or f=32 without o=z: the data itself, from
- *                             O for S bytes (to its end with S 0), exactly s x v
- *                             pixels (EINVAL otherwise), shorter EBADF
- *   otherwise                 EBADF for the file media, EINVAL for inline data
- * It deletes nothing and applies none of the image helper's path rules. Each
+ * case's nth inline request, from 1. tsm-replay answers with an outcome, the
+ * image helper's terms, taking the first that applies:
+ *   <fixture>.error           its first word, an outcome (UNREADABLE, TOO_SHORT,
+ *                             CORRUPT, TOO_LARGE or OVER_BUDGET), is the answer
+ *   <fixture>.rgba            for a PNG request: a decoded image, width and height
+ *                             as little-endian 32-bit integers, then RGBA, since
+ *                             tsm-replay links no decoder
+ *   <fixture>.bytes           for an INFLATE request without PNG: the inflated
+ *                             bytes, of which the first min_bytes come back
+ *                             (fewer TOO_SHORT; under EXACT, more CORRUPT)
+ *   <fixture>                 for a request with neither: the data itself, read
+ *                             from offset for at most read_max bytes (0: to the
+ *                             end), of which the first min_bytes come back (an
+ *                             offset at or past the end UNREADABLE, fewer
+ *                             TOO_SHORT)
+ *   otherwise                 UNREADABLE for the file media, CORRUPT for inline
+ *                             data
+ * A discard is answered OK with no bytes, as the image helper answers one. It
+ * deletes nothing and applies none of the image helper's path rules. Each
  * request is printed among the replies, where it happened:
- *   host: ID t=M f=F o=z|- discard=0|1 s=W v=H O=OFF S=SIZE name=NAME len=LEN
- *                             (NAME as received, every byte outside 0x21 to
- *                              0x7e, and the backslash, as \xNN; empty for
- *                              inline data)
+ *   host: ID t=M flags=F O=OFFSET max=READ_MAX min=MIN_BYTES name=NAME len=LEN
+ *                             (F the flags set, of inflate, png, exact and
+ *                              discard, comma-separated, or -; NAME as
+ *                              received, every byte outside 0x21 to 0x7e, and
+ *                              the backslash, as \xNN; empty for inline data)
  *
  * SPDX-License-Identifier: MIT
  */
@@ -627,9 +636,8 @@ static const char *find_bytes(const char *hay, size_t len, const char *needle, s
 static struct {
 	bool out;
 	uint64_t id;
-	unsigned int medium, format, width, height;
-	bool zlib, discard;
-	uint64_t offset, size;
+	unsigned int medium, flags;
+	uint64_t offset, read_max, min_bytes;
 	char fixture[4200];
 	unsigned int direct;		/* inline requests so far */
 	char dir[4096];			/* the case's fixture directory */
@@ -639,23 +647,22 @@ static struct {
 static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
 		   void *data)
 {
+	static const char *const flag_names[] = { "inflate", "png", "exact", "discard" };
 	struct reply *r = host.reply;
 	const char *base;
 	char line[8400];
 	size_t len, i;
+	bool first = true;
 
 	(void)vte;
 	(void)data;
 	host.out = true;
 	host.id = req->id;
 	host.medium = req->medium;
-	host.format = req->format;
-	host.zlib = req->zlib;
-	host.discard = req->discard;
-	host.width = req->width;
-	host.height = req->height;
+	host.flags = req->flags;
 	host.offset = req->offset;
-	host.size = req->size;
+	host.read_max = req->read_max;
+	host.min_bytes = req->min_bytes;
 	if (req->name) {
 		base = strrchr(req->name, '/');
 		snprintf(host.fixture, sizeof(host.fixture), "%s", base ? base + 1 : req->name);
@@ -663,11 +670,20 @@ static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
 		snprintf(host.fixture, sizeof(host.fixture), "direct-%u", ++host.direct);
 	}
 
-	len = snprintf(line, sizeof(line),
-		       "host: %llu t=%c f=%u o=%c discard=%d s=%u v=%u O=%llu S=%llu name=",
-		       (unsigned long long)req->id, req->medium, req->format,
-		       req->zlib ? 'z' : '-', req->discard, req->width, req->height,
-		       (unsigned long long)req->offset, (unsigned long long)req->size);
+	len = snprintf(line, sizeof(line), "host: %llu t=%c flags=",
+		       (unsigned long long)req->id, req->medium);
+	for (i = 0; i < 4; i++) {
+		if (req->flags & (1u << i)) {
+			len += snprintf(line + len, sizeof(line) - len, "%s%s",
+					first ? "" : ",", flag_names[i]);
+			first = false;
+		}
+	}
+	if (first)
+		line[len++] = '-';
+	len += snprintf(line + len, sizeof(line) - len, " O=%llu max=%llu min=%llu name=",
+			(unsigned long long)req->offset, (unsigned long long)req->read_max,
+			(unsigned long long)req->min_bytes);
 	for (i = 0; req->name && req->name[i] && len < sizeof(line) - 64; i++) {
 		unsigned char c = req->name[i];
 
@@ -703,71 +719,101 @@ static unsigned char *host_file(const char *suffix, size_t *len)
 	return read_file(path, len);
 }
 
-/* answers the request out from the fixtures */
+/* the outcome a .error fixture names in its first word */
+static unsigned int host_outcome(const unsigned char *buf, size_t len)
+{
+	static const char *const names[] = {
+		[TSM_VTE_IMAGE_UNREADABLE] = "UNREADABLE",
+		[TSM_VTE_IMAGE_TOO_SHORT] = "TOO_SHORT",
+		[TSM_VTE_IMAGE_CORRUPT] = "CORRUPT",
+		[TSM_VTE_IMAGE_TOO_LARGE] = "TOO_LARGE",
+		[TSM_VTE_IMAGE_OVER_BUDGET] = "OVER_BUDGET",
+	};
+	size_t n, word = 0;
+	unsigned int i;
+
+	while (word < len && buf[word] > ' ')
+		word++;
+	for (i = TSM_VTE_IMAGE_UNREADABLE; i <= TSM_VTE_IMAGE_OVER_BUDGET; i++) {
+		n = strlen(names[i]);
+		if (word == n && !memcmp(buf, names[i], n))
+			return i;
+	}
+	fprintf(stderr, "tsm-replay: %s.error names no outcome\n", host.fixture);
+	exit(2);
+}
+
+/*
+ * Answers the request out from the fixtures, the first that applies, with
+ * min_bytes, offset and read_max applied as the image helper applies them;
+ * a discard is answered TSM_VTE_IMAGE_OK with no bytes, as the helper
+ * answers one
+ */
 static void host_answer(struct tsm_vte *vte)
 {
-	unsigned char *buf, *rgba = NULL;
-	size_t len, n, bpp, i;
-	unsigned int w = 0, h = 0;
-	int error = 0;
+	struct tsm_vte_image_result res = { .status = TSM_VTE_IMAGE_OK };
+	unsigned char *buf = NULL;
+	uint64_t avail;
+	size_t len;
 
 	host.out = false;
-	if (host.discard) {
-		error = -EINVAL;
+	if (host.flags & TSM_VTE_IMAGE_DISCARD) {
+		/* nothing to read */
 	} else if ((buf = host_file(".error", &len))) {
-		if (len >= 5 && !memcmp(buf, "EBADF", 5))
-			error = -EBADF;
-		else if (len >= 6 && !memcmp(buf, "EINVAL", 6))
-			error = -EINVAL;
-		else if (len >= 6 && !memcmp(buf, "ENOSPC", 6))
-			error = -ENOSPC;
-		else {
-			fprintf(stderr, "tsm-replay: %s.error names no error\n", host.fixture);
-			exit(2);
-		}
-		free(buf);
-	} else if ((buf = host_file(".rgba", &len))) {
+		res.status = host_outcome(buf, len);
+	} else if ((host.flags & TSM_VTE_IMAGE_PNG) && (buf = host_file(".rgba", &len))) {
 		if (len < 8) {
 			fprintf(stderr, "tsm-replay: %s.rgba is short\n", host.fixture);
 			exit(2);
 		}
-		w = buf[0] | buf[1] << 8 | buf[2] << 16 | (uint32_t)buf[3] << 24;
-		h = buf[4] | buf[5] << 8 | buf[6] << 16 | (uint32_t)buf[7] << 24;
-		if ((uint64_t)w * h * 4 != len - 8) {
-			fprintf(stderr, "tsm-replay: %s.rgba is not %ux%u\n", host.fixture, w, h);
+		res.width = buf[0] | buf[1] << 8 | buf[2] << 16 | (uint32_t)buf[3] << 24;
+		res.height = buf[4] | buf[5] << 8 | buf[6] << 16 | (uint32_t)buf[7] << 24;
+		if ((uint64_t)res.width * res.height * 4 != len - 8) {
+			fprintf(stderr, "tsm-replay: %s.rgba is not %ux%u\n", host.fixture,
+				res.width, res.height);
 			exit(2);
 		}
-		rgba = malloc(len - 8 + 1);
-		memcpy(rgba, buf + 8, len - 8);
-		free(buf);
-	} else if (host.format != 100 && !host.zlib && (buf = host_file("", &len))) {
-		bpp = host.format / 8;
-		n = (size_t)host.width * host.height;
-		if (host.offset > len || (host.size && host.size > len - host.offset)) {
-			error = -EBADF;
-		} else if ((host.size ? host.size : len - host.offset) != n * bpp) {
-			error = -EINVAL;
-		} else {
-			w = host.width;
-			h = host.height;
-			rgba = malloc(n * 4 + 1);
-			for (i = 0; i < n; i++) {
-				memcpy(rgba + i * 4, buf + host.offset + i * bpp, bpp);
-				if (bpp == 3)
-					rgba[i * 4 + 3] = 255;
-			}
-		}
-		free(buf);
+		res.data = buf + 8;
+		res.len = len - 8;
+	} else if ((host.flags & (TSM_VTE_IMAGE_INFLATE | TSM_VTE_IMAGE_PNG)) ==
+		   TSM_VTE_IMAGE_INFLATE && (buf = host_file(".bytes", &len))) {
+		/* the inflated bytes: the first min_bytes of them, the rest
+		 * ignored, or under EXACT one byte more is corrupt */
+		if (len < host.min_bytes)
+			res.status = TSM_VTE_IMAGE_TOO_SHORT;
+		else if ((host.flags & TSM_VTE_IMAGE_EXACT) && len > host.min_bytes)
+			res.status = TSM_VTE_IMAGE_CORRUPT;
+		res.data = buf;
+		res.len = host.min_bytes;
+	} else if (!(host.flags & (TSM_VTE_IMAGE_INFLATE | TSM_VTE_IMAGE_PNG)) &&
+		   (buf = host_file("", &len))) {
+		/* from offset, at most read_max (0: to the end), the first
+		 * min_bytes of what that holds */
+		avail = host.offset < len ? len - host.offset : 0;
+		if (host.read_max && host.read_max < avail)
+			avail = host.read_max;
+		if (host.offset >= len)
+			res.status = TSM_VTE_IMAGE_UNREADABLE;
+		else if (avail < host.min_bytes)
+			res.status = TSM_VTE_IMAGE_TOO_SHORT;
+		else
+			res.data = buf + host.offset;
+		res.len = host.min_bytes;
 	} else {
-		error = host.medium == 'd' ? -EINVAL : -EBADF;
+		res.status = host.medium == 'd' ? TSM_VTE_IMAGE_CORRUPT :
+						  TSM_VTE_IMAGE_UNREADABLE;
+	}
+	if (res.status != TSM_VTE_IMAGE_OK) {
+		res.data = NULL;
+		res.len = 0;
 	}
 
-	if (tsm_vte_image_reply(vte, host.id, error, w, h, rgba) < 0) {
+	if (tsm_vte_image_reply(vte, host.id, &res) < 0) {
 		fprintf(stderr, "tsm-replay: tsm_vte_image_reply refused request %llu\n",
 			(unsigned long long)host.id);
 		exit(3);
 	}
-	free(rgba);
+	free(buf);
 }
 #endif
 

@@ -478,6 +478,33 @@ enum {
 	HOOK_INPUT,			/* feeds input */
 };
 
+/* answers request @id with @status and, for TSM_VTE_IMAGE_OK, @len bytes */
+static int answer(uint64_t id, unsigned int status, unsigned int width,
+		  unsigned int height, const uint8_t *data, size_t len)
+{
+	struct tsm_vte_image_result res = {
+		.status = status,
+		.width = width,
+		.height = height,
+		.data = data,
+		.len = len,
+	};
+
+	return tsm_vte_image_reply(vte, id, &res);
+}
+
+/* a decoded PNG of @w x @h RGBA pixels */
+static int answer_png(uint64_t id, unsigned int w, unsigned int h, const uint8_t *px)
+{
+	return answer(id, TSM_VTE_IMAGE_OK, w, h, px, (size_t)w * h * 4);
+}
+
+/* an outcome other than OK */
+static int answer_status(uint64_t id, unsigned int status)
+{
+	return answer(id, status, 0, 0, NULL, 0);
+}
+
 static int hook_cb(struct tsm_vte *v, const struct tsm_vte_image_request *req,
 		   void *data)
 {
@@ -495,7 +522,7 @@ static int hook_cb(struct tsm_vte *v, const struct tsm_vte_image_request *req,
 		memcpy(hook.data, req->data, req->data_len);
 	}
 	if (hook.reply_inside)
-		hook.inside = tsm_vte_image_reply(vte, req->id, 0, 1, 1, px);
+		hook.inside = answer_png(req->id, 1, 1, px);
 	switch (hook.action) {
 	case HOOK_RESET:
 		tsm_vte_reset(vte);
@@ -531,24 +558,25 @@ static const uint8_t PX2[16] = {
 	255, 0, 0, 255,  0, 255, 0, 255,  0, 0, 255, 255,  9, 9, 9, 128,
 };
 
-/* each medium reaches the hook with its keys, and inline raw data does not */
+static const char *const EBADF_REPLY = "\033_Gi=1;EBADF:Failed to read image file\033\\";
+static const char *const EINVAL_REPLY = "\033_Gi=1;EINVAL:invalid argument\033\\";
+
+/* each medium reaches the hook, and inline raw data does not */
 START_TEST(test_hook_request)
 {
+	static const uint8_t rgb6[6] = { 255, 0, 0, 0, 0, 255 };
+
 	/* "/tmp/x" */
 	bounded("\033_Ga=T,t=f,f=24,s=2,v=1,O=3,S=6,i=1;L3RtcC94\033\\");
 	ck_assert_uint_eq(hook.calls, 1);
 	ck_assert_uint_eq(hook.req.id, 1);
 	ck_assert_uint_eq(hook.req.medium, TSM_VTE_IMAGE_FILE);
-	ck_assert_uint_eq(hook.req.format, 24);
-	ck_assert(!hook.req.zlib && !hook.req.discard);
-	ck_assert_uint_eq(hook.req.width, 2);
-	ck_assert_uint_eq(hook.req.height, 1);
-	ck_assert_uint_eq(hook.req.offset, 3);
-	ck_assert_uint_eq(hook.req.size, 6);
 	ck_assert_str_eq(hook.name, "/tmp/x");
 	ck_assert_ptr_eq(hook.req.data, NULL);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 1, 0, 2, 1, PX2), 0);
+	ck_assert_int_eq(answer(1, TSM_VTE_IMAGE_OK, 0, 0, rgb6, 6), 0);
 	ck_assert_str_eq(reply, "\033_Gi=1;OK\033\\");
+	ck_assert_uint_eq(pixel(placement(0), 0, 0), 0xffff0000u);
+	ck_assert_uint_eq(pixel(placement(0), 1, 0), 0xff0000ffu);
 
 	/* inline PNG, then zlib: the payload, decoded */
 	bounded("\033_Ga=t,f=100,i=2;iVBORw==\033\\");
@@ -558,25 +586,155 @@ START_TEST(test_hook_request)
 	ck_assert_ptr_eq(hook.req.name, NULL);
 	ck_assert_uint_eq(hook.req.data_len, 4);
 	ck_assert_mem_eq(hook.data, "\x89PNG", 4);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 2, -EINVAL, 0, 0, NULL), 0);
+	ck_assert_int_eq(answer_status(2, TSM_VTE_IMAGE_CORRUPT), 0);
 	bounded("\033_Ga=t,f=32,s=1,v=1,o=z,t=d,i=3;eJw=\033\\");
-	ck_assert(hook.req.zlib);
 	ck_assert_uint_eq(hook.req.data_len, 2);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 3, -EBADF, 0, 0, NULL), 0);
+	ck_assert_int_eq(answer_status(3, TSM_VTE_IMAGE_CORRUPT), 0);
 
 	/* t=t and t=s */
 	bounded("\033_Ga=t,t=t,f=100,i=4;L3RtcC94\033\\");
 	ck_assert_uint_eq(hook.req.medium, TSM_VTE_IMAGE_TEMP);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 4, -EBADF, 0, 0, NULL), 0);
+	ck_assert_int_eq(answer_status(4, TSM_VTE_IMAGE_UNREADABLE), 0);
 	bounded("\033_Ga=t,t=s,f=100,i=5;L3NobQ==\033\\");
 	ck_assert_uint_eq(hook.req.medium, TSM_VTE_IMAGE_SHM);
 	ck_assert_str_eq(hook.name, "/shm");
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 5, -EBADF, 0, 0, NULL), 0);
+	ck_assert_int_eq(answer_status(5, TSM_VTE_IMAGE_UNREADABLE), 0);
 
 	/* inline raw data stays in libtsm */
 	bounded("\033_Ga=T,f=24,s=1,v=1,i=6;/wAA\033\\");
 	ck_assert_uint_eq(hook.calls, 5);
 	ck_assert_uint_eq(placements(), 2);
+}
+END_TEST
+
+/*
+ * The request each row of ADR-103's What libtsm asks for produces: flags,
+ * offset, read_max and min_bytes, from O, S, s, v, f and o
+ */
+START_TEST(test_hook_terms)
+{
+	static const struct {
+		const char *keys;
+		unsigned int medium, flags;
+		uint64_t offset, read_max, min_bytes;
+	} rows[] = {
+		{ "a=t,t=f,f=24,s=2,v=3,O=5,S=9", 'f', 0, 5, 9, 18 },
+		{ "a=t,t=t,f=32,s=2,v=3,o=z,O=1,S=100", 't', TSM_VTE_IMAGE_INFLATE, 1, 100, 24 },
+		{ "a=t,t=s,f=100,O=2,S=50", 's', TSM_VTE_IMAGE_PNG, 2, 50, 0 },
+		/* S bounds the read; no EXACT for a file */
+		{ "a=t,t=f,f=100,o=z,S=40", 'f', TSM_VTE_IMAGE_PNG | TSM_VTE_IMAGE_INFLATE,
+		  0, 40, 0 },
+		/* the largest O and S the spec's 32-bit integers allow */
+		{ "a=t,t=f,f=24,s=1,v=1,O=4294967295,S=4294967295", 'f', 0,
+		  4294967295u, 4294967295u, 3 },
+		{ "a=t,f=24,s=2,v=2,o=z,O=7,S=8", 'd', TSM_VTE_IMAGE_INFLATE, 0, 0, 12 },
+		{ "a=t,f=100,S=99", 'd', TSM_VTE_IMAGE_PNG, 0, 0, 0 },
+		{ "a=t,f=100,o=z,S=30", 'd',
+		  TSM_VTE_IMAGE_PNG | TSM_VTE_IMAGE_INFLATE | TSM_VTE_IMAGE_EXACT, 0, 0, 30 },
+		/* without S, or with S=0, no EXACT */
+		{ "a=t,f=100,o=z", 'd', TSM_VTE_IMAGE_PNG | TSM_VTE_IMAGE_INFLATE, 0, 0, 0 },
+		{ "a=t,f=100,o=z,S=0", 'd', TSM_VTE_IMAGE_PNG | TSM_VTE_IMAGE_INFLATE, 0, 0, 0 },
+		/* refused: a discard, the bounds all 0 */
+		{ "a=t,t=t,f=24,O=4,S=9", 't', TSM_VTE_IMAGE_DISCARD, 0, 0, 0 },
+		{ "a=f,t=s,f=100,o=z,S=9", 's', TSM_VTE_IMAGE_DISCARD, 0, 0, 0 },
+	};
+	char cmd[128];
+	size_t i;
+
+	for (i = 0; i < sizeof(rows) / sizeof(*rows); ++i) {
+		/* "/tmp/x", or inline "x" + 0x9c */
+		snprintf(cmd, sizeof(cmd), "\033_G%s;%s\033\\", rows[i].keys,
+			 rows[i].medium == 'd' ? "eJw=" : "L3RtcC94");
+		bounded(cmd);
+		ck_assert_msg(hook.calls == i + 1, "row %zu reached no hook", i);
+		ck_assert_uint_eq(hook.req.medium, rows[i].medium);
+		ck_assert_msg(hook.req.flags == rows[i].flags, "row %zu: flags %#x", i,
+			      hook.req.flags);
+		ck_assert_uint_eq(hook.req.offset, rows[i].offset);
+		ck_assert_uint_eq(hook.req.read_max, rows[i].read_max);
+		ck_assert_uint_eq(hook.req.min_bytes, rows[i].min_bytes);
+		ck_assert_int_eq(answer_status(hook.req.id, TSM_VTE_IMAGE_UNREADABLE), 0);
+	}
+
+	/* refused before the hook: O or S past 32 bits, s=0, s past
+	 * max-graphic-size, a refused t=f, a refused inline PNG */
+	reply_clear();
+	bounded("\033_Ga=t,t=f,f=24,s=1,v=1,O=4294967296,i=1;L3RtcC94\033\\"
+		"\033_Ga=t,t=f,f=24,s=1,v=1,S=4294967296,i=1;L3RtcC94\033\\"
+		"\033_Ga=t,t=f,f=24,s=0,v=1,i=1;L3RtcC94\033\\"
+		"\033_Ga=t,t=f,f=24,s=10001,v=1,i=1;L3RtcC94\033\\"
+		"\033_Ga=t,t=f,f=24,i=1;L3RtcC94\033\\"
+		"\033_Ga=t,f=100,i=1,I=2;iVBORw==\033\\");
+	ck_assert_uint_eq(hook.calls, sizeof(rows) / sizeof(*rows));
+	ck_assert_str_eq(reply, "\033_Gi=1;EINVAL:invalid argument\033\\"
+				"\033_Gi=1;EINVAL:invalid argument\033\\"
+				"\033_Gi=1;EINVAL:invalid argument\033\\"
+				"\033_Gi=1;EINVAL:invalid argument\033\\"
+				"\033_Gi=1;EINVAL:invalid argument\033\\"
+				"\033_Gi=1,I=2;EINVAL:invalid argument\033\\");
+}
+END_TEST
+
+/*
+ * The reply each outcome produces (ADR-103's What libtsm answers): a file
+ * read without inflating answers too few bytes EBADF, one inflated or sent
+ * inline EINVAL
+ */
+START_TEST(test_hook_outcomes)
+{
+	static const char *const cmds[] = {
+		"\033_Ga=t,t=f,f=24,s=1,v=1,i=1;L3RtcC94\033\\",
+		"\033_Ga=t,t=f,f=100,i=1;L3RtcC94\033\\",
+		"\033_Ga=t,t=s,f=24,s=1,v=1,o=z,i=1;L3NobQ==\033\\",
+		"\033_Ga=t,f=100,i=1;iVBORw==\033\\",
+	};
+	/* per command, the reply to UNREADABLE, TOO_SHORT, CORRUPT,
+	 * TOO_LARGE, OVER_BUDGET and FAILED */
+	static const char *const codes[][6] = {
+		{ "EBADF", "EBADF", "EINVAL", "EINVAL", "ENOSPC", "EBADF" },
+		{ "EBADF", "EBADF", "EINVAL", "EINVAL", "ENOSPC", "EBADF" },
+		{ "EBADF", "EINVAL", "EINVAL", "EINVAL", "ENOSPC", "EBADF" },
+		{ "EBADF", "EINVAL", "EINVAL", "EINVAL", "ENOSPC", "EBADF" },
+	};
+	unsigned int c, s;
+
+	for (c = 0; c < 4; ++c) {
+		for (s = TSM_VTE_IMAGE_UNREADABLE; s <= TSM_VTE_IMAGE_FAILED; ++s) {
+			reply_clear();
+			bounded(cmds[c]);
+			ck_assert_int_eq(answer_status(hook.req.id, s), 0);
+			ck_assert_msg(!strncmp(reply, "\033_Gi=1;", 7) &&
+				      !strncmp(reply + 7, codes[c][s - 1],
+					       strlen(codes[c][s - 1])) &&
+				      reply[7 + strlen(codes[c][s - 1])] == ':',
+				      "command %u, status %u answered %s", c, s, reply + 1);
+		}
+	}
+	ck_assert_uint_eq(placements(), 0);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+}
+END_TEST
+
+/* the min_bytes bytes of a raw format convert as inline data does */
+START_TEST(test_hook_raw)
+{
+	static const uint8_t rgb3[3] = { 0, 0, 255 };
+	static const uint8_t rgba8[8] = { 200, 100, 50, 128, 0, 255, 0, 255 };
+
+	bounded("\033_Ga=T,t=f,f=24,s=1,v=1,S=47,C=1,i=1;L3RtcC94\033\\");
+	ck_assert_uint_eq(hook.req.min_bytes, 3);
+	ck_assert_int_eq(answer(1, TSM_VTE_IMAGE_OK, 0, 0, rgb3, 3), 0);
+	bounded("\033_Ga=T,t=s,f=32,s=2,v=1,o=z,C=1,i=2;L3NobQ==\033\\");
+	ck_assert_uint_eq(hook.req.min_bytes, 8);
+	ck_assert_int_eq(answer(2, TSM_VTE_IMAGE_OK, 0, 0, rgba8, 8), 0);
+	ck_assert_str_eq(reply, "\033_Gi=1;OK\033\\\033_Gi=2;OK\033\\");
+	ck_assert_uint_eq(placements(), 2);
+	ck_assert_uint_eq(pixel(placement(0), 0, 0), 0xff0000ffu);
+	ck_assert(placement(0)->flags & TSM_FRAME_OPAQUE);
+	ck_assert_uint_eq(pixel(placement(1), 0, 0),
+			  0x80000000u | 100u << 16 | 50u << 8 | 25u);
+	ck_assert_uint_eq(pixel(placement(1), 1, 0), 0xff00ff00u);
+	ck_assert(!(placement(1)->flags & TSM_FRAME_OPAQUE));
 }
 END_TEST
 
@@ -597,7 +755,7 @@ START_TEST(test_hook_pause)
 	ck_assert_uint_eq(reply_len, 0);
 	/* tsm_vte_input drops bytes while the request is out */
 	input("Y");
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 1, 0, 2, 2, PX2), 0);
+	ck_assert_int_eq(answer_png(1, 2, 2, PX2), 0);
 	ck_assert_uint_eq(bounded(in + n), strlen(in + n));
 	ck_assert_str_eq(reply, "\033_Gi=1;OK\033\\\033_Gi=1;OK\033\\\033[1;3R");
 	ck_assert_uint_eq(placements(), 1);
@@ -607,75 +765,92 @@ START_TEST(test_hook_pause)
 	reply_clear();
 	ck_assert_uint_eq(bounded("\xc2\x9fGa=t,t=f,f=100,i=2;L3RtcC94\xc2\x9c" "Z"),
 			  strlen("\xc2\x9fGa=t,t=f,f=100,i=2;L3RtcC94\xc2\x9c"));
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 2, -EBADF, 0, 0, NULL), 0);
+	ck_assert_int_eq(answer_status(2, TSM_VTE_IMAGE_UNREADABLE), 0);
 	ck_assert_str_eq(reply, "\033_Gi=2;EBADF:Failed to read image file\033\\");
 }
 END_TEST
 
-/* the hook's error answers at once, and parsing goes on in the same call */
+/*
+ * Any negative return from the hook answers at once as
+ * TSM_VTE_IMAGE_FAILED, EBADF, and parsing goes on in the same call
+ */
 START_TEST(test_hook_errors)
 {
-	static const int errs[] = { -EBADF, -EINVAL, -ENOSPC, -EIO };
-	static const char *const answers[] = {
-		"\033_Gi=1;EBADF:Failed to read image file\033\\",
-		"\033_Gi=1;EINVAL:invalid argument\033\\",
-		"\033_Gi=1;ENOSPC:image storage is full\033\\",
-		"\033_Gi=1;EBADF:Failed to read image file\033\\",
-	};
+	static const int rets[] = { -EBADF, -EINVAL, -ENOSPC, -EIO, -1 };
 	static const char in[] = "\033_Ga=t,t=f,f=100,i=1;L3RtcC94\033\\\033[6n";
-	unsigned int i;
 	char want[128];
+	unsigned int i;
 
-	for (i = 0; i < 4; ++i) {
+	snprintf(want, sizeof(want), "%s\033[1;1R", EBADF_REPLY);
+	for (i = 0; i < sizeof(rets) / sizeof(*rets); ++i) {
 		reply_clear();
-		hook.ret = errs[i];
+		hook.ret = rets[i];
 		ck_assert_uint_eq(bounded(in), strlen(in));
-		snprintf(want, sizeof(want), "%s\033[1;1R", answers[i]);
 		ck_assert_str_eq(reply, want);
 		/* the request is not out */
-		ck_assert_int_eq(tsm_vte_image_reply(vte, hook.req.id, -EBADF, 0, 0, NULL),
+		ck_assert_int_eq(answer_status(hook.req.id, TSM_VTE_IMAGE_UNREADABLE),
 				 -ENOENT);
-	}
-
-	/* the reply's errors, any other negative one answering EBADF */
-	hook.ret = 0;
-	for (i = 0; i < 4; ++i) {
-		reply_clear();
-		bounded(in);
-		ck_assert_int_eq(tsm_vte_image_reply(vte, hook.req.id, errs[i], 0, 0, NULL), 0);
-		ck_assert_str_eq(reply, answers[i]);
 	}
 }
 END_TEST
 
 /*
  * A stale id, a reply with nothing out, and one from inside the hook change
- * nothing; a reply with no pixels ends the request with EBADF
+ * nothing; a result that disagrees with its request ends it with EBADF and
+ * returns -EINVAL
  */
 START_TEST(test_hook_reply_misuse)
 {
-	static const char in[] = "\033_Ga=t,t=f,f=100,i=1;L3RtcC94\033\\";
+	static const char png[] = "\033_Ga=t,t=f,f=100,i=1;L3RtcC94\033\\";
+	static const char raw[] = "\033_Ga=t,t=f,f=24,s=1,v=1,i=1;L3RtcC94\033\\";
+	static const uint8_t rgb4[4] = { 1, 2, 3, 4 };
+	uint64_t id = 0;
 
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 1, 0, 2, 2, PX2), -ENOENT);
-	bounded(in);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 7, 0, 2, 2, PX2), -ENOENT);
+	ck_assert_int_eq(answer_png(1, 2, 2, PX2), -ENOENT);
+	bounded(png);
+	++id;
+	ck_assert_int_eq(answer_png(7, 2, 2, PX2), -ENOENT);
 	ck_assert_uint_eq(reply_len, 0);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 1, 0, 2, 2, NULL), -EINVAL);
-	ck_assert_str_eq(reply, "\033_Gi=1;EBADF:Failed to read image file\033\\");
+
+	/* an unknown status */
+	ck_assert_int_eq(answer_status(id, TSM_VTE_IMAGE_FAILED + 1), -EINVAL);
+	ck_assert_str_eq(reply, EBADF_REPLY);
 	ck_assert_uint_gt(bounded("x"), 0);
 
+	/* no result at all */
 	reply_clear();
-	bounded(in);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 2, 0, 0, 2, PX2), -EINVAL);
-	ck_assert_str_eq(reply, "\033_Gi=1;EBADF:Failed to read image file\033\\");
+	bounded(png);
+	ck_assert_int_eq(tsm_vte_image_reply(vte, ++id, NULL), -EINVAL);
+	ck_assert_str_eq(reply, EBADF_REPLY);
+
+	/* OK with no bytes, a zero PNG size, a PNG length one byte off */
+	reply_clear();
+	bounded(png);
+	ck_assert_int_eq(answer(++id, TSM_VTE_IMAGE_OK, 2, 2, NULL, 16), -EINVAL);
+	bounded(png);
+	ck_assert_int_eq(answer(++id, TSM_VTE_IMAGE_OK, 0, 2, PX2, 0), -EINVAL);
+	bounded(png);
+	ck_assert_int_eq(answer(++id, TSM_VTE_IMAGE_OK, 2, 2, PX2, 15), -EINVAL);
+	/* a raw format's bytes other than min_bytes, either way */
+	bounded(raw);
+	ck_assert_int_eq(answer(++id, TSM_VTE_IMAGE_OK, 0, 0, rgb4, 2), -EINVAL);
+	bounded(raw);
+	ck_assert_int_eq(answer(++id, TSM_VTE_IMAGE_OK, 0, 0, rgb4, 4), -EINVAL);
+	ck_assert_str_eq(reply, "\033_Gi=1;EBADF:Failed to read image file\033\\"
+				"\033_Gi=1;EBADF:Failed to read image file\033\\"
+				"\033_Gi=1;EBADF:Failed to read image file\033\\"
+				"\033_Gi=1;EBADF:Failed to read image file\033\\"
+				"\033_Gi=1;EBADF:Failed to read image file\033\\");
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
 
 	/* -EBUSY from inside the hook leaves the request out */
 	reply_clear();
 	hook.reply_inside = true;
-	bounded(in);
+	bounded(png);
+	++id;
 	ck_assert_int_eq(hook.inside, -EBUSY);
 	ck_assert_uint_eq(bounded("x"), 0);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 3, 0, 2, 2, PX2), 0);
+	ck_assert_int_eq(answer_png(id, 2, 2, PX2), 0);
 	ck_assert_str_eq(reply, "\033_Gi=1;OK\033\\");
 }
 END_TEST
@@ -699,8 +874,7 @@ START_TEST(test_hook_cancel)
 			tsm_vte_hard_reset(vte);
 		else
 			tsm_vte_set_kitty_graphics(vte, false);
-		ck_assert_int_eq(tsm_vte_image_reply(vte, hook.req.id, 0, 2, 2, PX2),
-				 -ENOENT);
+		ck_assert_int_eq(answer_png(hook.req.id, 2, 2, PX2), -ENOENT);
 		ck_assert_uint_eq(reply_len, 0);
 		ck_assert_uint_eq(bounded("x"), 1);
 		tsm_vte_set_kitty_graphics(vte, true);
@@ -717,13 +891,13 @@ START_TEST(test_hook_cancel)
 	reply_clear();
 	bounded(in);
 	tsm_vte_set_image_cb(vte, NULL, NULL);
-	ck_assert_str_eq(reply, "\033_Gi=1;EBADF:Failed to read image file\033\\");
+	ck_assert_str_eq(reply, EBADF_REPLY);
 	ck_assert_uint_eq(bounded("x"), 1);
 	tsm_vte_set_image_cb(vte, hook_cb, &hook);
 	reply_clear();
 	bounded(in);
 	tsm_vte_set_image_cb(vte, hook_cb, &hook);
-	ck_assert_str_eq(reply, "\033_Gi=1;EBADF:Failed to read image file\033\\");
+	ck_assert_str_eq(reply, EBADF_REPLY);
 }
 END_TEST
 
@@ -742,30 +916,92 @@ END_TEST
 
 /*
  * A refused t=t or t=s command is handed over as a discard, and the client
- * gets libtsm's refusal whatever the host says; a refused t=f is not
+ * gets libtsm's refusal, once, whatever the host does: any result, a
+ * negative hook return, the hook changed while it is out; a refused t=f is
+ * not handed over
  */
 START_TEST(test_hook_discard)
 {
-	/* the host answers with an image that would fit s and v */
-	bounded("\033_Ga=f,t=s,s=2,v=2,i=1;L3NobQ==\033\\");
+	static const char shm[] = "\033_Ga=f,t=s,s=2,v=2,i=1;L3NobQ==\033\\";
+	static const char tmp[] = "\033_Ga=T,t=t,f=24,U=1,s=1,v=1,i=1;L3RtcC94\033\\";
+	struct tsm_vte_image_result odd = { .status = 99 };
+
+	/* the host answers OK with an image */
+	bounded(shm);
 	ck_assert_uint_eq(hook.calls, 1);
-	ck_assert(hook.req.discard);
+	ck_assert_uint_eq(hook.req.flags, TSM_VTE_IMAGE_DISCARD);
 	ck_assert_uint_eq(hook.req.medium, TSM_VTE_IMAGE_SHM);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 1, 0, 2, 2, PX2), 0);
-	ck_assert_str_eq(reply, "\033_Gi=1;EINVAL:invalid argument\033\\");
+	ck_assert_int_eq(answer_png(1, 2, 2, PX2), 0);
+	ck_assert_str_eq(reply, EINVAL_REPLY);
 	ck_assert_uint_eq(tsm_screen_test_image_count(screen), 0);
 
-	/* the hook refusing it changes nothing either */
+	/* an unknown status, and no result, are accepted and ignored */
 	reply_clear();
-	hook.ret = -ENOSPC;
-	bounded("\033_Ga=T,t=t,f=24,U=1,s=1,v=1,i=2;L3RtcC94\033\\");
-	ck_assert(hook.req.discard);
-	ck_assert_str_eq(reply, "\033_Gi=2;EINVAL:invalid argument\033\\");
+	bounded(tmp);
+	ck_assert_uint_eq(hook.req.medium, TSM_VTE_IMAGE_TEMP);
+	ck_assert_int_eq(tsm_vte_image_reply(vte, 2, &odd), 0);
+	bounded(shm);
+	ck_assert_int_eq(tsm_vte_image_reply(vte, 3, NULL), 0);
+	ck_assert_str_eq(reply, "\033_Gi=1;EINVAL:invalid argument\033\\"
+				"\033_Gi=1;EINVAL:invalid argument\033\\");
+
+	/* a negative return: the refusal alone, once */
+	reply_clear();
+	hook.ret = -EACCES;
+	bounded(tmp);
+	ck_assert_uint_eq(hook.req.flags, TSM_VTE_IMAGE_DISCARD);
+	ck_assert_str_eq(reply, EINVAL_REPLY);
+	ck_assert_int_eq(answer_status(hook.req.id, TSM_VTE_IMAGE_FAILED), -ENOENT);
+	ck_assert_str_eq(reply, EINVAL_REPLY);
+	hook.ret = 0;
+
+	/* the hook removed, or installed, while a discard is out */
+	reply_clear();
+	bounded(shm);
+	tsm_vte_set_image_cb(vte, NULL, NULL);
+	tsm_vte_set_image_cb(vte, hook_cb, &hook);
+	bounded(tmp);
+	tsm_vte_set_image_cb(vte, hook_cb, &hook);
+	ck_assert_str_eq(reply, "\033_Gi=1;EINVAL:invalid argument\033\\"
+				"\033_Gi=1;EINVAL:invalid argument\033\\");
+
+	/* and from inside the hook */
+	reply_clear();
+	hook.action = HOOK_REPLACE;
+	bounded(shm);
+	ck_assert_str_eq(reply, EINVAL_REPLY);
+	hook.action = HOOK_NOTHING;
 
 	reply_clear();
+	ck_assert_uint_eq(hook.calls, 7);
 	bounded("\033_Ga=f,t=f,i=3;L3RtcC94\033\\");
-	ck_assert_uint_eq(hook.calls, 2);
+	ck_assert_uint_eq(hook.calls, 7);
 	ck_assert_str_eq(reply, "\033_Gi=3;EINVAL:invalid argument\033\\");
+}
+END_TEST
+
+/*
+ * An a=q with I and no i never reaches the hook, not even as a discard, and
+ * buffers no inline data
+ */
+START_TEST(test_hook_query_number)
+{
+	bounded("\033_Ga=q,t=t,f=24,s=1,v=1,I=52;L3RtcC94\033\\"
+		"\033_Ga=q,t=s,f=24,s=1,v=1,I=52,q=1;L3NobQ==\033\\"
+		"\033_Ga=q,t=f,f=100,I=52,q=2;L3RtcC94\033\\"
+		/* refused with i: would be a discard */
+		"\033_Ga=q,t=t,f=24,I=52;L3RtcC94\033\\"
+		"\033_Ga=q,f=100,I=52,m=1;iVBORw==\033\\");
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+	bounded("\033_Gm=0;iVBORw==\033\\\033_Ga=q,f=24,s=1,v=1,o=z,I=52;eJw=\033\\");
+	ck_assert_uint_eq(hook.calls, 0);
+	ck_assert_uint_eq(reply_len, 0);
+
+	/* with i it does */
+	bounded("\033_Ga=q,t=t,f=24,s=1,v=1,i=51;L3RtcC94\033\\");
+	ck_assert_uint_eq(hook.calls, 1);
+	ck_assert_int_eq(answer_status(hook.req.id, TSM_VTE_IMAGE_UNREADABLE), 0);
+	ck_assert_str_eq(reply, "\033_Gi=51;EBADF:Failed to read image file\033\\");
 }
 END_TEST
 
@@ -793,7 +1029,7 @@ START_TEST(test_hook_budget)
 	free(cmd);
 	ck_assert_uint_eq(hook.calls, 1);
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 1, 0, 2, 2, PX2), 0);
+	ck_assert_int_eq(answer_png(1, 2, 2, PX2), 0);
 	ck_assert_str_eq(reply, "\033_Gi=2;OK\033\\");
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(2, 2));
 	ck_assert_uint_eq(pixel(placement(0), 1, 0), 0xff00ff00u);
@@ -803,25 +1039,24 @@ START_TEST(test_hook_budget)
 	reply_clear();
 	bounded("\033_Ga=t,t=f,f=100,i=3;L3RtcC94\033\\");
 	big = calloc(1, 64 * 64 * 4);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 2, 0, 64, 64, big), 0);
+	ck_assert_int_eq(answer_png(2, 64, 64, big), 0);
 	free(big);
 	ck_assert_str_eq(reply, "\033_Gi=3;ENOSPC:image storage is full\033\\");
 
 	/* a=q stores nothing */
 	reply_clear();
 	bounded("\033_Ga=q,t=f,f=100,i=4;L3RtcC94\033\\");
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 3, 0, 2, 2, PX2), 0);
+	ck_assert_int_eq(answer_png(3, 2, 2, PX2), 0);
 	ck_assert_str_eq(reply, "\033_Gi=4;OK\033\\");
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(2, 2));
 
-	/* past max-graphic-size, and unlike s and v */
+	/* a PNG past max-graphic-size, either way */
 	reply_clear();
-	ck_assert_int_eq(tsm_vte_set_graphic_max_size(vte, 1, 1), 0);
+	ck_assert_int_eq(tsm_vte_set_graphic_max_size(vte, 1, 2), 0);
 	bounded("\033_Ga=t,t=f,f=100,i=5;L3RtcC94\033\\");
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 4, 0, 2, 2, PX2), 0);
-	ck_assert_int_eq(tsm_vte_set_graphic_max_size(vte, 0, 0), 0);
-	bounded("\033_Ga=t,t=f,f=32,s=1,v=1,i=6;L3RtcC94\033\\");
-	ck_assert_int_eq(tsm_vte_image_reply(vte, 5, 0, 2, 2, PX2), 0);
+	ck_assert_int_eq(answer_png(4, 2, 2, PX2), 0);
+	bounded("\033_Ga=t,t=f,f=100,i=6;L3RtcC94\033\\");
+	ck_assert_int_eq(answer(5, TSM_VTE_IMAGE_OK, 1, 4, PX2, 16), 0);
 	ck_assert_str_eq(reply, "\033_Gi=5;EINVAL:invalid argument\033\\"
 				"\033_Gi=6;EINVAL:invalid argument\033\\");
 }
@@ -936,8 +1171,7 @@ START_TEST(test_hook_inside)
 		ck_assert_uint_eq(bounded(png), strlen(png));
 		ck_assert_uint_eq(reply_len, 0);
 		ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
-		ck_assert_int_eq(tsm_vte_image_reply(vte, hook.req.id, 0, 2, 2, PX2),
-				 -ENOENT);
+		ck_assert_int_eq(answer_png(hook.req.id, 2, 2, PX2), -ENOENT);
 		ck_assert_uint_eq(bounded("x"), 1);
 	}
 
@@ -952,7 +1186,7 @@ START_TEST(test_hook_inside)
 	x = tsm_screen_get_cursor_x(screen);
 	bounded(file);
 	ck_assert_uint_eq(hook.fed, 0);
-	ck_assert_int_eq(tsm_vte_image_reply(vte, hook.req.id, -EBADF, 0, 0, NULL), 0);
+	ck_assert_int_eq(answer_status(hook.req.id, TSM_VTE_IMAGE_UNREADABLE), 0);
 	ck_assert_str_eq(reply, "\033_Gi=2;EBADF:Failed to read image file\033\\");
 	/* neither "x" nor "y" reached the screen */
 	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), x);
@@ -1032,12 +1266,16 @@ TEST_END_CASE
 TEST_DEFINE_CASE(host)
 	CHECKED_FIXTURE(hook_setup, teardown)
 	TEST(test_hook_request)
+	TEST(test_hook_terms)
+	TEST(test_hook_outcomes)
+	TEST(test_hook_raw)
 	TEST(test_hook_pause)
 	TEST(test_hook_errors)
 	TEST(test_hook_reply_misuse)
 	TEST(test_hook_cancel)
 	TEST(test_hook_unbounded)
 	TEST(test_hook_discard)
+	TEST(test_hook_query_number)
 	TEST(test_hook_budget)
 	TEST(test_hook_inside)
 	TEST(test_hook_unbounded_buffer)

@@ -23,10 +23,13 @@
  *    consumes nothing until the reply, and only the request out is answered;
  *  - freeing the vte and the screen gives every byte back.
  *
- * The host hook takes every request; after each bounded call the target
- * answers the one out, in turn: an image, each error, an image unlike s and
- * v, and a reply with no pixels; or the hook refuses the request itself, or
- * resets the vte from inside. Between a request and its reply the target may
+ * The host hook takes every request, checking its terms against ADR-103's
+ * What libtsm asks for; after each bounded call the target answers the one
+ * out, in turn: the bytes it asks for (a PNG's image, or min_bytes of a raw
+ * format), each outcome other than OK, a result that disagrees with the
+ * request (a length one byte off, an unknown status), and OK with no bytes;
+ * or the hook refuses the request itself, or resets the vte from inside. A
+ * discard takes any of these and answers 0. Between a request and its reply the target may
  * cancel it (tsm_vte_reset, tsm_vte_hard_reset, kitty graphics off, a hook
  * change), resize the screen before answering, or free the vte with the
  * request still out.
@@ -107,17 +110,40 @@ static struct {
 	bool out;
 	uint64_t id, last;
 	unsigned int turn;
+	unsigned int flags;
+	uint64_t min_bytes;
 } host;
 
 static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
 		   void *data)
 {
+	const unsigned int known = TSM_VTE_IMAGE_INFLATE | TSM_VTE_IMAGE_PNG |
+				   TSM_VTE_IMAGE_EXACT | TSM_VTE_IMAGE_DISCARD;
+
 	(void)vte;
 	(void)data;
 	check(!host.out);
 	check(req->id == host.last + 1);
 	check(req->medium == 'd' ? req->data && !req->name : req->name && !req->data);
-	check(!req->discard || req->medium == 't' || req->medium == 's');
+	check(!(req->flags & ~known));
+	/* the spec's integers are 32-bit, and inline data has no bounds */
+	check(req->offset <= UINT32_MAX && req->read_max <= UINT32_MAX);
+	check(req->medium != 'd' || (!req->offset && !req->read_max));
+	if (req->flags & TSM_VTE_IMAGE_DISCARD) {
+		check(req->flags == TSM_VTE_IMAGE_DISCARD);
+		check(req->medium == 't' || req->medium == 's');
+		check(!req->offset && !req->read_max && !req->min_bytes);
+	} else if (req->flags & TSM_VTE_IMAGE_PNG) {
+		/* EXACT only for inline PNG with zlib and a non-zero S */
+		check(!(req->flags & TSM_VTE_IMAGE_EXACT) ||
+		      (req->medium == 'd' && (req->flags & TSM_VTE_IMAGE_INFLATE) &&
+		       req->min_bytes));
+		check(!req->min_bytes || (req->flags & TSM_VTE_IMAGE_EXACT));
+	} else {
+		/* a raw format: s x v x bpp, and inline only with zlib */
+		check(!(req->flags & TSM_VTE_IMAGE_EXACT) && req->min_bytes);
+		check(req->medium != 'd' || (req->flags & TSM_VTE_IMAGE_INFLATE));
+	}
 	host.last = req->id;
 	/* every fifth request the hook refuses itself */
 	if (++host.turn % 5 == 4)
@@ -129,6 +155,8 @@ static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
 	}
 	host.out = true;
 	host.id = req->id;
+	host.flags = req->flags;
+	host.min_bytes = req->min_bytes;
 	return 0;
 }
 
@@ -148,7 +176,7 @@ static bool host_disturb(struct tsm_screen *screen, struct tsm_vte *vte)
 		tsm_vte_set_kitty_graphics(vte, true);
 		return true;
 	case 6:
-		/* answered EBADF to the client */
+		/* answered EBADF to the client, or a discard's refusal */
 		tsm_vte_set_image_cb(vte, host_cb, NULL);
 		return true;
 	case 7:
@@ -160,37 +188,76 @@ static bool host_disturb(struct tsm_screen *screen, struct tsm_vte *vte)
 	}
 }
 
-/* answers the request out: an image, the errors, or a mistake */
+static int reply_with(struct tsm_vte *vte, uint64_t id, unsigned int status,
+		      unsigned int width, unsigned int height, const uint8_t *data,
+		      size_t len)
+{
+	struct tsm_vte_image_result res = {
+		.status = status,
+		.width = width,
+		.height = height,
+		.data = data,
+		.len = len,
+	};
+
+	return tsm_vte_image_reply(vte, id, &res);
+}
+
+/* answers the request out: what it asks for, an outcome, or a mistake */
 static void host_answer(struct tsm_screen *screen, struct tsm_vte *vte)
 {
 	static const uint8_t px[4 * 4 * 4] = { 255, 0, 0, 128 };
+	bool png = host.flags & TSM_VTE_IMAGE_PNG;
+	bool discard = host.flags & TSM_VTE_IMAGE_DISCARD;
+	uint8_t *raw = NULL;
+	size_t len;
 	int r;
 
 	host.out = false;
 	/* a stale id changes nothing */
-	check(tsm_vte_image_reply(vte, host.id + 1, 0, 1, 1, px) == -ENOENT);
+	check(reply_with(vte, host.id + 1, TSM_VTE_IMAGE_OK, 1, 1, px, 4) == -ENOENT);
 	if (host_disturb(screen, vte)) {
 		/* the request is gone: its reply finds nothing, and the next
 		 * bounded call consumes input again (the caller checks) */
-		check(tsm_vte_image_reply(vte, host.id, 0, 4, 4, px) == -ENOENT);
+		check(reply_with(vte, host.id, TSM_VTE_IMAGE_FAILED, 0, 0, NULL, 0) == -ENOENT);
 		return;
 	}
+	/* a raw format's bytes, as a host bounded by its budget sends them */
+	len = png || discard ? 64 : host.min_bytes;
+	if (!png && !discard && len <= 65536)
+		raw = calloc(1, len + 1);
 	switch (host.turn % 5) {
 	case 0:
-		r = tsm_vte_image_reply(vte, host.id, 0, 4, 4, px);
+		if (png)
+			r = reply_with(vte, host.id, TSM_VTE_IMAGE_OK, 4, 4, px, 64);
+		else if (raw)
+			r = reply_with(vte, host.id, TSM_VTE_IMAGE_OK, 0, 0, raw, len);
+		else
+			r = reply_with(vte, host.id, TSM_VTE_IMAGE_OVER_BUDGET, 0, 0, NULL, 0);
 		break;
 	case 1:
-		r = tsm_vte_image_reply(vte, host.id, host.turn & 4 ? -EINVAL : -EBADF,
-					0, 0, NULL);
+		r = reply_with(vte, host.id, TSM_VTE_IMAGE_UNREADABLE + host.turn / 5 % 6,
+			       0, 0, NULL, 0);
 		break;
 	case 2:
-		r = tsm_vte_image_reply(vte, host.id, 0, 1, 3, px);
-		break;
+		/* one byte more than asked, or an unknown status */
+		if (host.turn & 8)
+			r = reply_with(vte, host.id, TSM_VTE_IMAGE_FAILED + 1, 0, 0, NULL, 0);
+		else if (png)
+			r = reply_with(vte, host.id, TSM_VTE_IMAGE_OK, 1, 3, px, 13);
+		else
+			r = reply_with(vte, host.id, TSM_VTE_IMAGE_OK, 0, 0, raw ? raw : px,
+				       raw ? len + 1 : 0);
+		check(r == (discard ? 0 : -EINVAL));
+		free(raw);
+		return;
 	default:
-		r = tsm_vte_image_reply(vte, host.id, 0, 4, 4, NULL);
-		check(r == -EINVAL);
+		r = reply_with(vte, host.id, TSM_VTE_IMAGE_OK, 4, 4, NULL, 64);
+		check(r == (discard ? 0 : -EINVAL));
+		free(raw);
 		return;
 	}
+	free(raw);
 	check(r == 0);
 }
 

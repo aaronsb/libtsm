@@ -54,14 +54,14 @@ void tsm_kitty_cancel(struct tsm_kitty *k);
 /*
  * The host hook (TSM_VTE_IMAGE_HOST): while a request is out the vte parses
  * nothing, and tsm_kitty_reply answers it, with tsm_vte_image_reply's
- * arguments and returns. Setting the hook answers a request out with EBADF.
+ * arguments and returns. Setting the hook answers a request out as
+ * TSM_VTE_IMAGE_FAILED.
  */
 bool tsm_kitty_paused(struct tsm_kitty *k);
 /* whether the hook is running now */
 bool tsm_kitty_in_hook(struct tsm_kitty *k);
 void tsm_kitty_set_hook(struct tsm_kitty *k, tsm_vte_image_cb hook, void *data);
-int tsm_kitty_reply(struct tsm_kitty *k, uint64_t id, int error, unsigned int width,
-		    unsigned int height, const uint8_t *rgba);
+int tsm_kitty_reply(struct tsm_kitty *k, uint64_t id, const struct tsm_vte_image_result *res);
 
 /* the image work done so far, in pixels and payload bytes, which the vte
  * counts against an input call's bound */

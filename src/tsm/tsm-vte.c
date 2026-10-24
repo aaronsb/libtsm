@@ -3394,9 +3394,8 @@ void tsm_vte_set_image_cb(struct tsm_vte *vte, tsm_vte_image_cb image_cb,
 }
 
 SHL_EXPORT
-int tsm_vte_image_reply(struct tsm_vte *vte, uint64_t id, int error,
-			unsigned int width, unsigned int height,
-			const uint8_t *rgba)
+int tsm_vte_image_reply(struct tsm_vte *vte, uint64_t id,
+			const struct tsm_vte_image_result *res)
 {
 	int ret;
 
@@ -3405,7 +3404,7 @@ int tsm_vte_image_reply(struct tsm_vte *vte, uint64_t id, int error,
 
 	/* the client's reply is written as one to its input */
 	++vte->parse_cnt;
-	ret = tsm_kitty_reply(vte->kitty, id, error, width, height, rgba);
+	ret = tsm_kitty_reply(vte->kitty, id, res);
 	screen_images_settle(vte->con);
 	--vte->parse_cnt;
 	return ret;
