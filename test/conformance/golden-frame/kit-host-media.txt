@@ -1,15 +1,15 @@
 size 12x4
 cursor 6,0
 flags AUTO_WRAP
-host: 1 t=f f=24 o=- discard=0 s=8 v=16 O=0 S=0 name=/srv/img/picture.rgb len=0
+host: 1 t=f flags=- O=0 max=0 min=384 name=/srv/img/picture.rgb len=0
 reply 1b5f47693d313b4f4b1b5c
-host: 2 t=t f=100 o=- discard=0 s=0 v=0 O=0 S=0 name=/tmp/tty-graphics-protocol-pic.png len=0
+host: 2 t=t flags=png O=0 max=0 min=0 name=/tmp/tty-graphics-protocol-pic.png len=0
 reply 1b5f47693d323b4f4b1b5c
-host: 3 t=s f=32 o=- discard=0 s=8 v=8 O=4 S=256 name=/frame len=0
+host: 3 t=s flags=- O=4 max=256 min=256 name=/frame len=0
 reply 1b5f47693d333b4f4b1b5c
-host: 4 t=d f=100 o=- discard=0 s=0 v=0 O=0 S=0 name= len=48
+host: 4 t=d flags=png O=0 max=0 min=0 name= len=48
 reply 1b5f47693d343b4f4b1b5c
-host: 5 t=d f=32 o=z discard=0 s=8 v=8 O=0 S=0 name= len=32
+host: 5 t=d flags=inflate O=0 max=0 min=256 name= len=32
 reply 1b5f47693d353b4f4b1b5c1b5f47693d363b4f4b1b5c1b5b313b3752
 palette legacy fg=#e5e5e5 bg=#000000
 changed 48

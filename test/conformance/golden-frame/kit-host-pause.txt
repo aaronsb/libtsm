@@ -1,7 +1,7 @@
 size 12x4
 cursor 3,0
 flags AUTO_WRAP
-host: 1 t=f f=100 o=- discard=0 s=0 v=0 O=0 S=0 name=/tmp/pic len=0
+host: 1 t=f flags=png O=0 max=0 min=0 name=/tmp/pic len=0
 reply 1b5f47693d313b4f4b1b5c1b5f47693d313b4f4b1b5c1b5b313b3452
 palette legacy fg=#e5e5e5 bg=#000000
 changed 48
