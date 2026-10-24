@@ -1231,14 +1231,15 @@ def _():
 @case("kit-query-number", 12, 4)
 def _():
     # an a=q without i, with I=52 or with neither, is dropped at its ST, as
-    # kitty 0.49.2 drops it (ADR-107, rounds 4 to 6): no reply under q
-    # absent, 1 or 2, on t=d, t=t and t=s, whether its data would load or
-    # not, and a chunked one's continuation is swallowed; a=p of number 52
+    # kitty 0.49.2 drops it (ADR-107, rounds 4 to 6b): no reply under q
+    # absent, 0, 1 or 2, on t=d, t=t and t=s, whether its data would load
+    # or is too short, and a chunked one's continuation is swallowed; a=p of
+    # number 52
     # then finds nothing (ENOENT), and the same a=q with i=51 answers OK
     tmp, shm = b"/tmp/tty-graphics-protocol-q", b"/kitty-q"
     out = cell()
     for ids in (",I=52", ""):
-        for q in ("", ",q=1", ",q=2"):
+        for q in ("", ",q=0", ",q=1", ",q=2"):
             out += (kitty("a=q,f=24,s=1,v=1" + ids + q, rgb(1, 1)) +
                     kitty("a=q,f=24,s=2,v=1" + ids + q, rgb(1, 1)) +
                     kitty("a=q,t=t,f=24,s=1,v=1" + ids + q, tmp) +
