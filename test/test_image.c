@@ -496,9 +496,9 @@ START_TEST(test_image_store_cap)
 END_TEST
 
 /*
- * A kitty id transmitted again while a cut piece still owes its charge: what
- * is owed is settled first, which may evict the old image, and the new one
- * then stands alone rather than replacing a freed one.
+ * A kitty id transmitted again while a cut piece still owes its charge: the
+ * old image is held while what is owed is settled, so settling cannot evict
+ * it and the new one replaces it with its bytes (libtsm#37).
  */
 START_TEST(test_image_replace_while_owed)
 {
@@ -521,12 +521,14 @@ START_TEST(test_image_replace_while_owed)
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(4, 4) +
 			  COST(24, 6) + TSM_SCREEN_PLACEMENT_OVERHEAD);
 
-	/* the piece's charge evicts the unplaced kitty image before id 7 is
-	 * looked up; the new id 7 then has no room beside the placed sixel */
-	ck_assert_int_eq(try_image(screen, 4, 4, 7, &key), -ENOSPC);
-	ck_assert_uint_eq(tsm_screen_test_image_count(screen), 1);
+	/* id 7 is held while the piece's charge is settled (libtsm#37), so
+	 * the charge is paid by dropping a piece of the sixel, and the new id
+	 * 7 takes the old one's bytes */
+	ck_assert_int_eq(try_image(screen, 4, 4, 7, &key), 0);
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen), 2);
+	ck_assert_uint_eq(tsm_screen_test_placement_count(screen), 1);
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen),
-			  COST(24, 6) + TSM_SCREEN_PLACEMENT_OVERHEAD);
+			  COST(4, 4) + COST(24, 6));
 	teardown(screen, vte);
 }
 END_TEST

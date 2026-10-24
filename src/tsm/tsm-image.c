@@ -1464,22 +1464,27 @@ int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 	    desc->kind > TSM_IMAGE_KITTY ||
 	    (desc->kind == TSM_IMAGE_KITTY && !desc->id))
 		return -EINVAL;
-	/* what pieces owe is asked for first, so what follows sees the room
-	 * really left, and nothing it finds is evicted after */
-	screen_images_settle(con);
 	st = cur_store(con);
 	n = (size_t)desc->width * desc->height;
 	bytes = n * 4 + TSM_SCREEN_IMAGE_OVERHEAD;
 
-	screen_inc_age(con);
 	/* transmitting an id again replaces that image, with its placements,
-	 * once the new one has its bytes; refused, the old one stays */
+	 * once the new one has its bytes; refused, the old one stays. It is
+	 * held meanwhile, so settling cannot evict it (libtsm#37). */
 	if (desc->kind == TSM_IMAGE_KITTY)
 		old = store_find_id(st, desc->id);
+	if (old)
+		++old->hold;
+	/* what pieces owe is asked for first, so what follows sees the room
+	 * really left, and nothing it finds is evicted after */
+	screen_images_settle(con);
+	screen_inc_age(con);
 
 	ret = old ? 0 : store_make_room(con, st);
 	if (!ret)
 		ret = budget_reserve(con, bytes, old, &added);
+	if (old)
+		--old->hold;
 	if (ret)
 		return ret;
 	image = calloc(1, sizeof(*image));
