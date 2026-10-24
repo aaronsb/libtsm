@@ -32,10 +32,10 @@
  * replies, keep their order.
  *
  * Replies follow the spec: only to a command that carries i or I, q=1
- * suppressing OK and q=2 every reply. An a=q with I and no i is the
- * exception: it is dropped at its ST, nothing read and nothing answered under
- * any q, as kitty 0.49.2 run as a black box drops it (ADR-107, rounds 4 and
- * 5). The spec's Unicode placeholder section
+ * suppressing OK and q=2 every reply. An a=q without i, with or without I,
+ * is the exception: it is dropped at its ST, nothing read and nothing
+ * answered under any q, as kitty 0.49.2 run as a black box drops it
+ * (ADR-107, rounds 4 to 6). The spec's Unicode placeholder section
  * reads q=2 so: images are created "in quiet mode (q=2) so that there are no
  * responses from the terminal that could confuse the host application". A
  * delete answers only an error, as Ghostty's delete does
@@ -302,12 +302,12 @@ static bool is_transmission(const struct kitty_cmd *cmd)
 }
 
 /*
- * An a=q with I and no i, which gets no reply and reads nothing (ADR-103's
- * Kitty graphics protocol section)
+ * An a=q without i, with or without I, which gets no reply and reads nothing
+ * (ADR-103's Kitty graphics protocol section)
  */
 static bool is_dropped(const struct kitty_cmd *cmd)
 {
-	return cmd->a == 'q' && cmd->I && !cmd->i;
+	return cmd->a == 'q' && !cmd->i;
 }
 
 /*

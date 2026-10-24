@@ -1205,9 +1205,10 @@ START_TEST(test_hook_unbounded_buffer)
 END_TEST
 
 /*
- * An a=q with I and no i is dropped at its ST under every q and on every
- * medium, as kitty 0.49.2 drops it (ADR-107): no reply, nothing stored, its
- * chunks swallowed; with i it answers
+ * An a=q without i, with I or with neither, is dropped at its ST under every
+ * q and on every medium, as kitty 0.49.2 drops it (ADR-107): no reply,
+ * nothing stored, its data not even counted (no excess logged), its chunks
+ * swallowed; with i it answers
  */
 START_TEST(test_kitty_query_number)
 {
@@ -1224,13 +1225,24 @@ START_TEST(test_kitty_query_number)
 		"\033_Ga=q,t=s,f=24,s=1,v=1,I=52,q=2;L2tpdHR5LXNobQ==\033\\",
 		/* chunked: the continuation is swallowed, not read as a=t */
 		"\033_Ga=q,f=24,s=1,v=1,I=52,m=1;/w==\033\\\033_Gm=0;AAA=\033\\",
+		/* neither i nor I */
+		"\033_Ga=q,f=24,s=1,v=1;/wAA\033\\",
+		"\033_Ga=q,f=24,s=2,v=1,q=1;/wAA\033\\",
+		"\033_Ga=q,t=t,f=24,s=1,v=1;L3RtcC90dHktZ3JhcGhpY3MtcHJvdG9jb2wtMQ==\033\\",
+		"\033_Ga=q,t=s,f=24,s=1,v=1,q=2;L2tpdHR5LXNobQ==\033\\",
+		"\033_Ga=q,f=24,s=1,v=1,m=1;/w==\033\\\033_Gm=0;AAA=\033\\",
+		/* data past s x v: a dropped query counts none of it */
+		"\033_Ga=q,f=24,s=1,v=1;/wAA/wAA\033\\",
+		"\033_Ga=q,f=24,s=1,v=1,I=52;/wAA/wAA\033\\",
 	};
 	size_t i;
 
+	debug_log[0] = 0;
 	for (i = 0; i < sizeof(cmds) / sizeof(*cmds); ++i) {
 		input(cmds[i]);
 		ck_assert_msg(reply_len == 0, "command %zu answered %s", i, reply + 1);
 	}
+	ck_assert_str_eq(debug_log, "");
 	ck_assert_uint_eq(placements(), 0);
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
 
