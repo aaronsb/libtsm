@@ -1305,14 +1305,37 @@ START_TEST(test_hook_inside)
 }
 END_TEST
 
-/* tsm_vte_input buffers no inline PNG for the hook it cannot use */
+/*
+ * tsm_vte_input buffers no inline PNG for the hook it cannot use, nor goes on
+ * buffering one begun in tsm_vte_input_bounded: the command answers EINVAL,
+ * as without a hook, its bytes given back
+ */
 START_TEST(test_hook_unbounded_buffer)
 {
 	input("\033_Ga=t,f=100,i=1,m=1;iVBORw==\033\\");
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
 	input("\033_Gm=0;iVBORw==\033\\");
 	ck_assert_uint_eq(hook.calls, 0);
-	ck_assert_str_eq(reply, "\033_Gi=1;EINVAL:invalid argument\033\\");
+	ck_assert_str_eq(reply, EINVAL_REPLY);
+
+	/* the APC begun in a bounded call, its payload through tsm_vte_input */
+	reply_clear();
+	bounded("\033_Ga=t,f=100,i=2");
+	input(";iVBORw==");
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+	input("\033\\");
+	ck_assert_uint_eq(hook.calls, 0);
+	ck_assert_str_eq(reply, "\033_Gi=2;EINVAL:invalid argument\033\\");
+
+	/* a chunked one, its first chunk buffered in a bounded call */
+	reply_clear();
+	bounded("\033_Ga=t,f=100,i=3,m=1;iVBORw==\033\\");
+	ck_assert_uint_gt(tsm_screen_get_image_bytes(screen), 0);
+	input("\033_Gm=1;iVBORw==\033\\");
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+	bounded("\033_Gm=0;iVBORw==\033\\");
+	ck_assert_uint_eq(hook.calls, 0);
+	ck_assert_str_eq(reply, "\033_Gi=3;EINVAL:invalid argument\033\\");
 }
 END_TEST
 

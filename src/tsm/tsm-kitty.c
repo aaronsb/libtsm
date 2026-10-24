@@ -148,7 +148,8 @@ struct tsm_kitty {
 	bool in_hook;
 	uint64_t last_request;
 	struct kitty_request req;
-	bool host_ok;			/* this input call may hand out a request */
+	bool host_ok;			/* the input call running may hand out a
+					   request, set by each call */
 	/* bumped by every cancel and every hook change, so a request can tell
 	 * that one happened while its hook ran */
 	uint64_t cancels;
@@ -646,6 +647,13 @@ static void request(struct tsm_kitty *k, const struct kitty_cmd *cmd, bool disca
  * Direct transmission
  */
 
+/* whether the input call running may buffer for, and hand a request to, the
+ * hook; from tsm_vte_input, or with no hook, commands answer without one */
+static bool host_open(const struct tsm_kitty *k)
+{
+	return k->hook && k->host_ok;
+}
+
 static void upload_abort(struct tsm_kitty *k)
 {
 	struct kitty_upload *up = &k->up;
@@ -700,7 +708,7 @@ static void upload_start(struct tsm_kitty *k)
 	/* PNG and zlib are the host's: buffered for its hook when this input
 	 * call may hand it a request, else EINVAL, with nothing buffered */
 	if (cmd->f == 100 || cmd->o == 'z') {
-		if (k->hook && k->host_ok)
+		if (host_open(k))
 			up->mode = UPLOAD_HOST;
 		else
 			up->err = -EINVAL;
@@ -768,7 +776,13 @@ static void upload_data(struct tsm_kitty *k, const uint8_t *data, size_t n)
 	struct kitty_upload *up = &k->up;
 
 	if (up->mode == UPLOAD_HOST) {
-		if (upload_grow(k, n)) {
+		/* a later input call that cannot hand the request out (the
+		 * upload begun in tsm_vte_input_bounded, continued in
+		 * tsm_vte_input) buffers nothing more: the upload fails as it
+		 * would have without a hook, its bytes given back */
+		if (!host_open(k))
+			upload_fail(k, -EINVAL);
+		else if (upload_grow(k, n)) {
 			memcpy(up->buf + up->len, data, n);
 			up->len += n;
 		}
@@ -837,7 +851,7 @@ static void upload_finish(struct tsm_kitty *k)
 		up->buf = NULL;
 		up->cap = 0;
 		up->mode = UPLOAD_NONE;
-		if (k->hook && k->host_ok)
+		if (host_open(k))
 			request(k, &cmd, false, 0, buf, up->len);
 		else
 			reply(k, &cmd, cmd.i, -EINVAL);
@@ -1035,7 +1049,7 @@ static void command_start(struct tsm_kitty *k)
 static void media_finish(struct tsm_kitty *k)
 {
 	const struct kitty_cmd *cmd = &k->cmd;
-	bool host = k->hook && k->host_ok;
+	bool host = host_open(k);
 	int ret, name_err = k->name_err;
 
 	if (is_dropped(cmd))
@@ -1161,9 +1175,16 @@ void tsm_kitty_set_max_size(struct tsm_kitty *k, unsigned int width, unsigned in
 	k->max_height = height;
 }
 
-void tsm_kitty_begin(struct tsm_kitty *k, bool host_ok)
+bool tsm_kitty_set_host(struct tsm_kitty *k, bool host_ok)
 {
+	bool old = k->host_ok;
+
 	k->host_ok = host_ok;
+	return old;
+}
+
+void tsm_kitty_begin(struct tsm_kitty *k)
+{
 	k->phase = PHASE_FIRST;
 	k->target = TARGET_NONE;
 	k->nkeys = 0;
@@ -1206,11 +1227,10 @@ void tsm_kitty_feed_run(struct tsm_kitty *k, const char *u8, size_t len)
 	payload(k, (const unsigned char *)u8, len);
 }
 
-void tsm_kitty_end(struct tsm_kitty *k, uint32_t data, bool host_ok)
+void tsm_kitty_end(struct tsm_kitty *k, uint32_t data)
 {
 	enum kitty_phase phase = k->phase;
 
-	k->host_ok = host_ok;
 	k->phase = PHASE_IGNORE;
 	if (phase == PHASE_FIRST || phase == PHASE_IGNORE)
 		return;

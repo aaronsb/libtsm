@@ -242,8 +242,6 @@ struct tsm_vte {
 	bool kitty_enabled;
 	struct tsm_kitty *kitty;
 	bool apc_kitty;				/* the APC streams into it */
-	bool host_ok;				/* this input call may hand the
-						   host hook a request */
 	/* the image work tsm_vte_input_bounded has left in this call */
 	uint64_t work_left;
 };
@@ -1143,7 +1141,7 @@ static void do_apc_start(struct tsm_vte *vte)
 {
 	vte->apc_kitty = kitty_on(vte);
 	if (vte->apc_kitty)
-		tsm_kitty_begin(vte->kitty, vte->host_ok);
+		tsm_kitty_begin(vte->kitty);
 	else
 		tsm_kitty_cancel(vte->kitty);
 }
@@ -1173,7 +1171,7 @@ static void do_apc_end(struct tsm_vte *vte, uint32_t data)
 		return;
 	}
 	work = sixel_work(vte);
-	tsm_kitty_end(vte->kitty, data, vte->host_ok);
+	tsm_kitty_end(vte->kitty, data);
 	sixel_charge(vte, sixel_work(vte) - work);
 }
 
@@ -3338,17 +3336,16 @@ static size_t vte_input_with(struct tsm_vte *vte, const char *u8, size_t len,
 			     uint64_t work, bool host_ok)
 {
 	uint64_t saved = vte->work_left;
-	bool saved_host = vte->host_ok;
+	bool saved_host = tsm_kitty_set_host(vte->kitty, host_ok);
 	size_t n;
 
 	++vte->parse_cnt;
 	vte->work_left = work;
-	vte->host_ok = host_ok;
 	n = vte_input(vte, u8, len);
 	/* what the call's cuts and scrolls owe the budget */
 	screen_images_settle(vte->con);
 	vte->work_left = saved;
-	vte->host_ok = saved_host;
+	tsm_kitty_set_host(vte->kitty, saved_host);
 	--vte->parse_cnt;
 	return n;
 }
