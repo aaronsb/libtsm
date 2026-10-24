@@ -32,7 +32,10 @@
  * replies, keep their order.
  *
  * Replies follow the spec: only to a command that carries i or I, q=1
- * suppressing OK and q=2 every reply. The spec's Unicode placeholder section
+ * suppressing OK and q=2 every reply. An a=q with I and no i is the
+ * exception: it is dropped at its ST, nothing read and nothing answered under
+ * any q, as kitty 0.49.2 run as a black box drops it (ADR-107, rounds 4 and
+ * 5). The spec's Unicode placeholder section
  * reads q=2 so: images are created "in quiet mode (q=2) so that there are no
  * responses from the terminal that could confuse the host application". A
  * delete answers only an error, as Ghostty's delete does
@@ -298,6 +301,15 @@ static bool is_transmission(const struct kitty_cmd *cmd)
 }
 
 /*
+ * An a=q with I and no i, which gets no reply and reads nothing (ADR-103's
+ * Kitty graphics protocol section)
+ */
+static bool is_dropped(const struct kitty_cmd *cmd)
+{
+	return cmd->a == 'q' && cmd->I && !cmd->i;
+}
+
+/*
  * What libtsm refuses in @cmd's keys before any data is read: EINVAL for a
  * key it cannot read, i with I (spec), an action or key left to step 5
  * (animation, Unicode placeholders, relative placements), a raw format
@@ -355,7 +367,7 @@ static void reply(struct tsm_kitty *k, const struct kitty_cmd *cmd, uint32_t id,
 	char buf[160];
 	int len;
 
-	if (!cmd->i && !cmd->I)
+	if ((!cmd->i && !cmd->I) || is_dropped(cmd))
 		return;
 	if (code ? cmd->q >= 2 : cmd->q >= 1)
 		return;
@@ -624,6 +636,9 @@ static void upload_start(struct tsm_kitty *k)
 	memset(up, 0, sizeof(*up));
 	up->cmd = *cmd;
 	up->mode = UPLOAD_SKIP;
+	/* its chunks are swallowed and its last answers nothing */
+	if (is_dropped(cmd))
+		return;
 	err = refusal(k, cmd);
 	if (err) {
 		up->err = err;
@@ -970,6 +985,8 @@ static void media_finish(struct tsm_kitty *k)
 	bool host = k->hook && k->host_ok;
 	int ret, name_err = k->name_err;
 
+	if (is_dropped(cmd))
+		return;
 	if (!name_err && !k->name_len)
 		name_err = -EBADF;
 	ret = refusal(k, cmd);

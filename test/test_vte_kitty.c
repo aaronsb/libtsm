@@ -970,8 +970,49 @@ START_TEST(test_hook_unbounded_buffer)
 }
 END_TEST
 
+/*
+ * An a=q with I and no i is dropped at its ST under every q and on every
+ * medium, as kitty 0.49.2 drops it (ADR-107): no reply, nothing stored, its
+ * chunks swallowed; with i it answers
+ */
+START_TEST(test_kitty_query_number)
+{
+	static const char *const cmds[] = {
+		"\033_Ga=q,f=24,s=1,v=1,I=52;/wAA\033\\",
+		"\033_Ga=q,f=24,s=1,v=1,I=52,q=1;/wAA\033\\",
+		"\033_Ga=q,f=24,s=1,v=1,I=52,q=2;/wAA\033\\",
+		/* too short, an error with i */
+		"\033_Ga=q,f=24,s=2,v=1,I=52;/wAA\033\\",
+		/* a key it cannot read, an error with i */
+		"\033_Ga=q,f=24,s=x,v=1,I=52;/wAA\033\\",
+		"\033_Ga=q,t=t,f=24,s=1,v=1,I=52;L3RtcC90dHktZ3JhcGhpY3MtcHJvdG9jb2wtMQ==\033\\",
+		"\033_Ga=q,t=t,f=24,s=1,v=1,I=52,q=1;L3RtcC90dHktZ3JhcGhpY3MtcHJvdG9jb2wtMQ==\033\\",
+		"\033_Ga=q,t=s,f=24,s=1,v=1,I=52,q=2;L2tpdHR5LXNobQ==\033\\",
+		/* chunked: the continuation is swallowed, not read as a=t */
+		"\033_Ga=q,f=24,s=1,v=1,I=52,m=1;/w==\033\\\033_Gm=0;AAA=\033\\",
+	};
+	size_t i;
+
+	for (i = 0; i < sizeof(cmds) / sizeof(*cmds); ++i) {
+		input(cmds[i]);
+		ck_assert_msg(reply_len == 0, "command %zu answered %s", i, reply + 1);
+	}
+	ck_assert_uint_eq(placements(), 0);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+
+	/* nothing was stored under number 52 */
+	input("\033_Ga=p,I=52\033\\");
+	ck_assert_str_eq(reply, "\033_GI=52;ENOENT:image not found\033\\");
+
+	reply_clear();
+	input("\033_Ga=q,f=24,s=1,v=1,i=51;/wAA\033\\");
+	ck_assert_str_eq(reply, "\033_Gi=51;OK\033\\");
+}
+END_TEST
+
 TEST_DEFINE_CASE(kitty)
 	CHECKED_FIXTURE(setup, teardown)
+	TEST(test_kitty_query_number)
 	TEST(test_kitty_off)
 	TEST(test_kitty_pixels)
 	TEST(test_kitty_excess)
