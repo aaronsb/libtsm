@@ -1104,9 +1104,13 @@ def _():
 
 @case("kit-delete-i", 12, 4)
 def _():
-    # i and I, by id, and with p only that placement
-    return delete_case(kitty("a=d,d=i,i=1"), kitty("a=d,d=I,i=2,p=1") +
-                       kitty("a=d,d=I,i=3,p=2"))
+    # i and I, by id, and with p only that placement; an uppercase delete
+    # whose p matches none of an image's placements frees nothing, even
+    # an image with no placement at all (image 4, placed again at the end)
+    return (delete_case(kitty("a=t,f=32,s=8,v=8,i=4", rgba(8, 8, (255, 0, 255, 255))) +
+                        kitty("a=d,d=i,i=1"), kitty("a=d,d=I,i=2,p=1") +
+                        kitty("a=d,d=I,i=3,p=2") + kitty("a=d,d=I,i=4,p=9")) +
+            cup(4, 9) + kitty("a=p,i=4,C=1"))
 
 
 @case("kit-delete-n", 12, 4)
@@ -1208,11 +1212,12 @@ def _():
 @case("kit-refused", 12, 4)
 def _():
     # EINVAL: animation, Unicode placeholders, relative placements, a raw
-    # format without s and v, data past or short of s x v x bytes per
-    # pixel, a byte outside base64, a key it cannot read, an unknown
-    # action; PNG and zlib with no host hook; EBADF: files, temporary files
-    # and shared memory with no host hook, and an empty name. An unknown
-    # key is ignored, and a key section past 1 KiB ignores the whole APC.
+    # format without s and v, data short of s x v x bytes per pixel, a byte
+    # outside base64, a key it cannot read, an unknown action; PNG and zlib
+    # with no host hook; EBADF: files, temporary files and shared memory
+    # with no host hook, and an empty name. Data past s x v x bytes per
+    # pixel (i=4) is ignored, as kitty ignores it, an unknown key is
+    # ignored, and a key section past 1 KiB ignores the whole APC.
     # The fixture host is removed first, so no command reaches a hook.
     return (cell() + tt("host", on=0) + kitty("a=f,i=1,s=1,v=1", rgb(1, 1)) +
             kitty("a=a,i=1") +

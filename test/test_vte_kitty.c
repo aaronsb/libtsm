@@ -43,6 +43,9 @@
 /* what a picture of @w x @h pixels costs the budget */
 #define COST(w, h) ((size_t)(w) * (h) * 4 + TSM_SCREEN_IMAGE_OVERHEAD)
 
+/* the last message logged at debug level */
+static char debug_log[256];
+
 static void log_cb(void *data, const char *file, int line, const char *func,
 		   const char *subs, unsigned int sev, const char *format,
 		   va_list args)
@@ -52,9 +55,8 @@ static void log_cb(void *data, const char *file, int line, const char *func,
 	UNUSED(line);
 	UNUSED(func);
 	UNUSED(subs);
-	UNUSED(sev);
-	UNUSED(format);
-	UNUSED(args);
+	if (sev == LLOG_DEBUG)
+		vsnprintf(debug_log, sizeof(debug_log), format, args);
 }
 
 static char reply[1024];
@@ -230,6 +232,47 @@ START_TEST(test_kitty_split)
 	ck_assert_uint_eq(pixel(placement(0), 2, 1), 0xffff0000u);
 	ck_assert_str_eq(reply, "\033_Gi=4;OK\033\\");
 	free(cmd);
+}
+END_TEST
+
+/*
+ * Raw data past s x v x bytes per pixel is ignored, as kitty ignores it, in a
+ * transmission and in a=q alike; data short of it is refused
+ */
+START_TEST(test_kitty_excess)
+{
+	static const uint8_t blue[3] = { 0, 0, 255 };
+	char *cmd;
+
+	debug_log[0] = 0;
+	cmd = command("a=T,f=24,s=1,v=1,i=1", 3, 1, 3, blue);
+	input(cmd);
+	free(cmd);
+	ck_assert_str_eq(reply, "\033_Gi=1;OK\033\\");
+	ck_assert_str_eq(debug_log, "kitty image i=1, t=d: 6 bytes past s x v ignored");
+	ck_assert_uint_eq(placements(), 1);
+	ck_assert_uint_eq(pixel(placement(0), 0, 0), 0xff0000ffu);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(1, 1));
+
+	reply_clear();
+	cmd = command("a=q,f=24,s=1,v=1,i=2", 5, 1, 3, blue);
+	input(cmd);
+	free(cmd);
+	ck_assert_str_eq(reply, "\033_Gi=2;OK\033\\");
+
+	/* an anonymous image is named as one; its six bytes for one f=32
+	 * pixel end part way through a base64 quad */
+	cmd = command("a=T,f=32,s=1,v=1,C=1", 6, 1, 1, blue);
+	input(cmd);
+	free(cmd);
+	ck_assert_str_eq(debug_log,
+			 "kitty image (anonymous), t=d: 2 bytes past s x v ignored");
+
+	reply_clear();
+	cmd = command("a=q,f=24,s=2,v=1,i=3", 1, 1, 3, blue);
+	input(cmd);
+	free(cmd);
+	ck_assert_str_eq(reply, "\033_Gi=3;EINVAL:invalid argument\033\\");
 }
 END_TEST
 
@@ -758,16 +801,115 @@ START_TEST(test_hook_budget)
 }
 END_TEST
 
+/*
+ * A flood of deletes counts as work: each scans the store and the screen's
+ * lines, so the bounded call stops early rather than spend seconds on input
+ * that holds no image data
+ */
+START_TEST(test_kitty_delete_bound)
+{
+	static const char del[] = "\033_Ga=d,d=x,x=99\033\\";
+	struct tsm_test_image img = { .width = 1, .height = 1, .kind = TSM_IMAGE_KITTY };
+	uint32_t px = 0xff000000;
+	size_t n = 20000, len = n * (sizeof(del) - 1), used, i;
+	uint64_t key;
+	char *buf;
+
+	img.pixels = &px;
+	for (i = 1; i <= TSM_SCREEN_IMAGES_PER_STORE; ++i) {
+		img.id = i;
+		ck_assert_int_eq(tsm_screen_test_image(screen, &img, &key), 0);
+	}
+	buf = malloc(len);
+	ck_assert_ptr_ne(buf, NULL);
+	for (i = 0; i < n; ++i)
+		memcpy(buf + i * (sizeof(del) - 1), del, sizeof(del) - 1);
+	used = tsm_vte_input_bounded(vte, buf, len);
+	ck_assert_uint_gt(used, 0);
+	ck_assert_uint_lt(used, len);
+	free(buf);
+}
+END_TEST
+
+/* an uppercase N whose p matches no placement frees nothing */
+START_TEST(test_kitty_delete_number_placement)
+{
+	char *cmd = command("a=t,f=24,s=1,v=1,I=5", 1, 1, 3, RED);
+
+	input(cmd);
+	free(cmd);
+	reply_clear();
+	input("\033_Ga=d,d=N,I=5,p=3\033\\\033_Ga=p,I=5,C=1\033\\");
+	ck_assert_str_eq(reply, "\033_Gi=1,I=5;OK\033\\");
+	ck_assert_uint_eq(placements(), 1);
+
+	/* without p it frees the image once unplaced */
+	reply_clear();
+	input("\033_Ga=d,d=N,I=5\033\\\033_Ga=p,I=5\033\\");
+	ck_assert_str_eq(reply, "\033_GI=5;ENOENT:image not found\033\\");
+}
+END_TEST
+
+/* control keys up to 1 KiB are read; one byte more ignores the whole APC */
+START_TEST(test_kitty_keys_limit)
+{
+	static const char head[] = "a=T,f=24,s=1,v=1,i=1,K=";
+	char keys[1100], cmd[1200];
+	size_t n;
+
+	for (n = 1024; n <= 1025; ++n) {
+		reply_clear();
+		memset(keys, '0', sizeof(keys));
+		memcpy(keys, head, sizeof(head) - 1);
+		keys[n] = 0;
+		snprintf(cmd, sizeof(cmd), "\033_G%s;/wAA\033\\", keys);
+		input(cmd);
+		if (n == 1024)
+			ck_assert_str_eq(reply, "\033_Gi=1;OK\033\\");
+		else
+			ck_assert_uint_eq(reply_len, 0);
+	}
+}
+END_TEST
+
+/* a later chunk's q=0 keeps the first chunk's q, as Ghostty keeps it */
+START_TEST(test_kitty_chunk_quiet)
+{
+	input("\033_Ga=T,f=24,s=1,v=1,i=1,q=1,m=1;/w==\033\\\033_Gm=0,q=0;AAA=\033\\");
+	ck_assert_uint_eq(placements(), 1);
+	ck_assert_uint_eq(reply_len, 0);
+}
+END_TEST
+
+/*
+ * An image whose bytes and bookkeeping would pass a 32-bit size_t is
+ * refused before anything is reserved: 32767 x 32769 x 4 fits in 32 bits,
+ * plus TSM_SCREEN_IMAGE_OVERHEAD it does not
+ */
+START_TEST(test_kitty_size_bound)
+{
+	ck_assert_int_eq(tsm_vte_set_graphic_max_size(vte, 65535, 65535), 0);
+	input("\033_Ga=t,f=32,s=32767,v=32769,i=1\033\\");
+	ck_assert_str_eq(reply, "\033_Gi=1;EINVAL:invalid argument\033\\");
+}
+END_TEST
+
 TEST_DEFINE_CASE(kitty)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_kitty_off)
 	TEST(test_kitty_pixels)
+	TEST(test_kitty_excess)
 	TEST(test_kitty_split)
 	TEST(test_kitty_c1)
 	TEST(test_kitty_bounded)
 	TEST(test_kitty_upload_bytes)
 	TEST(test_kitty_host_budget)
 	TEST(test_kitty_victim_stamp)
+	TEST(test_kitty_delete_bound)
+	TEST(test_kitty_delete_number_placement)
+	TEST(test_kitty_keys_limit)
+	TEST(test_kitty_chunk_quiet)
+	TEST(test_kitty_size_bound)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(host)

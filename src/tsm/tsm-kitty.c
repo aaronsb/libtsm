@@ -15,7 +15,8 @@
  * it streams in, never collected whole: raw f=24 and f=32 pixels into the
  * pending image, whose bytes are reserved from the screen's budget when its
  * first chunk names its size, and a file or shared memory name into a buffer
- * of 4095 bytes.
+ * of 4095 bytes. Raw data must hold at least s x v x bytes per pixel; what
+ * follows is ignored, as a=q ignores it too.
  *
  * Direct transmission (t=d) may be chunked: m=1 on every chunk but the last,
  * and later chunks carry only m and q. Any other graphics command aborts a
@@ -31,9 +32,11 @@
  * replies, keep their order.
  *
  * Replies follow the spec: only to a command that carries i or I, q=1
- * suppressing OK and q=2 every reply, as Ghostty reads it. A delete answers
- * only an error, as Ghostty's delete does (src/terminal/kitty/
- * graphics_exec.zig).
+ * suppressing OK and q=2 every reply. The spec's Unicode placeholder section
+ * reads q=2 so: images are created "in quiet mode (q=2) so that there are no
+ * responses from the terminal that could confuse the host application". A
+ * delete answers only an error, as Ghostty's delete does
+ * (src/terminal/kitty/graphics_exec.zig).
  */
 
 #include <errno.h>
@@ -100,6 +103,7 @@ struct kitty_upload {
 	size_t len;			/* bytes decoded */
 	size_t want;			/* bytes s, v and f call for */
 	size_t cap;			/* HOST: @buf's size, reserved */
+	size_t excess;			/* bytes past @want, ignored */
 	struct tsm_kitty_reservation res;
 	struct b64 b64;
 };
@@ -303,9 +307,11 @@ static int refusal(struct tsm_kitty *k, const struct kitty_cmd *cmd)
 	if (cmd->a == 'f' || cmd->a == 'a' || cmd->a == 'c' || cmd->U ||
 	    (cmd->seen & (KEY('P') | KEY('Q') | KEY('H') | KEY('V'))))
 		return -EINVAL;
+	/* the image's bytes and its bookkeeping fit a 32-bit size_t */
 	if (is_transmission(cmd) && cmd->f != 100 &&
 	    (!cmd->s || !cmd->v || cmd->s > k->max_width || cmd->v > k->max_height ||
-	     (uint64_t)cmd->s * cmd->v * 4 > TSM_SCREEN_IMAGE_MAX_BYTES))
+	     (uint64_t)cmd->s * cmd->v * 4 + TSM_SCREEN_IMAGE_OVERHEAD >
+	     TSM_SCREEN_IMAGE_MAX_BYTES))
 		return -EINVAL;
 	if ((cmd->a == 'T' || cmd->a == 'p') &&
 	    (cmd->X >= k->con->img.cell_width || cmd->Y >= k->con->img.cell_height ||
@@ -686,14 +692,38 @@ static void upload_data(struct tsm_kitty *k, const uint8_t *data, size_t n)
 		return;
 	}
 
-	/* raw data may not pass the declared size (ADR-103) */
+	/* data past s x v x bytes per pixel is ignored, as kitty ignores it
+	 * (the operator's decision of 2026-10-24) */
 	if (n > up->want - up->len) {
-		upload_fail(k, -EINVAL);
-		return;
+		up->excess += n - (up->want - up->len);
+		n = up->want - up->len;
 	}
 	if (up->mode == UPLOAD_RAW)
 		memcpy(up->buf + up->len, data, n);
 	up->len += n;
+}
+
+/*
+ * Data past s x v x bytes per pixel, at debug severity, since a video can send
+ * it every frame. Written with llog_dprintf, which every build keeps, so the
+ * host's own log level decides whether it shows.
+ */
+static void log_excess(struct tsm_kitty *k, const struct kitty_cmd *cmd, size_t excess,
+		       char medium)
+{
+	char image[32];
+
+	if (!excess)
+		return;
+	if (cmd->i)
+		snprintf(image, sizeof(image), "i=%u", cmd->i);
+	else if (cmd->I)
+		snprintf(image, sizeof(image), "I=%u", cmd->I);
+	else
+		snprintf(image, sizeof(image), "(anonymous)");
+	llog_dprintf(k->con->llog, k->con->llog_data, LLOG_DEBUG,
+		     "kitty image %s, t=%c: %zu bytes past s x v ignored", image, medium,
+		     excess);
 }
 
 /* its last chunk has arrived */
@@ -712,7 +742,8 @@ static void upload_finish(struct tsm_kitty *k)
 		return;
 	case UPLOAD_COUNT:
 		up->mode = UPLOAD_NONE;
-		reply(k, &cmd, cmd.i, up->len == up->want ? 0 : -EINVAL);
+		log_excess(k, &cmd, up->excess, 'd');
+		reply(k, &cmd, cmd.i, up->len < up->want ? -EINVAL : 0);
 		return;
 	case UPLOAD_HOST:
 		up->mode = UPLOAD_NONE;
@@ -732,8 +763,9 @@ static void upload_finish(struct tsm_kitty *k)
 		return;
 	}
 
-	/* raw data must be exactly s x v x bytes per pixel (spec) */
-	if (up->len != up->want) {
+	log_excess(k, &cmd, up->excess, 'd');
+	/* raw data must hold at least s x v x bytes per pixel */
+	if (up->len < up->want) {
 		upload_abort(k);
 		reply(k, &cmd, cmd.i, -EINVAL);
 		return;
@@ -881,8 +913,9 @@ static void command_start(struct tsm_kitty *k)
 	if (k->up.mode != UPLOAD_NONE && is_continuation(k, cmd)) {
 		if (cmd->err)
 			upload_fail(k, -EINVAL);
-		/* a chunk's q, when it gives one, holds from then on */
-		if (cmd->seen & KEY('q'))
+		/* a chunk's q of 1 or 2 holds from then on, and q=0 keeps the
+		 * first chunk's, as Ghostty keeps it; the spec is silent */
+		if (cmd->q)
 			k->up.cmd.q = cmd->q;
 		k->target = TARGET_UPLOAD;
 		return;
