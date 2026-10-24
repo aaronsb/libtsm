@@ -25,7 +25,11 @@
  *
  * The host hook takes every request; after each bounded call the target
  * answers the one out, in turn: an image, each error, an image unlike s and
- * v, and a reply with no pixels; or the hook refuses the request itself.
+ * v, and a reply with no pixels; or the hook refuses the request itself, or
+ * resets the vte from inside. Between a request and its reply the target may
+ * cancel it (tsm_vte_reset, tsm_vte_hard_reset, kitty graphics off, a hook
+ * change), resize the screen before answering, or free the vte with the
+ * request still out.
  *
  * Input: byte 0 picks the screen size, cell size, scrollback and budget,
  * byte 1 the max-graphic-size, how the stream is fed (whole, or in chunks
@@ -89,6 +93,7 @@ static void write_cb(struct tsm_vte *vte, const char *u8, size_t len, void *data
 static const struct { unsigned int cols, rows; } sizes[4] = {
 	{ 12, 4 }, { 1, 1 }, { 40, 12 }, { 3, 30 },
 };
+
 static const struct { unsigned int w, h; } cells[4] = {
 	{ 8, 16 }, { 1, 1 }, { 6, 13 }, { 1024, 1 },
 };
@@ -117,13 +122,46 @@ static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
 	/* every fifth request the hook refuses itself */
 	if (++host.turn % 5 == 4)
 		return host.turn & 8 ? -EIO : -ENOSPC;
+	/* and every thirteenth it resets the vte, which drops the request */
+	if (host.turn % 13 == 12) {
+		tsm_vte_reset(vte);
+		return 0;
+	}
 	host.out = true;
 	host.id = req->id;
 	return 0;
 }
 
+/* cancels the request out in one of four ways, or resizes the screen; true
+ * when it is cancelled */
+static bool host_disturb(struct tsm_screen *screen, struct tsm_vte *vte)
+{
+	switch (host.turn / 5 % 8) {
+	case 3:
+		tsm_vte_reset(vte);
+		return true;
+	case 4:
+		tsm_vte_hard_reset(vte);
+		return true;
+	case 5:
+		tsm_vte_set_kitty_graphics(vte, false);
+		tsm_vte_set_kitty_graphics(vte, true);
+		return true;
+	case 6:
+		/* answered EBADF to the client */
+		tsm_vte_set_image_cb(vte, host_cb, NULL);
+		return true;
+	case 7:
+		check(tsm_screen_resize(screen, sizes[host.turn / 40 % 4].cols,
+					sizes[host.turn / 40 % 4].rows) == 0);
+		return false;
+	default:
+		return false;
+	}
+}
+
 /* answers the request out: an image, the errors, or a mistake */
-static void host_answer(struct tsm_vte *vte)
+static void host_answer(struct tsm_screen *screen, struct tsm_vte *vte)
 {
 	static const uint8_t px[4 * 4 * 4] = { 255, 0, 0, 128 };
 	int r;
@@ -131,6 +169,12 @@ static void host_answer(struct tsm_vte *vte)
 	host.out = false;
 	/* a stale id changes nothing */
 	check(tsm_vte_image_reply(vte, host.id + 1, 0, 1, 1, px) == -ENOENT);
+	if (host_disturb(screen, vte)) {
+		/* the request is gone: its reply finds nothing, and the next
+		 * bounded call consumes input again (the caller checks) */
+		check(tsm_vte_image_reply(vte, host.id, 0, 4, 4, px) == -ENOENT);
+		return;
+	}
 	switch (host.turn % 5) {
 	case 0:
 		r = tsm_vte_image_reply(vte, host.id, 0, 4, 4, px);
@@ -220,7 +264,10 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 			if (host.out) {
 				/* paused: nothing more until the reply */
 				check(tsm_vte_input_bounded(vte, "x", 1) == 0);
-				host_answer(vte);
+				/* sometimes the vte is freed with it out */
+				if (host.turn % 17 == 16)
+					break;
+				host_answer(screen, vte);
 				check(tsm_screen_get_image_bytes(screen) == held);
 			}
 		}
