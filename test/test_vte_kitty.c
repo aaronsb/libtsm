@@ -894,6 +894,17 @@ START_TEST(test_kitty_size_bound)
 }
 END_TEST
 
+/* tsm_vte_input buffers no inline PNG for the hook it cannot use */
+START_TEST(test_hook_unbounded_buffer)
+{
+	input("\033_Ga=t,f=100,i=1,m=1;iVBORw==\033\\");
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+	input("\033_Gm=0;iVBORw==\033\\");
+	ck_assert_uint_eq(hook.calls, 0);
+	ck_assert_str_eq(reply, "\033_Gi=1;EINVAL:invalid argument\033\\");
+}
+END_TEST
+
 TEST_DEFINE_CASE(kitty)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_kitty_off)
@@ -922,6 +933,7 @@ TEST_DEFINE_CASE(host)
 	TEST(test_hook_unbounded)
 	TEST(test_hook_discard)
 	TEST(test_hook_budget)
+	TEST(test_hook_unbounded_buffer)
 TEST_END_CASE
 
 TEST_DEFINE(

@@ -35,7 +35,8 @@ void tsm_kitty_free(struct tsm_kitty *k);
 /* max-graphic-size: the largest image in pixels, each dimension */
 void tsm_kitty_set_max_size(struct tsm_kitty *k, unsigned int width, unsigned int height);
 
-void tsm_kitty_begin(struct tsm_kitty *k);
+/* with @host_ok the command may be buffered for, and handed to, the hook */
+void tsm_kitty_begin(struct tsm_kitty *k, bool host_ok);
 /* one codepoint of the APC, after its introducer */
 void tsm_kitty_feed(struct tsm_kitty *k, uint32_t c);
 /* whether the APC is in a payload that tsm_kitty_feed_run takes */

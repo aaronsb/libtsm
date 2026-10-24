@@ -1143,7 +1143,7 @@ static void do_apc_start(struct tsm_vte *vte)
 {
 	vte->apc_kitty = kitty_on(vte);
 	if (vte->apc_kitty)
-		tsm_kitty_begin(vte->kitty);
+		tsm_kitty_begin(vte->kitty, vte->host_ok);
 	else
 		tsm_kitty_cancel(vte->kitty);
 }

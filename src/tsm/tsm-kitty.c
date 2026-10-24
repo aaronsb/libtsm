@@ -614,10 +614,10 @@ static void upload_start(struct tsm_kitty *k)
 		up->err = err;
 		return;
 	}
-	/* PNG and zlib are the host's: buffered for its hook, or with no
-	 * hook EINVAL, with nothing buffered */
+	/* PNG and zlib are the host's: buffered for its hook when this input
+	 * call may hand it a request, else EINVAL, with nothing buffered */
 	if (cmd->f == 100 || cmd->o == 'z') {
-		if (k->hook)
+		if (k->hook && k->host_ok)
 			up->mode = UPLOAD_HOST;
 		else
 			up->err = -EINVAL;
@@ -1071,8 +1071,9 @@ void tsm_kitty_set_max_size(struct tsm_kitty *k, unsigned int width, unsigned in
 	k->max_height = height;
 }
 
-void tsm_kitty_begin(struct tsm_kitty *k)
+void tsm_kitty_begin(struct tsm_kitty *k, bool host_ok)
 {
+	k->host_ok = host_ok;
 	k->phase = PHASE_FIRST;
 	k->target = TARGET_NONE;
 	k->nkeys = 0;
