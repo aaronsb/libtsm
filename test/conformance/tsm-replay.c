@@ -650,8 +650,9 @@ static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
 	static const char *const flag_names[] = { "inflate", "png", "exact", "discard" };
 	struct reply *r = host.reply;
 	const char *base;
-	char line[8400];
-	size_t len, i;
+	/* the whole name, every byte escaped at worst, and the rest */
+	size_t cap = 256 + (req->name ? 4 * strlen(req->name) : 0), len, i;
+	char *line = malloc(cap);
 	bool first = true;
 
 	(void)vte;
@@ -670,29 +671,33 @@ static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
 		snprintf(host.fixture, sizeof(host.fixture), "direct-%u", ++host.direct);
 	}
 
-	len = snprintf(line, sizeof(line), "host: %llu t=%c flags=",
+	if (!line) {
+		perror("malloc");
+		exit(2);
+	}
+	len = snprintf(line, cap, "host: %llu t=%c flags=",
 		       (unsigned long long)req->id, req->medium);
 	for (i = 0; i < 4; i++) {
 		if (req->flags & (1u << i)) {
-			len += snprintf(line + len, sizeof(line) - len, "%s%s",
+			len += snprintf(line + len, cap - len, "%s%s",
 					first ? "" : ",", flag_names[i]);
 			first = false;
 		}
 	}
 	if (first)
 		line[len++] = '-';
-	len += snprintf(line + len, sizeof(line) - len, " O=%llu max=%llu min=%llu name=",
+	len += snprintf(line + len, cap - len, " O=%llu max=%llu min=%llu name=",
 			(unsigned long long)req->offset, (unsigned long long)req->read_max,
 			(unsigned long long)req->min_bytes);
-	for (i = 0; req->name && req->name[i] && len < sizeof(line) - 64; i++) {
+	for (i = 0; req->name && req->name[i]; i++) {
 		unsigned char c = req->name[i];
 
 		if (c > 0x20 && c < 0x7f && c != '\\')
 			line[len++] = c;
 		else
-			len += snprintf(line + len, sizeof(line) - len, "\\x%02x", c);
+			len += snprintf(line + len, cap - len, "\\x%02x", c);
 	}
-	snprintf(line + len, sizeof(line) - len, " len=%zu", req->data_len);
+	snprintf(line + len, cap - len, " len=%zu", req->data_len);
 
 	r->lines = realloc(r->lines, (r->nlines + 1) * sizeof(*r->lines));
 	if (!r->lines) {
@@ -700,7 +705,7 @@ static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
 		exit(2);
 	}
 	r->lines[r->nlines].at = r->len;
-	r->lines[r->nlines].text = strdup(line);
+	r->lines[r->nlines].text = line;
 	r->nlines++;
 	return 0;
 }
