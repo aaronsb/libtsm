@@ -498,6 +498,50 @@ START_TEST(test_kitty_delete_number_placement)
 }
 END_TEST
 
+/* control keys up to 1 KiB are read; one byte more ignores the whole APC */
+START_TEST(test_kitty_keys_limit)
+{
+	static const char head[] = "a=T,f=24,s=1,v=1,i=1,K=";
+	char keys[1100], cmd[1200];
+	size_t n;
+
+	for (n = 1024; n <= 1025; ++n) {
+		reply_clear();
+		memset(keys, '0', sizeof(keys));
+		memcpy(keys, head, sizeof(head) - 1);
+		keys[n] = 0;
+		snprintf(cmd, sizeof(cmd), "\033_G%s;/wAA\033\\", keys);
+		input(cmd);
+		if (n == 1024)
+			ck_assert_str_eq(reply, "\033_Gi=1;OK\033\\");
+		else
+			ck_assert_uint_eq(reply_len, 0);
+	}
+}
+END_TEST
+
+/* a later chunk's q=0 keeps the first chunk's q, as Ghostty keeps it */
+START_TEST(test_kitty_chunk_quiet)
+{
+	input("\033_Ga=T,f=24,s=1,v=1,i=1,q=1,m=1;/w==\033\\\033_Gm=0,q=0;AAA=\033\\");
+	ck_assert_uint_eq(placements(), 1);
+	ck_assert_uint_eq(reply_len, 0);
+}
+END_TEST
+
+/*
+ * An image whose bytes and bookkeeping would pass a 32-bit size_t is
+ * refused before anything is reserved: 32767 x 32769 x 4 fits in 32 bits,
+ * plus TSM_SCREEN_IMAGE_OVERHEAD it does not
+ */
+START_TEST(test_kitty_size_bound)
+{
+	ck_assert_int_eq(tsm_vte_set_graphic_max_size(vte, 65535, 65535), 0);
+	input("\033_Ga=t,f=32,s=32767,v=32769,i=1\033\\");
+	ck_assert_str_eq(reply, "\033_Gi=1;EINVAL:invalid argument\033\\");
+}
+END_TEST
+
 TEST_DEFINE_CASE(kitty)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_kitty_off)
@@ -511,6 +555,9 @@ TEST_DEFINE_CASE(kitty)
 	TEST(test_kitty_victim_stamp)
 	TEST(test_kitty_delete_bound)
 	TEST(test_kitty_delete_number_placement)
+	TEST(test_kitty_keys_limit)
+	TEST(test_kitty_chunk_quiet)
+	TEST(test_kitty_size_bound)
 TEST_END_CASE
 
 TEST_DEFINE(

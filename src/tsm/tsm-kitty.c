@@ -25,9 +25,11 @@
  * chunks and answers once, at its last.
  *
  * Replies follow the spec: only to a command that carries i or I, q=1
- * suppressing OK and q=2 every reply, as Ghostty reads it. A delete answers
- * only an error, as Ghostty's delete does (src/terminal/kitty/
- * graphics_exec.zig).
+ * suppressing OK and q=2 every reply. The spec's Unicode placeholder section
+ * reads q=2 so: images are created "in quiet mode (q=2) so that there are no
+ * responses from the terminal that could confuse the host application". A
+ * delete answers only an error, as Ghostty's delete does
+ * (src/terminal/kitty/graphics_exec.zig).
  */
 
 #include <errno.h>
@@ -280,9 +282,11 @@ static int refusal(struct tsm_kitty *k, const struct kitty_cmd *cmd)
 	if (cmd->a == 'f' || cmd->a == 'a' || cmd->a == 'c' || cmd->U ||
 	    (cmd->seen & (KEY('P') | KEY('Q') | KEY('H') | KEY('V'))))
 		return -EINVAL;
+	/* the image's bytes and its bookkeeping fit a 32-bit size_t */
 	if (is_transmission(cmd) && cmd->f != 100 &&
 	    (!cmd->s || !cmd->v || cmd->s > k->max_width || cmd->v > k->max_height ||
-	     (uint64_t)cmd->s * cmd->v * 4 > TSM_SCREEN_IMAGE_MAX_BYTES))
+	     (uint64_t)cmd->s * cmd->v * 4 + TSM_SCREEN_IMAGE_OVERHEAD >
+	     TSM_SCREEN_IMAGE_MAX_BYTES))
 		return -EINVAL;
 	if ((cmd->a == 'T' || cmd->a == 'p') &&
 	    (cmd->X >= k->con->img.cell_width || cmd->Y >= k->con->img.cell_height ||
@@ -719,8 +723,9 @@ static void command_start(struct tsm_kitty *k)
 	if (k->up.mode != UPLOAD_NONE && is_continuation(k, cmd)) {
 		if (cmd->err)
 			upload_fail(k, -EINVAL);
-		/* a chunk's q, when it gives one, holds from then on */
-		if (cmd->seen & KEY('q'))
+		/* a chunk's q of 1 or 2 holds from then on, and q=0 keeps the
+		 * first chunk's, as Ghostty keeps it; the spec is silent */
+		if (cmd->q)
 			k->up.cmd.q = cmd->q;
 		k->target = TARGET_UPLOAD;
 		return;
