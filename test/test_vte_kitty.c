@@ -230,6 +230,37 @@ START_TEST(test_kitty_split)
 }
 END_TEST
 
+/*
+ * Raw data past s x v x bytes per pixel is ignored, as kitty ignores it, in a
+ * transmission and in a=q alike; data short of it is refused
+ */
+START_TEST(test_kitty_excess)
+{
+	static const uint8_t blue[3] = { 0, 0, 255 };
+	char *cmd;
+
+	cmd = command("a=T,f=24,s=1,v=1,i=1", 3, 1, 3, blue);
+	input(cmd);
+	free(cmd);
+	ck_assert_str_eq(reply, "\033_Gi=1;OK\033\\");
+	ck_assert_uint_eq(placements(), 1);
+	ck_assert_uint_eq(pixel(placement(0), 0, 0), 0xff0000ffu);
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(1, 1));
+
+	reply_clear();
+	cmd = command("a=q,f=24,s=1,v=1,i=2", 5, 1, 3, blue);
+	input(cmd);
+	free(cmd);
+	ck_assert_str_eq(reply, "\033_Gi=2;OK\033\\");
+
+	reply_clear();
+	cmd = command("a=q,f=24,s=2,v=1,i=3", 1, 1, 3, blue);
+	input(cmd);
+	free(cmd);
+	ck_assert_str_eq(reply, "\033_Gi=3;EINVAL:invalid argument\033\\");
+}
+END_TEST
+
 /* C1 framing, APC and ST: encoded in UTF-8, and as bytes in 8-bit mode */
 START_TEST(test_kitty_c1)
 {
@@ -410,6 +441,7 @@ TEST_DEFINE_CASE(kitty)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_kitty_off)
 	TEST(test_kitty_pixels)
+	TEST(test_kitty_excess)
 	TEST(test_kitty_split)
 	TEST(test_kitty_c1)
 	TEST(test_kitty_bounded)

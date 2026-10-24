@@ -15,7 +15,8 @@
  * it streams in, never collected whole: raw f=24 and f=32 pixels into the
  * pending image, whose bytes are reserved from the screen's budget when its
  * first chunk names its size, and a file or shared memory name into a buffer
- * of 4095 bytes.
+ * of 4095 bytes. Raw data must hold at least s x v x bytes per pixel; what
+ * follows is ignored, as a=q ignores it too.
  *
  * Direct transmission (t=d) may be chunked: m=1 on every chunk but the last,
  * and later chunks carry only m and q. Any other graphics command aborts a
@@ -509,11 +510,10 @@ static void upload_data(struct tsm_kitty *k, const uint8_t *data, size_t n)
 {
 	struct kitty_upload *up = &k->up;
 
-	/* raw data may not pass the declared size (ADR-103) */
-	if (n > up->want - up->len) {
-		upload_fail(k, -EINVAL);
-		return;
-	}
+	/* data past s x v x bytes per pixel is ignored, as kitty ignores it
+	 * (the operator's decision of 2026-10-24) */
+	if (n > up->want - up->len)
+		n = up->want - up->len;
 	if (up->mode == UPLOAD_RAW)
 		memcpy(up->buf + up->len, data, n);
 	up->len += n;
@@ -535,7 +535,7 @@ static void upload_finish(struct tsm_kitty *k)
 		return;
 	case UPLOAD_COUNT:
 		up->mode = UPLOAD_NONE;
-		reply(k, &cmd, cmd.i, up->len == up->want ? 0 : -EINVAL);
+		reply(k, &cmd, cmd.i, up->len < up->want ? -EINVAL : 0);
 		return;
 	case UPLOAD_RAW:
 		break;
@@ -543,8 +543,8 @@ static void upload_finish(struct tsm_kitty *k)
 		return;
 	}
 
-	/* raw data must be exactly s x v x bytes per pixel (spec) */
-	if (up->len != up->want) {
+	/* raw data must hold at least s x v x bytes per pixel */
+	if (up->len < up->want) {
 		upload_abort(k);
 		reply(k, &cmd, cmd.i, -EINVAL);
 		return;

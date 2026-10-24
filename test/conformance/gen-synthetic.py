@@ -1205,11 +1205,12 @@ def _():
 @case("kit-refused", 12, 4)
 def _():
     # EINVAL: animation, Unicode placeholders, relative placements, a raw
-    # format without s and v, data past or short of s x v x bytes per
-    # pixel, a byte outside base64, a key it cannot read, an unknown
-    # action; PNG and zlib with no host hook; EBADF: files, temporary files
-    # and shared memory with no host hook, and an empty name. An unknown
-    # key is ignored, and a key section past 1 KiB ignores the whole APC.
+    # format without s and v, data short of s x v x bytes per pixel, a byte
+    # outside base64, a key it cannot read, an unknown action; PNG and zlib
+    # with no host hook; EBADF: files, temporary files and shared memory
+    # with no host hook, and an empty name. Data past s x v x bytes per
+    # pixel (i=4) is ignored, as kitty ignores it, an unknown key is
+    # ignored, and a key section past 1 KiB ignores the whole APC.
     return (cell() + kitty("a=f,i=1,s=1,v=1", rgb(1, 1)) + kitty("a=a,i=1") +
             kitty("a=c,i=1") + kitty("a=T,U=1,f=24,s=1,v=1,i=2", rgb(1, 1)) +
             kitty("a=p,i=2,P=1,Q=1") + kitty("a=t,f=24,i=3", rgb(1, 1)) +
