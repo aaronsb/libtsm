@@ -2258,3 +2258,42 @@ int screen_sixel_place(struct tsm_screen *con, struct tsm_image *image,
 	move_cursor(con, x, con->cursor_y);
 	return 0;
 }
+
+/*
+ * After a kitty placement the cursor indexes down one row fewer than the
+ * box's rows, then moves to the column after the box, or, when that reaches
+ * the right edge, indexes once more and moves to column 0. The rows indexed
+ * are bounded by the distance to the bottom margin plus one screen, so a box
+ * of 2^32 rows costs at most a screen of scrolling. This is Ghostty's reading
+ * of the spec, adapted from the cursor movement in its display
+ * (src/terminal/kitty/graphics_exec.zig, MIT).
+ */
+int screen_kitty_place(struct tsm_screen *con, struct tsm_image *image,
+		       struct tsm_test_placement *pl, bool cursor)
+{
+	struct tsm_placement *p;
+	unsigned int x, y, target, rows, room;
+	bool wraps;
+	int ret;
+
+	/* a pending wrap leaves the cursor past the last column */
+	x = con->cursor_x < con->size_x ? con->cursor_x : con->size_x - 1;
+	y = con->cursor_y;
+	pl->col = x;
+	pl->row = y;
+	ret = screen_image_place(con, image, pl, &p);
+	if (ret || !cursor)
+		return ret;
+
+	target = p->cols < con->size_x - x ? x + p->cols : con->size_x;
+	wraps = target >= con->size_x;
+	rows = p->rows - 1 + wraps;
+	room = y >= con->margin_top && y <= con->margin_bottom ?
+	       con->margin_bottom - y : 0;
+	if (rows > room + con->size_y)
+		rows = room + con->size_y;
+
+	tsm_screen_move_down(con, rows, true);
+	move_cursor(con, wraps ? 0 : target, con->cursor_y);
+	return 0;
+}

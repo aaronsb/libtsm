@@ -1574,6 +1574,277 @@ void screen_image_drop(struct tsm_screen *con, struct tsm_image *image)
 	image_free(con, image);
 }
 
+/*
+ * Kitty images (the kitty graphics protocol, tsm-kitty.c)
+ */
+
+struct tsm_image *screen_kitty_find(struct tsm_screen *con, uint32_t id,
+				    uint32_t number)
+{
+	struct tsm_image_store *st = cur_store(con);
+	struct tsm_image *image, *newest = NULL;
+	struct shl_dlist *iter;
+
+	if (id)
+		return store_find_id(st, id);
+	if (!number)
+		return NULL;
+	/* images are listed oldest first, a replacement as a new one */
+	shl_dlist_for_each(iter, &st->images) {
+		image = shl_dlist_entry(iter, struct tsm_image, list);
+		if (image->kind == TSM_IMAGE_KITTY && image->number == number)
+			newest = image;
+	}
+	return newest;
+}
+
+static int id_cmp(const void *a, const void *b)
+{
+	uint32_t x = *(const uint32_t *)a, y = *(const uint32_t *)b;
+
+	return x < y ? -1 : x > y;
+}
+
+/*
+ * The lowest id no image in the store in use has, for an image sent with a
+ * number alone, as Ghostty's ImageStorage.nextImageId picks an explicit one
+ * (src/terminal/kitty/graphics_storage.zig, MIT). 0 when memory runs out.
+ */
+uint32_t screen_kitty_free_id(struct tsm_screen *con)
+{
+	struct tsm_image_store *st = cur_store(con);
+	struct tsm_image *image;
+	struct shl_dlist *iter;
+	uint32_t *ids, id = 1;
+	unsigned int n = 0, i;
+
+	if (!st->count)
+		return 1;
+	ids = malloc(st->count * sizeof(*ids));
+	if (!ids)
+		return 0;
+	shl_dlist_for_each(iter, &st->images) {
+		image = shl_dlist_entry(iter, struct tsm_image, list);
+		if (image->kind == TSM_IMAGE_KITTY && image->id)
+			ids[n++] = image->id;
+	}
+	qsort(ids, n, sizeof(*ids), id_cmp);
+	for (i = 0; i < n && ids[i] <= id; ++i)
+		if (ids[i] == id)
+			++id;
+	free(ids);
+	return id;
+}
+
+/*
+ * Reserves @bytes for a kitty image of @id. An image of that id in the store
+ * in use is the one the new image will replace: its bytes count towards the
+ * new one's, so only the difference is reserved, and it is held until
+ * screen_kitty_new or screen_kitty_unreserve, so nothing evicts it meanwhile
+ * (libtsm#37).
+ */
+int screen_kitty_reserve(struct tsm_screen *con, size_t bytes, uint32_t id,
+			 struct tsm_kitty_reservation *r)
+{
+	struct tsm_image *old = store_find_id(cur_store(con), id);
+	size_t added;
+	int ret;
+
+	r->bytes = 0;
+	r->old = 0;
+	if (old)
+		++old->hold;
+	screen_images_settle(con);
+	ret = budget_reserve(con, bytes, old, &added);
+	if (ret) {
+		if (old)
+			--old->hold;
+		return ret;
+	}
+	r->bytes = added;
+	r->old = old ? old->key : 0;
+	return 0;
+}
+
+/* the image @r holds, still in the store in use, or NULL; held no more */
+static struct tsm_image *reservation_release_old(struct tsm_screen *con,
+						 struct tsm_kitty_reservation *r)
+{
+	struct tsm_image *old = r->old ? image_find(&con->img, r->old) : NULL;
+
+	r->old = 0;
+	if (!old)
+		return NULL;
+	--old->hold;
+	return old->store == cur_store(con) ? old : NULL;
+}
+
+void screen_kitty_unreserve(struct tsm_screen *con, struct tsm_kitty_reservation *r)
+{
+	reservation_release_old(con, r);
+	budget_release(con, r->bytes);
+	r->bytes = 0;
+}
+
+int screen_kitty_new(struct tsm_screen *con, const struct tsm_test_image *desc,
+		     uint32_t *pixels, bool opaque, struct tsm_kitty_reservation *r,
+		     struct tsm_image **out)
+{
+	struct tsm_image_store *st = cur_store(con);
+	struct tsm_image *image, *old;
+	size_t bytes = (size_t)desc->width * desc->height * 4 + TSM_SCREEN_IMAGE_OVERHEAD;
+	size_t added = 0, credit;
+	int ret = 0;
+
+	/* the image reserved against may have gone (a reset, the other
+	 * screen) or been replaced; whichever has the id now is replaced */
+	old = reservation_release_old(con, r);
+	if (!old || old->id != desc->id)
+		old = store_find_id(st, desc->id);
+	if (old)
+		++old->hold;
+	if (r->bytes > bytes) {
+		budget_release(con, r->bytes - bytes);
+		r->bytes = bytes;
+	}
+
+	screen_images_settle(con);
+	screen_inc_age(con);
+	if (!old)
+		ret = store_make_room(con, st);
+	/* what is still missing: the reservation may have counted on an old
+	 * image that has gone, or whose placements gave charges back */
+	if (!ret && r->bytes < bytes)
+		ret = budget_reserve(con, bytes - r->bytes, old, &added);
+	image = ret ? NULL : calloc(1, sizeof(*image));
+	if (!ret && (!image || slot_take(&con->img, image))) {
+		free(image);
+		budget_release(con, added);
+		ret = -ENOMEM;
+	}
+	if (old)
+		--old->hold;
+	if (ret) {
+		free(pixels);
+		budget_release(con, r->bytes);
+		r->bytes = 0;
+		return ret;
+	}
+
+	/* image_store passes @old the bytes neither reservation granted */
+	credit = r->bytes + added;
+	r->bytes = 0;
+	image->pixels = pixels;
+	image->opaque = opaque;
+	image_store(con, image, desc, bytes, old, credit);
+	*out = image;
+	return 0;
+}
+
+/* whether @p, at screen row p->row (store_rows), has a row on the screen */
+static bool placement_on_screen(struct tsm_screen *con, const struct tsm_placement *p)
+{
+	return p->row != INT_MAX && p->row + (int)p->rows > 0 &&
+	       p->row < (int)con->size_y;
+}
+
+static bool placement_covers(const struct tsm_placement *p, long long x, long long y)
+{
+	return p->row != INT_MAX && y >= p->row && y < (long long)p->row + p->rows &&
+	       x >= p->col && x < (long long)p->col + p->cols;
+}
+
+/*
+ * A kitty delete, as the spec's table says: lowercase removes placements,
+ * uppercase also frees each image it touched that is left with no placement
+ * anywhere. Placements are chosen on the screen's own lines for a, c, p, q
+ * and y, and in the whole store for i, n, r, x and z, as Ghostty's
+ * ImageStorage.delete chooses them (src/terminal/kitty/graphics_storage.zig,
+ * MIT). Sixel placements are never touched.
+ */
+void screen_kitty_delete(struct tsm_screen *con, const struct tsm_kitty_delete *d)
+{
+	struct tsm_image_store *st = cur_store(con);
+	struct shl_dlist *iter, *tmp;
+	struct tsm_placement *p;
+	struct tsm_image *image;
+	char what = d->what | 0x20;
+	bool free_data = d->what >= 'A' && d->what <= 'Z';
+	long long x = (long long)d->x - 1, y = (long long)d->y - 1;
+	bool by_image = what == 'i' || what == 'n' || what == 'r', hit;
+
+	screen_inc_age(con);
+	shl_dlist_for_each(iter, &st->images) {
+		image = shl_dlist_entry(iter, struct tsm_image, list);
+		image->doomed = false;
+		if (image->kind != TSM_IMAGE_KITTY || !by_image)
+			continue;
+		if (what == 'i')
+			image->doomed = d->id && image->id == d->id;
+		else if (what == 'r')
+			image->doomed = image->id && image->id >= d->x &&
+					image->id <= d->y;
+	}
+	if (what == 'n') {
+		image = screen_kitty_find(con, 0, d->number);
+		if (image)
+			image->doomed = true;
+	}
+
+	store_rows(con, st);
+	shl_dlist_for_each_safe(iter, tmp, &st->placements) {
+		p = shl_dlist_entry(iter, struct tsm_placement, store_link);
+		if (p->image->kind != TSM_IMAGE_KITTY)
+			continue;
+		switch (what) {
+		case 'a':
+			hit = placement_on_screen(con, p);
+			break;
+		case 'i':
+		case 'n':
+			hit = p->image->doomed && (!d->placement || p->id == d->placement);
+			break;
+		case 'r':
+			hit = p->image->doomed;
+			break;
+		case 'c':
+			hit = placement_covers(p, d->cursor_x, d->cursor_y);
+			break;
+		case 'p':
+			hit = placement_covers(p, x, y);
+			break;
+		case 'q':
+			hit = placement_covers(p, x, y) && p->z == d->z;
+			break;
+		case 'x':
+			hit = d->x && x >= p->col && x < (long long)p->col + p->cols;
+			break;
+		case 'y':
+			hit = d->y && placement_on_screen(con, p) &&
+			      placement_covers(p, p->col, y);
+			break;
+		case 'z':
+			hit = p->z == d->z;
+			break;
+		default:
+			hit = false;
+			break;
+		}
+		if (!hit)
+			continue;
+		p->image->doomed = true;
+		placement_free(con, p, false);
+	}
+
+	if (!free_data)
+		return;
+	shl_dlist_for_each_safe(iter, tmp, &st->images) {
+		image = shl_dlist_entry(iter, struct tsm_image, list);
+		if (image->doomed && !image->placements)
+			image_free(con, image);
+	}
+}
+
 static unsigned int div_up(unsigned long long a, unsigned int b)
 {
 	return (a + b - 1) / b;

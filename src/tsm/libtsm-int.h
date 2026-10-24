@@ -481,6 +481,54 @@ int screen_sixel_place(struct tsm_screen *con, struct tsm_image *image,
 		       bool scroll, bool cursor_right);
 void screen_image_drop(struct tsm_screen *con, struct tsm_image *image);
 /*
+ * The kitty graphics protocol (tsm-kitty.c). A kitty image's bytes are
+ * reserved before its pixels are allocated, through screen_kitty_reserve,
+ * then screen_kitty_new stores it with that reservation, taking @pixels
+ * (freed, with the bytes released, on failure). An image of the same id in
+ * the store in use is replaced; while the reservation is held it is not
+ * evicted, and its bytes count towards the new image's. Anonymous kitty
+ * images have id 0 and are found by nothing.
+ */
+struct tsm_kitty_reservation {
+	size_t bytes;			/* reserved from the budget */
+	uint64_t old;			/* key of the image held for its credit, or 0 */
+};
+
+/* the image @id names, or without one the newest with @number, in the store
+ * in use */
+struct tsm_image *screen_kitty_find(struct tsm_screen *con, uint32_t id,
+				    uint32_t number);
+uint32_t screen_kitty_free_id(struct tsm_screen *con);
+int screen_kitty_reserve(struct tsm_screen *con, size_t bytes, uint32_t id,
+			 struct tsm_kitty_reservation *r);
+void screen_kitty_unreserve(struct tsm_screen *con, struct tsm_kitty_reservation *r);
+int screen_kitty_new(struct tsm_screen *con, const struct tsm_test_image *desc,
+		     uint32_t *pixels, bool opaque, struct tsm_kitty_reservation *r,
+		     struct tsm_image **out);
+/*
+ * Places @image at the cursor as @pl describes it, @pl->col and @pl->row
+ * aside, and with @cursor moves the cursor past it as ADR-103 says.
+ */
+int screen_kitty_place(struct tsm_screen *con, struct tsm_image *image,
+		       struct tsm_test_placement *pl, bool cursor);
+
+struct tsm_kitty_delete {
+	char what;			/* d: a, i, n, c, p, q, r, x, y or z, either
+					   case; uppercase frees the images it
+					   leaves without a placement */
+	uint32_t id;			/* i */
+	uint32_t number;		/* I */
+	uint32_t placement;		/* p, or 0 for every placement */
+	uint32_t x;			/* 1-based cell, or r's range */
+	uint32_t y;
+	int32_t z;
+	unsigned int cursor_x;
+	unsigned int cursor_y;
+};
+
+void screen_kitty_delete(struct tsm_screen *con, const struct tsm_kitty_delete *d);
+
+/*
  * Asks the budget for what placement pieces owe, evicting as any reservation
  * may; refused, drops the smallest placements until nothing is owed. Called
  * where no screen event is in progress.
