@@ -1,0 +1,29 @@
+size 12x4
+cursor 6,0
+flags AUTO_WRAP
+host: 1 t=f flags=- O=0 max=0 min=384 name=/srv/img/picture.rgb len=0
+reply 1b5f47693d313b4f4b1b5c
+host: 2 t=t flags=png O=0 max=0 min=0 name=/tmp/tty-graphics-protocol-pic.png len=0
+reply 1b5f47693d323b4f4b1b5c
+host: 3 t=s flags=- O=4 max=256 min=256 name=/frame len=0
+reply 1b5f47693d333b4f4b1b5c
+host: 4 t=d flags=png O=0 max=0 min=0 name= len=48
+reply 1b5f47693d343b4f4b1b5c
+host: 5 t=d flags=inflate O=0 max=0 min=256 name= len=32
+reply 1b5f47693d353b4f4b1b5c1b5f47693d363b4f4b1b5c1b5b313b3752
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+placement 0 row 0 col 0 box 1x1 at 0,0 size 8x16 src 0,0 8x16 cell 8x16 z 0 above-text kitty image 0 opaque
+placement 1 row 0 col 1 box 1x1 at 0,0 size 8x8 src 0,0 8x8 cell 8x16 z 0 above-text kitty image 1 opaque
+placement 2 row 0 col 2 box 1x1 at 0,0 size 8x8 src 0,0 8x8 cell 8x16 z 0 above-text kitty image 2 opaque
+placement 3 row 0 col 3 box 1x1 at 0,0 size 8x8 src 0,0 8x8 cell 8x16 z 0 above-text kitty image 3 opaque
+placement 4 row 0 col 4 box 1x1 at 0,0 size 8x8 src 0,0 8x8 cell 8x16 z 0 above-text kitty image 4 opaque
+placement 5 row 0 col 5 box 1x1 at 0,0 size 8x8 src 0,0 8x8 cell 8x16 z 0 above-text kitty image 5 opaque
+image 0 8x16 digest da180ec5
+image 1 8x8 digest 192dc3c5
+image 2 8x8 digest a5f5e7c5
+image 3 8x8 digest a06113c5
+image 4 8x8 digest d8ffb7c5
+image 5 8x8 digest 85cb8945

@@ -40,6 +40,11 @@ test_vte_sixel = executable(
     'test_vte_sixel.c',
     dependencies: test_deps,
 )
+test_vte_kitty = executable(
+    'test_vte_kitty',
+    'test_vte_kitty.c',
+    dependencies: test_deps,
+)
 
 test('htable', test_htable)
 test('image', test_image)
@@ -54,6 +59,7 @@ test('valgrind', test_valgrind,
 test('vte_mouse', test_vte_mouse)
 test('vte', test_vte)
 test('vte_sixel', test_vte_sixel)
+test('vte_kitty', test_vte_kitty)
 
 # Not a test: prints sixel decode throughput (bench-sixel [FILE.six] [SECONDS]).
 executable('bench-sixel', 'bench-sixel.c', dependencies: test_deps)
@@ -94,6 +100,27 @@ if get_option('fuzz')
     executable(
         'fuzz-vte-sixel',
         'fuzz/fuzz-vte-sixel.c',
+        dependencies: [libtsm_test_dep],
+        c_args: ['-fsanitize=fuzzer'],
+        link_args: ['-fsanitize=fuzzer'],
+    )
+endif
+
+# The kitty graphics protocol through the vte (fuzz/fuzz-vte-kitty.c): the
+# APC parser, uploads, deletes, the budget and placements together, built
+# the same two ways.
+fuzz_vte_kitty_replay = executable(
+    'fuzz-vte-kitty-replay',
+    'fuzz/fuzz-vte-kitty.c',
+    dependencies: [libtsm_test_dep],
+    c_args: ['-DFUZZ_REPLAY'],
+)
+test('fuzz-vte-kitty-seeds', fuzz_vte_kitty_replay,
+     args: [meson.current_source_dir() / 'fuzz' / 'vte-kitty-seeds'])
+if get_option('fuzz')
+    executable(
+        'fuzz-vte-kitty',
+        'fuzz/fuzz-vte-kitty.c',
         dependencies: [libtsm_test_dep],
         c_args: ['-fsanitize=fuzzer'],
         link_args: ['-fsanitize=fuzzer'],

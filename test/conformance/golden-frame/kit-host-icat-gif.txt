@@ -1,0 +1,14 @@
+size 12x4
+cursor 0,0
+flags AUTO_WRAP
+host: 1 t=s flags=- O=0 max=172800 min=172800 name=/icat-2NH4BM3RMWCYU len=0
+reply 1b5f47493d333930333636383135313b45494e56414c3a696e76616c696420617267756d656e741b5c
+host: 2 t=s flags=discard O=0 max=0 min=0 name=/icat-W4NOVZVUR3CZE len=0
+reply 1b5f47493d333930333636383135313b45494e56414c3a696e76616c696420617267756d656e741b5c
+palette legacy fg=#e5e5e5 bg=#000000
+changed 48
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||

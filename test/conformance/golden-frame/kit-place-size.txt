@@ -1,0 +1,19 @@
+size 24x6
+cursor 7,3
+flags AUTO_WRAP
+reply 1b5f47693d313b4f4b1b5c1b5f47693d313b4f4b1b5c1b5f47693d313b4f4b1b5c1b5f47693d313b4f4b1b5c1b5f47693d313b4f4b1b5c1b5f47693d313b4f4b1b5c1b5f47693d313b45494e56414c3a696e76616c696420617267756d656e741b5c1b5f47693d313b45494e56414c3a696e76616c696420617267756d656e741b5c1b5b343b3852
+palette legacy fg=#e5e5e5 bg=#000000
+changed 144
+frame-cursor 7,3 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+row 4 ||
+row 5 ||
+placement 0 row 0 col 0 box 2x2 at 0,12 size 16x8 src 0,0 32x16 cell 8x16 z 0 above-text kitty image 0 opaque changed
+placement 1 row 0 col 3 box 3x1 at 0,0 size 24x12 src 0,0 32x16 cell 8x16 z 0 above-text kitty image 0 opaque changed
+placement 2 row 0 col 7 box 8x2 at 0,0 size 64x32 src 0,0 32x16 cell 8x16 z 0 above-text kitty image 0 opaque changed
+placement 3 row 0 col 13 box 2x1 at 0,0 size 16x12 src 8,4 16x12 cell 8x16 z 0 above-text kitty image 0 opaque changed
+placement 4 row 3 col 0 box 5x2 at 3,5 size 32x16 src 0,0 32x16 cell 8x16 z 0 above-text kitty image 0 opaque changed
+image 0 32x16 digest 66fd51c5

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Write the seed corpora of fuzz-sixel into sixel-seeds/ and of
-fuzz-vte-sixel into vte-sixel-seeds/.
+"""Write the seed corpora of fuzz-sixel into sixel-seeds/, of fuzz-vte-sixel
+into vte-sixel-seeds/ and of fuzz-vte-kitty into vte-kitty-seeds/.
 
 Each fuzz-sixel seed is its input: three header bytes (P1, P2, flags) and a
 payload. The seeds are the libsixel fixtures and the edge cases of
@@ -9,7 +9,8 @@ test_sixel.c, so fuzzing starts from every construct the tests know.
 Each fuzz-vte-sixel seed is two header bytes (screen and cell size; limits,
 registers and feeding) and a terminal stream: the six-* and img-* streams of
 the conformance corpus, so fuzzing starts from every sixel case tier 1
-judges.
+judges. Each fuzz-vte-kitty seed is the same two header bytes and a kit-*
+stream, every kitty graphics case tier 1 judges.
 """
 import os
 
@@ -17,6 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, "..", "sixel")
 OUT = os.path.join(HERE, "sixel-seeds")
 VTE_OUT = os.path.join(HERE, "vte-sixel-seeds")
+KITTY_OUT = os.path.join(HERE, "vte-kitty-seeds")
 CASES_DIR = os.path.join(HERE, "..", "conformance", "cases")
 # header bytes for the streams: 12x4 screen of 8x16 cells, defaults, fed
 # whole; and the same fed in 7-byte bounded chunks with shared registers
@@ -72,6 +74,17 @@ def main():
         for i, header in enumerate(VTE_HEADERS):
             name = f"{case[:-4]}-{i}"
             with open(os.path.join(VTE_OUT, name), "wb") as f:
+                f.write(header + stream)
+
+    os.makedirs(KITTY_OUT, exist_ok=True)
+    for case in sorted(os.listdir(CASES_DIR)):
+        if not case.startswith(("kit-", "apc-")) or not case.endswith(".bin"):
+            continue
+        with open(os.path.join(CASES_DIR, case), "rb") as f:
+            stream = f.read()
+        for i, header in enumerate(VTE_HEADERS):
+            name = f"{case[:-4]}-{i}"
+            with open(os.path.join(KITTY_OUT, name), "wb") as f:
                 f.write(header + stream)
 
 

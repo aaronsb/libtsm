@@ -1,0 +1,11 @@
+size 12x4
+cursor 0,0
+flags AUTO_WRAP|HIDE_CURSOR|ALTERNATE
+host: 1 t=s flags=- O=0 max=0 min=6220800 name=mpv-kitty-0x5645ad83d520 len=0
+host: 2 t=s flags=- O=0 max=0 min=6220800 name=mpv-kitty-0x5645ad83d520 len=0
+host: 3 t=s flags=- O=0 max=0 min=6220800 name=mpv-kitty-0x5645ad83d520 len=0
+reply 1b5b313b3152
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||

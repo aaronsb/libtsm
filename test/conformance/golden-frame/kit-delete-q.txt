@@ -1,0 +1,15 @@
+size 12x4
+cursor 4,3
+flags AUTO_WRAP
+reply 1b5f47693d312c703d313b4f4b1b5c1b5f47693d322c703d313b4f4b1b5c1b5f47693d332c703d313b4f4b1b5c1b5f47693d313b4f4b1b5c1b5f47693d323b454e4f454e543a696d616765206e6f7420666f756e641b5c
+palette legacy fg=#e5e5e5 bg=#000000
+changed 48
+frame-cursor 4,3 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+placement 0 row 3 col 0 box 2x1 at 0,0 size 16x16 src 0,0 16x16 cell 8x16 z 0 above-text kitty image 0 opaque changed
+placement 1 row 0 col 8 box 2x1 at 0,0 size 16x16 src 0,0 16x16 cell 8x16 z 3 above-text kitty image 1 opaque changed
+image 0 16x16 digest 74bcf7c5
+image 1 16x16 digest 39db7fc5
