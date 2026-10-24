@@ -92,6 +92,7 @@ struct kitty_upload {
 	uint8_t *buf;
 	size_t len;			/* bytes decoded */
 	size_t want;			/* bytes s, v and f call for */
+	size_t excess;			/* bytes past @want, ignored */
 	struct tsm_kitty_reservation res;
 	struct b64 b64;
 };
@@ -512,11 +513,33 @@ static void upload_data(struct tsm_kitty *k, const uint8_t *data, size_t n)
 
 	/* data past s x v x bytes per pixel is ignored, as kitty ignores it
 	 * (the operator's decision of 2026-10-24) */
-	if (n > up->want - up->len)
+	if (n > up->want - up->len) {
+		up->excess += n - (up->want - up->len);
 		n = up->want - up->len;
+	}
 	if (up->mode == UPLOAD_RAW)
 		memcpy(up->buf + up->len, data, n);
 	up->len += n;
+}
+
+/*
+ * Data past s x v x bytes per pixel, at debug level only, since a video can
+ * send it every frame
+ */
+static void log_excess(struct tsm_kitty *k, const struct kitty_cmd *cmd, size_t excess,
+		       char medium)
+{
+	if (!excess)
+		return;
+	if (cmd->i)
+		llog_debug(k->con, "kitty image i=%u, t=%c: %zu bytes past s x v ignored",
+			   cmd->i, medium, excess);
+	else if (cmd->I)
+		llog_debug(k->con, "kitty image I=%u, t=%c: %zu bytes past s x v ignored",
+			   cmd->I, medium, excess);
+	else
+		llog_debug(k->con, "kitty image (anonymous), t=%c: %zu bytes past s x v ignored",
+			   medium, excess);
 }
 
 /* its last chunk has arrived */
@@ -535,6 +558,7 @@ static void upload_finish(struct tsm_kitty *k)
 		return;
 	case UPLOAD_COUNT:
 		up->mode = UPLOAD_NONE;
+		log_excess(k, &cmd, up->excess, 'd');
 		reply(k, &cmd, cmd.i, up->len < up->want ? -EINVAL : 0);
 		return;
 	case UPLOAD_RAW:
@@ -543,6 +567,7 @@ static void upload_finish(struct tsm_kitty *k)
 		return;
 	}
 
+	log_excess(k, &cmd, up->excess, 'd');
 	/* raw data must hold at least s x v x bytes per pixel */
 	if (up->len < up->want) {
 		upload_abort(k);

@@ -40,6 +40,9 @@
 /* what a picture of @w x @h pixels costs the budget */
 #define COST(w, h) ((size_t)(w) * (h) * 4 + TSM_SCREEN_IMAGE_OVERHEAD)
 
+/* the last message logged at debug level */
+static char debug_log[256];
+
 static void log_cb(void *data, const char *file, int line, const char *func,
 		   const char *subs, unsigned int sev, const char *format,
 		   va_list args)
@@ -49,9 +52,8 @@ static void log_cb(void *data, const char *file, int line, const char *func,
 	UNUSED(line);
 	UNUSED(func);
 	UNUSED(subs);
-	UNUSED(sev);
-	UNUSED(format);
-	UNUSED(args);
+	if (sev == LLOG_DEBUG)
+		vsnprintf(debug_log, sizeof(debug_log), format, args);
 }
 
 static char reply[1024];
@@ -239,10 +241,15 @@ START_TEST(test_kitty_excess)
 	static const uint8_t blue[3] = { 0, 0, 255 };
 	char *cmd;
 
+	debug_log[0] = 0;
 	cmd = command("a=T,f=24,s=1,v=1,i=1", 3, 1, 3, blue);
 	input(cmd);
 	free(cmd);
 	ck_assert_str_eq(reply, "\033_Gi=1;OK\033\\");
+	/* logged only in a build with BUILD_ENABLE_DEBUG (-Dextra_debug) */
+#ifdef BUILD_ENABLE_DEBUG
+	ck_assert_str_eq(debug_log, "kitty image i=1, t=d: 6 bytes past s x v ignored");
+#endif
 	ck_assert_uint_eq(placements(), 1);
 	ck_assert_uint_eq(pixel(placement(0), 0, 0), 0xff0000ffu);
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(1, 1));
@@ -252,6 +259,16 @@ START_TEST(test_kitty_excess)
 	input(cmd);
 	free(cmd);
 	ck_assert_str_eq(reply, "\033_Gi=2;OK\033\\");
+
+	/* an anonymous image is named as one; its six bytes for one f=32
+	 * pixel end part way through a base64 quad */
+	cmd = command("a=T,f=32,s=1,v=1,C=1", 6, 1, 1, blue);
+	input(cmd);
+	free(cmd);
+#ifdef BUILD_ENABLE_DEBUG
+	ck_assert_str_eq(debug_log,
+			 "kitty image (anonymous), t=d: 2 bytes past s x v ignored");
+#endif
 
 	reply_clear();
 	cmd = command("a=q,f=24,s=2,v=1,i=3", 1, 1, 3, blue);
