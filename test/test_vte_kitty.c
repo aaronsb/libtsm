@@ -981,11 +981,22 @@ START_TEST(test_hook_discard)
 END_TEST
 
 /*
- * An a=q with I and no i never reaches the hook, not even as a discard, and
- * buffers no inline data
+ * An a=q without i, with I or with neither, never reaches the hook, not even
+ * as a discard, and buffers no inline data
  */
 START_TEST(test_hook_query_number)
 {
+	/* neither i nor I, on each medium, refused or not, and chunked */
+	bounded("\033_Ga=q,t=t,f=24,s=1,v=1;L3RtcC94\033\\"
+		"\033_Ga=q,t=s,f=24,s=1,v=1,q=1;L3NobQ==\033\\"
+		"\033_Ga=q,t=f,f=100,q=2;L3RtcC94\033\\"
+		"\033_Ga=q,t=s,f=24;L3NobQ==\033\\"
+		"\033_Ga=q,f=100,m=1;iVBORw==\033\\");
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+	bounded("\033_Gm=0;iVBORw==\033\\\033_Ga=q,f=24,s=1,v=1,o=z;eJw=\033\\");
+	ck_assert_uint_eq(hook.calls, 0);
+	ck_assert_uint_eq(reply_len, 0);
+
 	bounded("\033_Ga=q,t=t,f=24,s=1,v=1,I=52;L3RtcC94\033\\"
 		"\033_Ga=q,t=s,f=24,s=1,v=1,I=52,q=1;L3NobQ==\033\\"
 		"\033_Ga=q,t=f,f=100,I=52,q=2;L3RtcC94\033\\"
