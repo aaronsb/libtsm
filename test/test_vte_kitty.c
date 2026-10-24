@@ -1103,6 +1103,107 @@ START_TEST(test_kitty_delete_bound)
 }
 END_TEST
 
+/*
+ * The bounded call with @n copies of @cmd consumes part of them: what each
+ * costs is counted as work
+ */
+static void assert_bounded(const char *cmd, size_t n)
+{
+	size_t cl = strlen(cmd), len = n * cl, used, i;
+	char *buf = malloc(len);
+
+	ck_assert_ptr_ne(buf, NULL);
+	for (i = 0; i < n; ++i)
+		memcpy(buf + i * cl, cmd, cl);
+	used = tsm_vte_input_bounded(vte, buf, len);
+	ck_assert_uint_gt(used, 0);
+	ck_assert_uint_lt(used, len);
+	free(buf);
+}
+
+/*
+ * A transmission with i looks for the image it replaces, and the scan of a
+ * full store counts as work, as a find's does: a flood of short
+ * transmissions stops the bounded call early
+ */
+START_TEST(test_kitty_reserve_bound)
+{
+	struct tsm_test_image img = { .width = 1, .height = 1, .kind = TSM_IMAGE_KITTY };
+	uint32_t px = 0xff000000;
+	uint64_t key;
+	unsigned int i;
+
+	img.pixels = &px;
+	for (i = 1; i < TSM_SCREEN_IMAGES_PER_STORE; ++i) {
+		img.id = i;
+		ck_assert_int_eq(tsm_screen_test_image(screen, &img, &key), 0);
+	}
+	assert_bounded("\033_Ga=t,f=24,s=1,v=1,i=5000,q=2;\033\\", 30000);
+}
+END_TEST
+
+/*
+ * Replacing an image frees the old one, whose scan for its placements
+ * covers every placement in the store and counts as work: with a full
+ * store of another image's placements, a flood of replacements stops the
+ * bounded call early
+ */
+START_TEST(test_kitty_replace_bound)
+{
+	struct tsm_test_image img = { .width = 1, .height = 1, .kind = TSM_IMAGE_KITTY,
+				      .id = 1 };
+	struct tsm_test_placement pl = { 0 };
+	uint32_t px = 0xff000000;
+	uint64_t key;
+	unsigned int i;
+
+	img.pixels = &px;
+	ck_assert_int_eq(tsm_screen_test_image(screen, &img, &pl.image), 0);
+	for (i = 1; i < TSM_SCREEN_PLACEMENTS_PER_STORE; ++i)
+		ck_assert_int_eq(tsm_screen_test_place(screen, &pl, &key), 0);
+	assert_bounded("\033_Ga=t,f=24,s=1,v=1,i=2,q=2;/wAA\033\\", 30000);
+}
+END_TEST
+
+/*
+ * p and q choose a cell on the screen's own lines: without y they choose
+ * nothing, so a placement wholly in scrollback stays, where the missing y
+ * would have been row -1, its line. With x and y they delete as before.
+ */
+START_TEST(test_kitty_delete_scrollback)
+{
+	static const char *const dels[] = {
+		"\033_Ga=d,d=p,x=1\033\\",
+		"\033_Ga=d,d=P,x=1\033\\",
+		"\033_Ga=d,d=q,x=1\033\\",
+		"\033_Ga=d,d=Q,x=1\033\\",
+	};
+	char *cmd = command("a=T,f=24,s=1,v=1,i=1,C=1", 1, 1, 3, RED);
+	unsigned int i;
+
+	tsm_screen_set_max_sb(screen, 100);
+	input("\033[5;1H");
+	input(cmd);
+	input("\r\n\n\n\n\n");
+	ck_assert_uint_eq(placements(), 0);
+	for (i = 0; i < sizeof(dels) / sizeof(*dels); ++i) {
+		input(dels[i]);
+		ck_assert_msg(tsm_screen_test_placement_count(screen) == 1,
+			      "delete %u removed the scrollback placement", i);
+		ck_assert_uint_eq(tsm_screen_test_image_count(screen), 1);
+	}
+
+	/* the control: on the screen's own lines, with x and y */
+	input("\033[1;1H");
+	input(cmd);
+	free(cmd);
+	ck_assert_uint_eq(placements(), 1);
+	input("\033_Ga=d,d=Q,x=1,y=1\033\\");
+	ck_assert_uint_eq(tsm_screen_test_placement_count(screen), 0);
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen), 0);
+}
+END_TEST
+
 /* an uppercase N whose p matches no placement frees nothing */
 START_TEST(test_kitty_delete_number_placement)
 {
@@ -1289,6 +1390,9 @@ TEST_DEFINE_CASE(kitty)
 	TEST(test_kitty_host_budget)
 	TEST(test_kitty_victim_stamp)
 	TEST(test_kitty_delete_bound)
+	TEST(test_kitty_delete_scrollback)
+	TEST(test_kitty_reserve_bound)
+	TEST(test_kitty_replace_bound)
 	TEST(test_kitty_delete_number_placement)
 	TEST(test_kitty_keys_limit)
 	TEST(test_kitty_chunk_quiet)

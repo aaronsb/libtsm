@@ -523,8 +523,10 @@ static void image_free(struct tsm_screen *con, struct tsm_image *image)
 	struct shl_dlist *iter, *tmp;
 	struct tsm_placement *p;
 
-	/* its bytes, placements' included, go back in one release */
+	/* its bytes, placements' included, go back in one release; the scan
+	 * for its placements counts against the input call's work */
 	image->dying = true;
+	con->img.work += image->store->nplacements;
 	shl_dlist_for_each_safe(iter, tmp, &image->store->placements) {
 		p = shl_dlist_entry(iter, struct tsm_placement, store_link);
 		if (p->image == image)
@@ -538,14 +540,20 @@ static void image_free(struct tsm_screen *con, struct tsm_image *image)
 	free(image);
 }
 
-/* the kitty image @id names in @st; an anonymous one (id 0) is never found */
-static struct tsm_image *store_find_id(struct tsm_image_store *st, uint32_t id)
+/*
+ * The kitty image @id names in @st; an anonymous one (id 0) is never found.
+ * The scan counts against the input call's work, as images_mark_pinned
+ * counts its own.
+ */
+static struct tsm_image *store_find_id(struct tsm_screen *con,
+				       struct tsm_image_store *st, uint32_t id)
 {
 	struct shl_dlist *iter;
 	struct tsm_image *image;
 
 	if (!id)
 		return NULL;
+	con->img.work += st->count;
 	shl_dlist_for_each(iter, &st->images) {
 		image = shl_dlist_entry(iter, struct tsm_image, list);
 		if (image->kind == TSM_IMAGE_KITTY && image->id == id)
@@ -1472,7 +1480,7 @@ int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 	 * once the new one has its bytes; refused, the old one stays. It is
 	 * held meanwhile, so settling cannot evict it (libtsm#37). */
 	if (desc->kind == TSM_IMAGE_KITTY)
-		old = store_find_id(st, desc->id);
+		old = store_find_id(con, st, desc->id);
 	if (old)
 		++old->hold;
 	/* what pieces owe is asked for first, so what follows sees the room
@@ -1585,14 +1593,13 @@ struct tsm_image *screen_kitty_find(struct tsm_screen *con, uint32_t id,
 	struct tsm_image *image, *newest = NULL;
 	struct shl_dlist *iter;
 
-	/* the scan below, or store_find_id's, counted against the input
-	 * call's work as images_mark_pinned counts its own */
-	con->img.work += st->count;
 	if (id)
-		return store_find_id(st, id);
+		return store_find_id(con, st, id);
 	if (!number)
 		return NULL;
-	/* images are listed oldest first, a replacement as a new one */
+	/* images are listed oldest first, a replacement as a new one; the
+	 * scan counted as store_find_id counts its own */
+	con->img.work += st->count;
 	shl_dlist_for_each(iter, &st->images) {
 		image = shl_dlist_entry(iter, struct tsm_image, list);
 		if (image->kind == TSM_IMAGE_KITTY && image->number == number)
@@ -1651,7 +1658,7 @@ uint32_t screen_kitty_free_id(struct tsm_screen *con)
 int screen_kitty_reserve(struct tsm_screen *con, size_t bytes, uint32_t id,
 			 struct tsm_kitty_reservation *r)
 {
-	struct tsm_image *old = store_find_id(cur_store(con), id);
+	struct tsm_image *old = store_find_id(con, cur_store(con), id);
 	size_t added;
 	int ret;
 
@@ -1705,7 +1712,7 @@ int screen_kitty_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 	 * screen) or been replaced; whichever has the id now is replaced */
 	old = reservation_release_old(con, r);
 	if (!old || old->id != desc->id)
-		old = store_find_id(st, desc->id);
+		old = store_find_id(con, st, desc->id);
 	if (old)
 		++old->hold;
 	if (r->bytes > bytes) {
@@ -1766,7 +1773,10 @@ static bool placement_covers(const struct tsm_placement *p, long long x, long lo
  * given too, only when it lost that placement. Placements are chosen on the screen's own lines for a, c, p, q
  * and y, and in the whole store for i, n, r, x and z, as Ghostty's
  * ImageStorage.delete chooses them (src/terminal/kitty/graphics_storage.zig,
- * MIT). Sixel placements are never touched.
+ * MIT). A coordinate to choose by must be given: p and q choose nothing
+ * without both x and y, x nothing without x, y nothing without y. A missing
+ * y would otherwise be row -1, the last scrollback line. Sixel placements
+ * are never touched.
  */
 void screen_kitty_delete(struct tsm_screen *con, const struct tsm_kitty_delete *d)
 {
@@ -1829,10 +1839,11 @@ void screen_kitty_delete(struct tsm_screen *con, const struct tsm_kitty_delete *
 			hit = placement_covers(p, d->cursor_x, d->cursor_y);
 			break;
 		case 'p':
-			hit = placement_covers(p, x, y);
+			hit = d->x && d->y && placement_covers(p, x, y);
 			break;
 		case 'q':
-			hit = placement_covers(p, x, y) && p->z == d->z;
+			hit = d->x && d->y && placement_covers(p, x, y) &&
+			      p->z == d->z;
 			break;
 		case 'x':
 			hit = d->x && x >= p->col && x < (long long)p->col + p->cols;
