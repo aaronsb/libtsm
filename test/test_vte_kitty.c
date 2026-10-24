@@ -479,6 +479,45 @@ START_TEST(test_kitty_delete_bound)
 }
 END_TEST
 
+/*
+ * p and q choose a cell on the screen's own lines: without y they choose
+ * nothing, so a placement wholly in scrollback stays, where the missing y
+ * would have been row -1, its line. With x and y they delete as before.
+ */
+START_TEST(test_kitty_delete_scrollback)
+{
+	static const char *const dels[] = {
+		"\033_Ga=d,d=p,x=1\033\\",
+		"\033_Ga=d,d=P,x=1\033\\",
+		"\033_Ga=d,d=q,x=1\033\\",
+		"\033_Ga=d,d=Q,x=1\033\\",
+	};
+	char *cmd = command("a=T,f=24,s=1,v=1,i=1,C=1", 1, 1, 3, RED);
+	unsigned int i;
+
+	tsm_screen_set_max_sb(screen, 100);
+	input("\033[5;1H");
+	input(cmd);
+	input("\r\n\n\n\n\n");
+	ck_assert_uint_eq(placements(), 0);
+	for (i = 0; i < sizeof(dels) / sizeof(*dels); ++i) {
+		input(dels[i]);
+		ck_assert_msg(tsm_screen_test_placement_count(screen) == 1,
+			      "delete %u removed the scrollback placement", i);
+		ck_assert_uint_eq(tsm_screen_test_image_count(screen), 1);
+	}
+
+	/* the control: on the screen's own lines, with x and y */
+	input("\033[1;1H");
+	input(cmd);
+	free(cmd);
+	ck_assert_uint_eq(placements(), 1);
+	input("\033_Ga=d,d=Q,x=1,y=1\033\\");
+	ck_assert_uint_eq(tsm_screen_test_placement_count(screen), 0);
+	ck_assert_uint_eq(tsm_screen_test_image_count(screen), 0);
+}
+END_TEST
+
 /* an uppercase N whose p matches no placement frees nothing */
 START_TEST(test_kitty_delete_number_placement)
 {
@@ -616,6 +655,7 @@ TEST_DEFINE_CASE(kitty)
 	TEST(test_kitty_host_budget)
 	TEST(test_kitty_victim_stamp)
 	TEST(test_kitty_delete_bound)
+	TEST(test_kitty_delete_scrollback)
 	TEST(test_kitty_delete_number_placement)
 	TEST(test_kitty_keys_limit)
 	TEST(test_kitty_chunk_quiet)

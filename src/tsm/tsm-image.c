@@ -1766,7 +1766,10 @@ static bool placement_covers(const struct tsm_placement *p, long long x, long lo
  * given too, only when it lost that placement. Placements are chosen on the screen's own lines for a, c, p, q
  * and y, and in the whole store for i, n, r, x and z, as Ghostty's
  * ImageStorage.delete chooses them (src/terminal/kitty/graphics_storage.zig,
- * MIT). Sixel placements are never touched.
+ * MIT). A coordinate to choose by must be given: p and q choose nothing
+ * without both x and y, x nothing without x, y nothing without y. A missing
+ * y would otherwise be row -1, the last scrollback line. Sixel placements
+ * are never touched.
  */
 void screen_kitty_delete(struct tsm_screen *con, const struct tsm_kitty_delete *d)
 {
@@ -1829,10 +1832,11 @@ void screen_kitty_delete(struct tsm_screen *con, const struct tsm_kitty_delete *
 			hit = placement_covers(p, d->cursor_x, d->cursor_y);
 			break;
 		case 'p':
-			hit = placement_covers(p, x, y);
+			hit = d->x && d->y && placement_covers(p, x, y);
 			break;
 		case 'q':
-			hit = placement_covers(p, x, y) && p->z == d->z;
+			hit = d->x && d->y && placement_covers(p, x, y) &&
+			      p->z == d->z;
 			break;
 		case 'x':
 			hit = d->x && x >= p->col && x < (long long)p->col + p->cols;
