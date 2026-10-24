@@ -1585,6 +1585,9 @@ struct tsm_image *screen_kitty_find(struct tsm_screen *con, uint32_t id,
 	struct tsm_image *image, *newest = NULL;
 	struct shl_dlist *iter;
 
+	/* the scan below, or store_find_id's, counted against the input
+	 * call's work as images_mark_pinned counts its own */
+	con->img.work += st->count;
 	if (id)
 		return store_find_id(st, id);
 	if (!number)
@@ -1620,6 +1623,8 @@ uint32_t screen_kitty_free_id(struct tsm_screen *con)
 
 	if (!st->count)
 		return 1;
+	/* the scan and the sort */
+	con->img.work += 2 * st->count;
 	ids = malloc(st->count * sizeof(*ids));
 	if (!ids)
 		return 0;
@@ -1773,6 +1778,12 @@ void screen_kitty_delete(struct tsm_screen *con, const struct tsm_kitty_delete *
 	long long x = (long long)d->x - 1, y = (long long)d->y - 1;
 	bool by_image = what == 'i' || what == 'n' || what == 'r', hit;
 
+	/*
+	 * Every pass below counts against the input call's work, as the
+	 * eviction scans do: the images twice, the placements twice (here and
+	 * in store_rows) and the screen's lines once.
+	 */
+	con->img.work += 2 * st->count + 2 * st->nplacements + con->line_num;
 	screen_inc_age(con);
 	shl_dlist_for_each(iter, &st->images) {
 		image = shl_dlist_entry(iter, struct tsm_image, list);
@@ -1930,6 +1941,7 @@ int screen_image_place(struct tsm_screen *con, struct tsm_image *image,
 	screen_inc_age(con);
 	/* a kitty placement id names a placement of its image to replace */
 	if (image->kind == TSM_IMAGE_KITTY && pl->id) {
+		con->img.work += st->nplacements;
 		shl_dlist_for_each(iter, &st->placements) {
 			p = shl_dlist_entry(iter, struct tsm_placement, store_link);
 			if (p->image == image && p->id == pl->id)

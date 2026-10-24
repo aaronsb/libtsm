@@ -449,6 +449,36 @@ START_TEST(test_kitty_victim_stamp)
 }
 END_TEST
 
+/*
+ * A flood of deletes counts as work: each scans the store and the screen's
+ * lines, so the bounded call stops early rather than spend seconds on input
+ * that holds no image data
+ */
+START_TEST(test_kitty_delete_bound)
+{
+	static const char del[] = "\033_Ga=d,d=x,x=99\033\\";
+	struct tsm_test_image img = { .width = 1, .height = 1, .kind = TSM_IMAGE_KITTY };
+	uint32_t px = 0xff000000;
+	size_t n = 20000, len = n * (sizeof(del) - 1), used, i;
+	uint64_t key;
+	char *buf;
+
+	img.pixels = &px;
+	for (i = 1; i <= TSM_SCREEN_IMAGES_PER_STORE; ++i) {
+		img.id = i;
+		ck_assert_int_eq(tsm_screen_test_image(screen, &img, &key), 0);
+	}
+	buf = malloc(len);
+	ck_assert_ptr_ne(buf, NULL);
+	for (i = 0; i < n; ++i)
+		memcpy(buf + i * (sizeof(del) - 1), del, sizeof(del) - 1);
+	used = tsm_vte_input_bounded(vte, buf, len);
+	ck_assert_uint_gt(used, 0);
+	ck_assert_uint_lt(used, len);
+	free(buf);
+}
+END_TEST
+
 TEST_DEFINE_CASE(kitty)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_kitty_off)
@@ -460,6 +490,7 @@ TEST_DEFINE_CASE(kitty)
 	TEST(test_kitty_upload_bytes)
 	TEST(test_kitty_host_budget)
 	TEST(test_kitty_victim_stamp)
+	TEST(test_kitty_delete_bound)
 TEST_END_CASE
 
 TEST_DEFINE(
