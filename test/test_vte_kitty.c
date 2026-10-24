@@ -480,6 +480,45 @@ START_TEST(test_kitty_delete_bound)
 END_TEST
 
 /*
+ * The bounded call with @n copies of @cmd consumes part of them: what each
+ * costs is counted as work
+ */
+static void assert_bounded(const char *cmd, size_t n)
+{
+	size_t cl = strlen(cmd), len = n * cl, used, i;
+	char *buf = malloc(len);
+
+	ck_assert_ptr_ne(buf, NULL);
+	for (i = 0; i < n; ++i)
+		memcpy(buf + i * cl, cmd, cl);
+	used = tsm_vte_input_bounded(vte, buf, len);
+	ck_assert_uint_gt(used, 0);
+	ck_assert_uint_lt(used, len);
+	free(buf);
+}
+
+/*
+ * A transmission with i looks for the image it replaces, and the scan of a
+ * full store counts as work, as a find's does: a flood of short
+ * transmissions stops the bounded call early
+ */
+START_TEST(test_kitty_reserve_bound)
+{
+	struct tsm_test_image img = { .width = 1, .height = 1, .kind = TSM_IMAGE_KITTY };
+	uint32_t px = 0xff000000;
+	uint64_t key;
+	unsigned int i;
+
+	img.pixels = &px;
+	for (i = 1; i < TSM_SCREEN_IMAGES_PER_STORE; ++i) {
+		img.id = i;
+		ck_assert_int_eq(tsm_screen_test_image(screen, &img, &key), 0);
+	}
+	assert_bounded("\033_Ga=t,f=24,s=1,v=1,i=5000,q=2;\033\\", 30000);
+}
+END_TEST
+
+/*
  * p and q choose a cell on the screen's own lines: without y they choose
  * nothing, so a placement wholly in scrollback stays, where the missing y
  * would have been row -1, its line. With x and y they delete as before.
@@ -656,6 +695,7 @@ TEST_DEFINE_CASE(kitty)
 	TEST(test_kitty_victim_stamp)
 	TEST(test_kitty_delete_bound)
 	TEST(test_kitty_delete_scrollback)
+	TEST(test_kitty_reserve_bound)
 	TEST(test_kitty_delete_number_placement)
 	TEST(test_kitty_keys_limit)
 	TEST(test_kitty_chunk_quiet)

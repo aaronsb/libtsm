@@ -538,14 +538,20 @@ static void image_free(struct tsm_screen *con, struct tsm_image *image)
 	free(image);
 }
 
-/* the kitty image @id names in @st; an anonymous one (id 0) is never found */
-static struct tsm_image *store_find_id(struct tsm_image_store *st, uint32_t id)
+/*
+ * The kitty image @id names in @st; an anonymous one (id 0) is never found.
+ * The scan counts against the input call's work, as images_mark_pinned
+ * counts its own.
+ */
+static struct tsm_image *store_find_id(struct tsm_screen *con,
+				       struct tsm_image_store *st, uint32_t id)
 {
 	struct shl_dlist *iter;
 	struct tsm_image *image;
 
 	if (!id)
 		return NULL;
+	con->img.work += st->count;
 	shl_dlist_for_each(iter, &st->images) {
 		image = shl_dlist_entry(iter, struct tsm_image, list);
 		if (image->kind == TSM_IMAGE_KITTY && image->id == id)
@@ -1472,7 +1478,7 @@ int screen_image_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 	 * once the new one has its bytes; refused, the old one stays. It is
 	 * held meanwhile, so settling cannot evict it (libtsm#37). */
 	if (desc->kind == TSM_IMAGE_KITTY)
-		old = store_find_id(st, desc->id);
+		old = store_find_id(con, st, desc->id);
 	if (old)
 		++old->hold;
 	/* what pieces owe is asked for first, so what follows sees the room
@@ -1585,14 +1591,13 @@ struct tsm_image *screen_kitty_find(struct tsm_screen *con, uint32_t id,
 	struct tsm_image *image, *newest = NULL;
 	struct shl_dlist *iter;
 
-	/* the scan below, or store_find_id's, counted against the input
-	 * call's work as images_mark_pinned counts its own */
-	con->img.work += st->count;
 	if (id)
-		return store_find_id(st, id);
+		return store_find_id(con, st, id);
 	if (!number)
 		return NULL;
-	/* images are listed oldest first, a replacement as a new one */
+	/* images are listed oldest first, a replacement as a new one; the
+	 * scan counted as store_find_id counts its own */
+	con->img.work += st->count;
 	shl_dlist_for_each(iter, &st->images) {
 		image = shl_dlist_entry(iter, struct tsm_image, list);
 		if (image->kind == TSM_IMAGE_KITTY && image->number == number)
@@ -1651,7 +1656,7 @@ uint32_t screen_kitty_free_id(struct tsm_screen *con)
 int screen_kitty_reserve(struct tsm_screen *con, size_t bytes, uint32_t id,
 			 struct tsm_kitty_reservation *r)
 {
-	struct tsm_image *old = store_find_id(cur_store(con), id);
+	struct tsm_image *old = store_find_id(con, cur_store(con), id);
 	size_t added;
 	int ret;
 
@@ -1705,7 +1710,7 @@ int screen_kitty_new(struct tsm_screen *con, const struct tsm_test_image *desc,
 	 * screen) or been replaced; whichever has the id now is replaced */
 	old = reservation_release_old(con, r);
 	if (!old || old->id != desc->id)
-		old = store_find_id(st, desc->id);
+		old = store_find_id(con, st, desc->id);
 	if (old)
 		++old->hold;
 	if (r->bytes > bytes) {
