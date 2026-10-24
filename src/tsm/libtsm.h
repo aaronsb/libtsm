@@ -1218,7 +1218,7 @@ void tsm_vte_set_kitty_graphics(struct tsm_vte *vte, bool enable);
  * ESC \, or a C1 ST), and 0 on every call after until tsm_vte_image_reply
  * answers. A negative value answers at once, as TSM_VTE_IMAGE_FAILED (EBADF
  * to the client, or a discard's own refusal), and parsing goes on in the
- * same call.
+ * same call; a positive value is treated as FAILED the same way.
  *
  * The request and what it points to are valid only during the hook call. One
  * request per vte is out at a time.

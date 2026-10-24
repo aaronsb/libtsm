@@ -771,12 +771,12 @@ START_TEST(test_hook_pause)
 END_TEST
 
 /*
- * Any negative return from the hook answers at once as
+ * Any return from the hook but 0, negative or positive, answers at once as
  * TSM_VTE_IMAGE_FAILED, EBADF, and parsing goes on in the same call
  */
 START_TEST(test_hook_errors)
 {
-	static const int rets[] = { -EBADF, -EINVAL, -ENOSPC, -EIO, -1 };
+	static const int rets[] = { -EBADF, -EINVAL, -ENOSPC, -EIO, -1, 1 };
 	static const char in[] = "\033_Ga=t,t=f,f=100,i=1;L3RtcC94\033\\\033[6n";
 	char want[128];
 	unsigned int i;
