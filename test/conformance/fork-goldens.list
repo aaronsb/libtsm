@@ -110,6 +110,7 @@ six-img2sixel-highcolor # img2sixel stream: registers redefined band by band
 apc-kitty-graphics  # the a=T pixel is placed at the cursor, which moves past it
 kit-transmit        # a=T with f=32 and f=24, anonymous, a=t then a=p; replies and cursor
 kit-chunked         # chunked direct data, placed where the last chunk finds the cursor
+kit-chunk-large     # a chunk of 131072 characters (icat's size) streams whole into the image sent
 kit-chunk-abort     # a delete, another command and CAN abort an upload
 kit-ids             # I picks the lowest free id; i with I refused; ENOENT
 kit-replace         # an id sent again replaces its image and placements; p moves one

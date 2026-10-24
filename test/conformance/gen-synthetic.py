@@ -988,6 +988,25 @@ def _():
             DSR)
 
 
+def ramp(w, h):
+    """w x h pixels of f=24 whose colour encodes their position, so a lost,
+    doubled or misplaced byte changes the image's digest."""
+    return bytes(c for y in range(h) for x in range(w)
+                 for c in (x & 0xff, y & 0xff, (7 * x + 13 * y) & 0xff))
+
+
+@case("kit-chunk-large", 12, 4)
+def _():
+    # A chunk of 131072 base64 characters, the size kitten icat sends, 32
+    # times the spec's "no larger than 4096 bytes": the payload is
+    # streamed, so the chunk is accepted whole and the image is the one
+    # sent. 160x206 pixels of f=24 are 131840 characters, the big chunk
+    # (m=1) and a tail of 768 (m=0). FNV-1a over the pixels as tsm-replay
+    # reads them, A R G B with A=255, computed from ramp() alone: 5ce2ce65.
+    return cell() + chunks("a=T,f=24,s=160,v=206,i=1,c=4,r=2", ramp(160, 206),
+                           131072) + DSR
+
+
 @case("kit-chunk-abort", 12, 4)
 def _():
     # A pending upload is aborted by a delete, by any other graphics
