@@ -519,6 +519,29 @@ START_TEST(test_kitty_reserve_bound)
 END_TEST
 
 /*
+ * Replacing an image frees the old one, whose scan for its placements
+ * covers every placement in the store and counts as work: with a full
+ * store of another image's placements, a flood of replacements stops the
+ * bounded call early
+ */
+START_TEST(test_kitty_replace_bound)
+{
+	struct tsm_test_image img = { .width = 1, .height = 1, .kind = TSM_IMAGE_KITTY,
+				      .id = 1 };
+	struct tsm_test_placement pl = { 0 };
+	uint32_t px = 0xff000000;
+	uint64_t key;
+	unsigned int i;
+
+	img.pixels = &px;
+	ck_assert_int_eq(tsm_screen_test_image(screen, &img, &pl.image), 0);
+	for (i = 1; i < TSM_SCREEN_PLACEMENTS_PER_STORE; ++i)
+		ck_assert_int_eq(tsm_screen_test_place(screen, &pl, &key), 0);
+	assert_bounded("\033_Ga=t,f=24,s=1,v=1,i=2,q=2;/wAA\033\\", 30000);
+}
+END_TEST
+
+/*
  * p and q choose a cell on the screen's own lines: without y they choose
  * nothing, so a placement wholly in scrollback stays, where the missing y
  * would have been row -1, its line. With x and y they delete as before.
@@ -696,6 +719,7 @@ TEST_DEFINE_CASE(kitty)
 	TEST(test_kitty_delete_bound)
 	TEST(test_kitty_delete_scrollback)
 	TEST(test_kitty_reserve_bound)
+	TEST(test_kitty_replace_bound)
 	TEST(test_kitty_delete_number_placement)
 	TEST(test_kitty_keys_limit)
 	TEST(test_kitty_chunk_quiet)

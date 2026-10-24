@@ -523,8 +523,10 @@ static void image_free(struct tsm_screen *con, struct tsm_image *image)
 	struct shl_dlist *iter, *tmp;
 	struct tsm_placement *p;
 
-	/* its bytes, placements' included, go back in one release */
+	/* its bytes, placements' included, go back in one release; the scan
+	 * for its placements counts against the input call's work */
 	image->dying = true;
+	con->img.work += image->store->nplacements;
 	shl_dlist_for_each_safe(iter, tmp, &image->store->placements) {
 		p = shl_dlist_entry(iter, struct tsm_placement, store_link);
 		if (p->image == image)
