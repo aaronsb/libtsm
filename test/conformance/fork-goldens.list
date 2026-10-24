@@ -138,3 +138,23 @@ kit-cancel          # CAN and SUB abort a command
 kit-evict           # unplaced, scrollback, then kitty on screen; a sixel never; ENOSPC
 kit-evict-stamp     # an old image placed again keeps its transmission stamp
 kit-ed2             # ED 2 keeps the image; leaving the alternate screen and RIS empty stores
+kit-host-media      # each medium reaches the host; inline raw data stays in libtsm
+kit-host-names      # names too long or holding NUL refused; a name escaped
+kit-host-mpv        # mpv's whole t=s commands with m=1, each a request (ADR-105)
+kit-host-icat       # kitten icat's detection: three OKs before DA1 (ADR-106)
+kit-host-icat-gif   # icat's a=a refused; its a=f over t=s handed over as a discard
+kit-host-pause      # a put after a file transmission parsed after the reply, in order
+kit-host-errors     # the host's outcomes, a=q, size checks, ENOSPC from either reservation
+kit-host-requests   # the request each command row of What libtsm asks for produces
+kit-host-outcomes   # the reply each outcome produces, per column of What libtsm answers
+kit-host-lengths    # kitty's S and length rules (ADR-107) through the fixture host
+kit-host-media-nohook # kit-host-media with the host removed
+kit-host-names-nohook # kit-host-names with the host removed
+kit-host-mpv-nohook # kit-host-mpv with the host removed
+kit-host-icat-nohook # kit-host-icat with the host removed
+kit-host-icat-gif-nohook # kit-host-icat-gif with the host removed
+kit-host-pause-nohook # kit-host-pause with the host removed
+kit-host-errors-nohook # kit-host-errors with the host removed
+kit-host-requests-nohook # kit-host-requests with the host removed
+kit-host-outcomes-nohook # kit-host-outcomes with the host removed
+kit-host-lengths-nohook # kit-host-lengths with the host removed

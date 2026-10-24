@@ -3288,7 +3288,8 @@ static size_t kitty_run(struct tsm_vte *vte, const char *u8, size_t len)
 	return n;
 }
 
-/* parses until @len bytes are read or the image work runs out */
+/* parses until @len bytes are read, the image work runs out, or a kitty
+ * command is handed to the host hook */
 static size_t vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 {
 	int state;
@@ -3321,17 +3322,21 @@ static size_t vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 				parse_data(vte, ucs4);
 			}
 		}
-		if (!vte->work_left)
+		if (!vte->work_left || tsm_kitty_paused(vte->kitty))
 			break;
 	}
 	return i;
 }
 
-/* runs vte_input with @work to spend, as one call */
+/*
+ * runs vte_input with @work to spend, as one call; with @host_ok a kitty
+ * command may go to the host hook, and the call ends there
+ */
 static size_t vte_input_with(struct tsm_vte *vte, const char *u8, size_t len,
-			     uint64_t work)
+			     uint64_t work, bool host_ok)
 {
 	uint64_t saved = vte->work_left;
+	bool saved_host = tsm_kitty_set_host(vte->kitty, host_ok);
 	size_t n;
 
 	++vte->parse_cnt;
@@ -3340,6 +3345,7 @@ static size_t vte_input_with(struct tsm_vte *vte, const char *u8, size_t len,
 	/* what the call's cuts and scrolls owe the budget */
 	screen_images_settle(vte->con);
 	vte->work_left = saved;
+	tsm_kitty_set_host(vte->kitty, saved_host);
 	--vte->parse_cnt;
 	return n;
 }
@@ -3350,7 +3356,15 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 	if (!vte || !vte->con)
 		return;
 
-	vte_input_with(vte, u8, len, UINT64_MAX);
+	/* the host feeds nothing while its request is out, nor from inside
+	 * the hook */
+	if (tsm_kitty_paused(vte->kitty) || tsm_kitty_in_hook(vte->kitty)) {
+		if (len)
+			llog_warning(vte, "%zu bytes dropped: a kitty image request is out",
+				     len);
+		return;
+	}
+	vte_input_with(vte, u8, len, UINT64_MAX, false);
 }
 
 SHL_EXPORT
@@ -3359,7 +3373,38 @@ size_t tsm_vte_input_bounded(struct tsm_vte *vte, const char *u8, size_t len)
 	if (!vte || !vte->con)
 		return len;
 
-	return vte_input_with(vte, u8, len, VTE_INPUT_WORK);
+	if (tsm_kitty_paused(vte->kitty) || tsm_kitty_in_hook(vte->kitty))
+		return 0;
+	return vte_input_with(vte, u8, len, VTE_INPUT_WORK, true);
+}
+
+SHL_EXPORT
+void tsm_vte_set_image_cb(struct tsm_vte *vte, tsm_vte_image_cb image_cb,
+			  void *image_data)
+{
+	if (!vte)
+		return;
+
+	++vte->parse_cnt;
+	tsm_kitty_set_hook(vte->kitty, image_cb, image_data);
+	--vte->parse_cnt;
+}
+
+SHL_EXPORT
+int tsm_vte_image_reply(struct tsm_vte *vte, uint64_t id,
+			const struct tsm_vte_image_result *res)
+{
+	int ret;
+
+	if (!vte)
+		return -EINVAL;
+
+	/* the client's reply is written as one to its input */
+	++vte->parse_cnt;
+	ret = tsm_kitty_reply(vte->kitty, id, res);
+	screen_images_settle(vte->con);
+	--vte->parse_cnt;
+	return ret;
 }
 
 SHL_EXPORT

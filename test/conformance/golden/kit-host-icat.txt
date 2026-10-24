@@ -1,0 +1,12 @@
+size 12x4
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5f47693d313b4f4b1b5c
+host: 1 t=t flags=- O=0 max=47 min=3 name=/dev/shm/kitty-tty-graphics-protocol-2526776889 len=0
+reply 1b5f47693d323b4f4b1b5c
+host: 2 t=s flags=- O=0 max=19 min=3 name=/icat-KMIKYT5GUOEHE len=0
+reply 1b5f47693d333b4f4b1b5c1b5b3f36303b313b343b363b393b313563
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||

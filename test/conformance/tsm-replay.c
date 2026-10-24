@@ -108,6 +108,40 @@
  *                             and row are given
  *   graphic-max;w=;h=         tsm_vte_set_graphic_max_size (TSM_VTE_SIXEL)
  *   registers;n=[;private=0]  tsm_vte_set_sixel_registers (TSM_VTE_SIXEL)
+ *   host;on=0|1               remove or install the fixture host (below)
+ *
+ * Against a libtsm that declares TSM_VTE_IMAGE_HOST, tsm-replay installs a
+ * fixture host as the kitty host hook (ADR-103, the Notes of 2026-10-24),
+ * feeds the stream through tsm_vte_input_bounded, and answers each request
+ * with tsm_vte_image_reply before it feeds the rest, the path kmscon takes,
+ * pause and resume included. Answers come from FILE's fixture directory, FILE
+ * with ".bin" replaced by ".files". A request names a fixture: the last
+ * component of its path or name for t=f, t=t and t=s, and direct-<n> for the
+ * case's nth inline request, from 1. tsm-replay answers with an outcome, the
+ * image helper's terms, taking the first that applies:
+ *   <fixture>.error           its first word, an outcome (UNREADABLE, TOO_SHORT,
+ *                             CORRUPT, TOO_LARGE or OVER_BUDGET), is the answer
+ *   <fixture>.rgba            for a PNG request: a decoded image, width and height
+ *                             as little-endian 32-bit integers, then RGBA, since
+ *                             tsm-replay links no decoder
+ *   <fixture>.bytes           for an INFLATE request without PNG: the inflated
+ *                             bytes, of which the first min_bytes come back
+ *                             (fewer TOO_SHORT; under EXACT, more CORRUPT)
+ *   <fixture>                 for a request with neither: the data itself, read
+ *                             from offset for at most read_max bytes (0: to the
+ *                             end), of which the first min_bytes come back (an
+ *                             offset at or past the end UNREADABLE, fewer
+ *                             TOO_SHORT)
+ *   otherwise                 UNREADABLE for the file media, CORRUPT for inline
+ *                             data
+ * A discard is answered OK with no bytes, as the image helper answers one. It
+ * deletes nothing and applies none of the image helper's path rules. Each
+ * request is printed among the replies, where it happened:
+ *   host: ID t=M flags=F O=OFFSET max=READ_MAX min=MIN_BYTES name=NAME len=LEN
+ *                             (F the flags set, of inflate, png, exact and
+ *                              discard, comma-separated, or -; NAME as
+ *                              received, every byte outside 0x21 to 0x7e, and
+ *                              the backslash, as \xNN; empty for inline data)
  *
  * SPDX-License-Identifier: MIT
  */
@@ -136,9 +170,17 @@ struct grid {
 	struct cell *cells;
 };
 
+/* the bytes libtsm wrote back, and the host lines printed among them */
+struct host_line {
+	size_t at;			/* the reply bytes before it */
+	char *text;
+};
+
 struct reply {
 	unsigned char *buf;
 	size_t len, cap;
+	struct host_line *lines;
+	size_t nlines;
 };
 
 static void on_write(struct tsm_vte *vte, const char *u8, size_t len, void *data)
@@ -442,6 +484,11 @@ static void dump_images(struct tsm_screen *screen, const struct tsm_frame *f, bo
 	free(keys);
 }
 
+#ifdef TSM_VTE_IMAGE_HOST
+static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
+		   void *data);
+#endif
+
 /* the value of KEY= among @argc tokens, or @def */
 static long test_arg(char **argv, int argc, const char *key, long def)
 {
@@ -558,6 +605,10 @@ static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
 		r = tsm_vte_set_sixel_registers(vte, test_arg(argv, argc, "n", 0),
 						test_arg(argv, argc, "private", 1));
 #endif
+#ifdef TSM_VTE_IMAGE_HOST
+	} else if (!strcmp(argv[0], "host")) {
+		tsm_vte_set_image_cb(vte, test_arg(argv, argc, "on", 1) ? host_cb : NULL, NULL);
+#endif
 	} else {
 		fprintf(stderr, "tsm-replay: unknown test command %s\n", argv[0]);
 		exit(2);
@@ -580,6 +631,223 @@ static const char *find_bytes(const char *hay, size_t len, const char *needle, s
 }
 #endif
 
+#ifdef TSM_VTE_IMAGE_HOST
+/* the fixture host: the request out, and where its answers come from */
+static struct {
+	bool out;
+	uint64_t id;
+	unsigned int medium, flags;
+	uint64_t offset, read_max, min_bytes;
+	char fixture[4200];
+	unsigned int direct;		/* inline requests so far */
+	char dir[4096];			/* the case's fixture directory */
+	struct reply *reply;
+} host;
+
+static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
+		   void *data)
+{
+	static const char *const flag_names[] = { "inflate", "png", "exact", "discard" };
+	struct reply *r = host.reply;
+	const char *base;
+	/* the whole name, every byte escaped at worst, and the rest */
+	size_t cap = 256 + (req->name ? 4 * strlen(req->name) : 0), len, i;
+	char *line = malloc(cap);
+	bool first = true;
+
+	(void)vte;
+	(void)data;
+	host.out = true;
+	host.id = req->id;
+	host.medium = req->medium;
+	host.flags = req->flags;
+	host.offset = req->offset;
+	host.read_max = req->read_max;
+	host.min_bytes = req->min_bytes;
+	if (req->name) {
+		base = strrchr(req->name, '/');
+		snprintf(host.fixture, sizeof(host.fixture), "%s", base ? base + 1 : req->name);
+	} else {
+		snprintf(host.fixture, sizeof(host.fixture), "direct-%u", ++host.direct);
+	}
+
+	if (!line) {
+		perror("malloc");
+		exit(2);
+	}
+	len = snprintf(line, cap, "host: %llu t=%c flags=",
+		       (unsigned long long)req->id, req->medium);
+	for (i = 0; i < 4; i++) {
+		if (req->flags & (1u << i)) {
+			len += snprintf(line + len, cap - len, "%s%s",
+					first ? "" : ",", flag_names[i]);
+			first = false;
+		}
+	}
+	if (first)
+		line[len++] = '-';
+	len += snprintf(line + len, cap - len, " O=%llu max=%llu min=%llu name=",
+			(unsigned long long)req->offset, (unsigned long long)req->read_max,
+			(unsigned long long)req->min_bytes);
+	for (i = 0; req->name && req->name[i]; i++) {
+		unsigned char c = req->name[i];
+
+		if (c > 0x20 && c < 0x7f && c != '\\')
+			line[len++] = c;
+		else
+			len += snprintf(line + len, cap - len, "\\x%02x", c);
+	}
+	snprintf(line + len, cap - len, " len=%zu", req->data_len);
+
+	r->lines = realloc(r->lines, (r->nlines + 1) * sizeof(*r->lines));
+	if (!r->lines) {
+		perror("realloc");
+		exit(2);
+	}
+	r->lines[r->nlines].at = r->len;
+	r->lines[r->nlines].text = line;
+	r->nlines++;
+	return 0;
+}
+
+/* fixture @name's bytes in @len, or NULL when it does not exist */
+static unsigned char *host_file(const char *suffix, size_t *len)
+{
+	char path[8400];
+	FILE *f;
+
+	snprintf(path, sizeof(path), "%s/%s%s", host.dir, host.fixture, suffix);
+	f = fopen(path, "rb");
+	if (!f)
+		return NULL;
+	fclose(f);
+	return read_file(path, len);
+}
+
+/* the outcome a .error fixture names in its first word */
+static unsigned int host_outcome(const unsigned char *buf, size_t len)
+{
+	static const char *const names[] = {
+		[TSM_VTE_IMAGE_UNREADABLE] = "UNREADABLE",
+		[TSM_VTE_IMAGE_TOO_SHORT] = "TOO_SHORT",
+		[TSM_VTE_IMAGE_CORRUPT] = "CORRUPT",
+		[TSM_VTE_IMAGE_TOO_LARGE] = "TOO_LARGE",
+		[TSM_VTE_IMAGE_OVER_BUDGET] = "OVER_BUDGET",
+	};
+	size_t n, word = 0;
+	unsigned int i;
+
+	while (word < len && buf[word] > ' ')
+		word++;
+	for (i = TSM_VTE_IMAGE_UNREADABLE; i <= TSM_VTE_IMAGE_OVER_BUDGET; i++) {
+		n = strlen(names[i]);
+		if (word == n && !memcmp(buf, names[i], n))
+			return i;
+	}
+	fprintf(stderr, "tsm-replay: %s.error names no outcome\n", host.fixture);
+	exit(2);
+}
+
+/*
+ * Answers the request out from the fixtures, the first that applies, with
+ * min_bytes, offset and read_max applied as the image helper applies them;
+ * a discard is answered TSM_VTE_IMAGE_OK with no bytes, as the helper
+ * answers one
+ */
+static void host_answer(struct tsm_vte *vte)
+{
+	struct tsm_vte_image_result res = { .status = TSM_VTE_IMAGE_OK };
+	unsigned char *buf = NULL;
+	uint64_t avail;
+	size_t len;
+
+	host.out = false;
+	if (host.flags & TSM_VTE_IMAGE_DISCARD) {
+		/* nothing to read */
+	} else if ((buf = host_file(".error", &len))) {
+		res.status = host_outcome(buf, len);
+	} else if ((host.flags & TSM_VTE_IMAGE_PNG) && (buf = host_file(".rgba", &len))) {
+		if (len < 8) {
+			fprintf(stderr, "tsm-replay: %s.rgba is short\n", host.fixture);
+			exit(2);
+		}
+		res.width = buf[0] | buf[1] << 8 | buf[2] << 16 | (uint32_t)buf[3] << 24;
+		res.height = buf[4] | buf[5] << 8 | buf[6] << 16 | (uint32_t)buf[7] << 24;
+		if ((uint64_t)res.width * res.height * 4 != len - 8) {
+			fprintf(stderr, "tsm-replay: %s.rgba is not %ux%u\n", host.fixture,
+				res.width, res.height);
+			exit(2);
+		}
+		res.data = buf + 8;
+		res.len = len - 8;
+	} else if ((host.flags & (TSM_VTE_IMAGE_INFLATE | TSM_VTE_IMAGE_PNG)) ==
+		   TSM_VTE_IMAGE_INFLATE && (buf = host_file(".bytes", &len))) {
+		/* the inflated bytes: the first min_bytes of them, the rest
+		 * ignored, or under EXACT one byte more is corrupt */
+		if (len < host.min_bytes)
+			res.status = TSM_VTE_IMAGE_TOO_SHORT;
+		else if ((host.flags & TSM_VTE_IMAGE_EXACT) && len > host.min_bytes)
+			res.status = TSM_VTE_IMAGE_CORRUPT;
+		res.data = buf;
+		res.len = host.min_bytes;
+	} else if (!(host.flags & (TSM_VTE_IMAGE_INFLATE | TSM_VTE_IMAGE_PNG)) &&
+		   (buf = host_file("", &len))) {
+		/* from offset, at most read_max (0: to the end), the first
+		 * min_bytes of what that holds */
+		avail = host.offset < len ? len - host.offset : 0;
+		if (host.read_max && host.read_max < avail)
+			avail = host.read_max;
+		if (host.offset >= len)
+			res.status = TSM_VTE_IMAGE_UNREADABLE;
+		else if (avail < host.min_bytes)
+			res.status = TSM_VTE_IMAGE_TOO_SHORT;
+		else
+			res.data = buf + host.offset;
+		res.len = host.min_bytes;
+	} else {
+		res.status = host.medium == 'd' ? TSM_VTE_IMAGE_CORRUPT :
+						  TSM_VTE_IMAGE_UNREADABLE;
+	}
+	if (res.status != TSM_VTE_IMAGE_OK) {
+		res.data = NULL;
+		res.len = 0;
+	}
+
+	if (tsm_vte_image_reply(vte, host.id, &res) < 0) {
+		fprintf(stderr, "tsm-replay: tsm_vte_image_reply refused request %llu\n",
+			(unsigned long long)host.id);
+		exit(3);
+	}
+	free(buf);
+}
+#endif
+
+/*
+ * Feeds @len bytes to the vte: through tsm_vte_input_bounded where the fork
+ * has the host hook, answering each request before the rest, else through
+ * tsm_vte_input.
+ */
+static void vte_feed(struct tsm_vte *vte, const char *data, size_t len)
+{
+#ifdef TSM_VTE_IMAGE_HOST
+	size_t n;
+
+	while (len) {
+		n = tsm_vte_input_bounded(vte, data, len);
+		data += n;
+		len -= n;
+		if (host.out) {
+			host_answer(vte);
+		} else if (!n) {
+			fprintf(stderr, "tsm-replay: input paused with no request out\n");
+			exit(3);
+		}
+	}
+#else
+	tsm_vte_input(vte, data, len);
+#endif
+}
+
 /*
  * Feeds @len bytes to the vte. Where the fork has images, a test command in
  * them runs in its place; a command must lie wholly between two checkpoints.
@@ -591,7 +859,7 @@ static void feed(struct tsm_screen *screen, struct tsm_vte *vte, const char *dat
 	const char *start, *end;
 
 	while ((start = find_bytes(data, len, intro, sizeof(intro) - 1))) {
-		tsm_vte_input(vte, data, start - data);
+		vte_feed(vte, data, start - data);
 		start += sizeof(intro) - 1;
 		end = find_bytes(start, len - (start - data), "\x1b\\", 2);
 		if (!end) {
@@ -604,7 +872,7 @@ static void feed(struct tsm_screen *screen, struct tsm_vte *vte, const char *dat
 	}
 #endif
 	(void)screen;
-	tsm_vte_input(vte, data, len);
+	vte_feed(vte, data, len);
 }
 
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
@@ -826,23 +1094,45 @@ enum view {
 	VIEW_FRAME,
 };
 
+/* the reply bytes from @from to @to, as one line */
+static void print_reply_bytes(const struct reply *reply, size_t from, size_t to)
+{
+	size_t i;
+
+	if (from == to)
+		return;
+	printf("reply ");
+	for (i = from; i < to; i++)
+		printf("%02x", reply->buf[i]);
+	putchar('\n');
+}
+
+/* the replies since the last dump, a host line where each request came */
+static void print_reply(struct reply *reply)
+{
+	size_t i, from = 0;
+
+	for (i = 0; i < reply->nlines; i++) {
+		print_reply_bytes(reply, from, reply->lines[i].at);
+		printf("%s\n", reply->lines[i].text);
+		from = reply->lines[i].at;
+		free(reply->lines[i].text);
+	}
+	print_reply_bytes(reply, from, reply->len);
+	reply->len = 0;
+	reply->nlines = 0;
+}
+
 static void dump(struct tsm_screen *screen, struct tsm_vte *vte, struct grid *grid,
 		 struct reply *reply, enum view view)
 {
 	unsigned int flags = tsm_screen_get_flags(screen);
 	unsigned int row;
-	size_t i;
 
 	printf("size %ux%u\n", tsm_screen_get_width(screen), tsm_screen_get_height(screen));
 	printf("cursor %u,%u\n", tsm_screen_get_cursor_x(screen), tsm_screen_get_cursor_y(screen));
 	print_flags(flags);
-	if (reply->len) {
-		printf("reply ");
-		for (i = 0; i < reply->len; i++)
-			printf("%02x", reply->buf[i]);
-		putchar('\n');
-		reply->len = 0;
-	}
+	print_reply(reply);
 
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
 	if (view == VIEW_DRAW2) {
@@ -966,6 +1256,15 @@ int main(int argc, char **argv)
 #ifdef TSM_VTE_KITTY_GRAPHICS
 	tsm_vte_set_kitty_graphics(vte, true);
 #endif
+#ifdef TSM_VTE_IMAGE_HOST
+	/* the fixtures beside the stream: cases/<case>.files/ */
+	i = strlen(argv[3]);
+	if (i >= 4 && !strcmp(argv[3] + i - 4, ".bin"))
+		i -= 4;
+	snprintf(host.dir, sizeof(host.dir), "%.*s.files", (int)i, argv[3]);
+	host.reply = &reply;
+	tsm_vte_set_image_cb(vte, host_cb, NULL);
+#endif
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
 	if (view != VIEW_DRAW && tsm_vte_set_palette(vte, DRAW2_PALETTE) < 0) {
 		fprintf(stderr, "tsm-replay: cannot set palette %s\n", DRAW2_PALETTE);
@@ -993,5 +1292,6 @@ int main(int argc, char **argv)
 	free(grid.cells);
 	free(data);
 	free(reply.buf);
+	free(reply.lines);
 	return 0;
 }

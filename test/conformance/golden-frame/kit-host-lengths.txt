@@ -1,0 +1,40 @@
+size 12x4
+cursor 0,0
+flags AUTO_WRAP
+host: 1 t=f flags=- O=0 max=47 min=3 name=/pix3 len=0
+reply 1b5f47693d313b4f4b1b5c
+host: 2 t=f flags=- O=0 max=0 min=3 name=/pix47 len=0
+reply 1b5f47693d323b4f4b1b5c
+host: 3 t=f flags=- O=10 max=3 min=3 name=/pix47 len=0
+reply 1b5f47693d333b4f4b1b5c
+host: 4 t=f flags=- O=10 max=0 min=3 name=/pix47 len=0
+reply 1b5f47693d343b4f4b1b5c
+host: 5 t=f flags=- O=0 max=2 min=3 name=/pix47 len=0
+reply 1b5f47693d353b45424144463a4661696c656420746f207265616420696d6167652066696c651b5c
+host: 6 t=f flags=- O=0 max=3 min=6 name=/pix47 len=0
+reply 1b5f47693d363b45424144463a4661696c656420746f207265616420696d6167652066696c651b5c
+host: 7 t=f flags=- O=47 max=0 min=3 name=/pix47 len=0
+reply 1b5f47693d373b45424144463a4661696c656420746f207265616420696d6167652066696c651b5c
+host: 8 t=f flags=- O=50 max=0 min=3 name=/pix3 len=0
+reply 1b5f47693d383b45424144463a4661696c656420746f207265616420696d6167652066696c651b5c
+host: 9 t=t flags=- O=0 max=47 min=3 name=/tmp/tty-graphics-protocol-pix47 len=0
+reply 1b5f47693d393b4f4b1b5c1b5f47693d31303b45494e56414c3a696e76616c696420617267756d656e741b5c1b5f47693d31313b4f4b1b5c
+palette legacy fg=#e5e5e5 bg=#000000
+changed 48
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+placement 0 row 0 col 0 box 1x1 at 0,0 size 1x1 src 0,0 1x1 cell 8x16 z 0 above-text kitty image 0 opaque changed
+placement 1 row 0 col 0 box 1x1 at 0,0 size 1x1 src 0,0 1x1 cell 8x16 z 0 above-text kitty image 1 opaque changed
+placement 2 row 0 col 0 box 1x1 at 0,0 size 1x1 src 0,0 1x1 cell 8x16 z 0 above-text kitty image 2 opaque changed
+placement 3 row 0 col 0 box 1x1 at 0,0 size 1x1 src 0,0 1x1 cell 8x16 z 0 above-text kitty image 3 opaque changed
+placement 4 row 0 col 0 box 1x1 at 0,0 size 1x1 src 0,0 1x1 cell 8x16 z 0 above-text kitty image 4 opaque changed
+placement 5 row 0 col 0 box 1x1 at 0,0 size 1x1 src 0,0 1x1 cell 8x16 z 0 above-text kitty image 5 opaque changed
+image 0 1x1 digest 989a89f8
+image 1 1x1 digest 989a89f8
+image 2 1x1 digest 73cb1e02
+image 3 1x1 digest 73cb1e02
+image 4 1x1 digest 989a89f8
+image 5 1x1 digest 989a89f8

@@ -24,6 +24,13 @@
  * their own ST. A transmission that fails part way swallows its remaining
  * chunks and answers once, at its last.
  *
+ * What libtsm does not do itself goes to the host hook (ADR-103's Notes of
+ * 2026-10-24): files, temporary files and shared memory, and PNG or zlib
+ * data, which is buffered as it arrives, each growth reserved from the
+ * budget. The hook takes a request when the command ends; the vte then
+ * parses nothing until tsm_kitty_reply answers it, so commands, and their
+ * replies, keep their order.
+ *
  * Replies follow the spec: only to a command that carries i or I, q=1
  * suppressing OK and q=2 every reply. An a=q without i, with or without I,
  * is the exception: it is dropped at its ST, nothing read and nothing
@@ -88,6 +95,7 @@ enum upload_mode {
 	UPLOAD_SKIP,			/* refused: its chunks are swallowed */
 	UPLOAD_RAW,			/* f=24 or f=32 into @buf */
 	UPLOAD_COUNT,			/* a=q: counted, not kept */
+	UPLOAD_HOST,			/* PNG or zlib into @buf, for the host */
 };
 
 struct kitty_upload {
@@ -97,9 +105,20 @@ struct kitty_upload {
 	uint8_t *buf;
 	size_t len;			/* bytes decoded */
 	size_t want;			/* bytes s, v and f call for */
+	size_t cap;			/* HOST: @buf's size, reserved */
 	size_t excess;			/* bytes past @want, ignored */
 	struct tsm_kitty_reservation res;
 	struct b64 b64;
+};
+
+/* the request the host hook took, until tsm_kitty_reply answers it */
+struct kitty_request {
+	bool out;
+	uint64_t id;
+	struct kitty_cmd cmd;
+	unsigned int flags;		/* TSM_VTE_IMAGE_* */
+	uint64_t min_bytes;
+	int refusal;			/* a discard's reply, libtsm's own */
 };
 
 struct tsm_kitty {
@@ -123,6 +142,18 @@ struct tsm_kitty {
 	struct b64 name_b64;
 
 	struct kitty_upload up;
+
+	tsm_vte_image_cb hook;
+	void *hook_data;
+	bool in_hook;
+	uint64_t last_request;
+	struct kitty_request req;
+	bool host_ok;			/* the input call running may hand out a
+					   request, set by each call */
+	/* bumped by every cancel and every hook change, so a request can tell
+	 * that one happened while its hook ran */
+	uint64_t cancels;
+	uint64_t hook_changes;
 };
 
 /*
@@ -411,15 +442,16 @@ static int place(struct tsm_kitty *k, const struct kitty_cmd *cmd, struct tsm_im
 }
 
 /*
- * Stores @pixels, @cmd's transmitted image whose bytes @res holds, places it
- * for a=T, and answers.
+ * Stores @pixels, @cmd's transmitted image of @width x @height whose bytes
+ * @res holds, places it for a=T, and answers.
  */
-static void store(struct tsm_kitty *k, const struct kitty_cmd *cmd, uint32_t *pixels,
-		  bool opaque, struct tsm_kitty_reservation *res)
+static void store(struct tsm_kitty *k, const struct kitty_cmd *cmd, unsigned int width,
+		  unsigned int height, uint32_t *pixels, bool opaque,
+		  struct tsm_kitty_reservation *res)
 {
 	struct tsm_test_image desc = {
-		.width = cmd->s,
-		.height = cmd->v,
+		.width = width,
+		.height = height,
 		.kind = TSM_IMAGE_KITTY,
 		.id = cmd->i,
 		.number = cmd->I,
@@ -449,8 +481,181 @@ static void store(struct tsm_kitty *k, const struct kitty_cmd *cmd, uint32_t *pi
 }
 
 /*
+ * The host hook
+ */
+
+/*
+ * What libtsm asks the host for, from @cmd's keys (ADR-103's Notes of
+ * 2026-10-24, What libtsm asks for): where a file's read starts and the most
+ * it may read (O and S), the fewest bytes the image needs after inflating (s
+ * x v x bytes per pixel for a raw format), and whether to inflate or decode
+ * PNG. Direct PNG with zlib holds the inflated length to a non-zero S
+ * exactly, as the spec words its rule; without S, or with S=0, which the
+ * spec's default makes the same, it is decoded without the check.
+ */
+static void request_terms(const struct kitty_cmd *cmd, struct tsm_vte_image_request *r)
+{
+	bool file = cmd->t != 'd';
+
+	r->offset = file ? cmd->O : 0;
+	r->read_max = file ? cmd->S : 0;
+	if (cmd->o == 'z')
+		r->flags |= TSM_VTE_IMAGE_INFLATE;
+	if (cmd->f != 100) {
+		r->min_bytes = (uint64_t)cmd->s * cmd->v * (cmd->f / 8);
+		return;
+	}
+	r->flags |= TSM_VTE_IMAGE_PNG;
+	if (!file && cmd->o == 'z' && cmd->S) {
+		r->flags |= TSM_VTE_IMAGE_EXACT;
+		r->min_bytes = cmd->S;
+	}
+}
+
+/*
+ * The kitty reply to a host's @status (What libtsm answers): too few bytes
+ * read from a file or shared memory is a read failure, EBADF, as kitty
+ * answers it; too few inflated, or sent inline, is EINVAL, kitty's ENODATA
+ * being none of ADR-103's codes.
+ */
+static int status_code(const struct kitty_request *req, unsigned int status)
+{
+	switch (status) {
+	case TSM_VTE_IMAGE_OK:
+		return 0;
+	case TSM_VTE_IMAGE_TOO_SHORT:
+		return req->cmd.t != 'd' && !(req->flags & TSM_VTE_IMAGE_INFLATE) ?
+		       -EBADF : -EINVAL;
+	case TSM_VTE_IMAGE_CORRUPT:
+	case TSM_VTE_IMAGE_TOO_LARGE:
+		return -EINVAL;
+	case TSM_VTE_IMAGE_OVER_BUDGET:
+		return -ENOSPC;
+	default:
+		/* UNREADABLE and FAILED */
+		return -EBADF;
+	}
+}
+
+/*
+ * The request is answered with @status and, for TSM_VTE_IMAGE_OK, the bytes
+ * at @data: a PNG's @width x @height pixels of RGBA, or the min_bytes bytes
+ * of a raw format, checked by tsm_kitty_reply. A discard answers with
+ * libtsm's own refusal, whatever the host says.
+ */
+static void request_finish(struct tsm_kitty *k, unsigned int status, unsigned int width,
+			   unsigned int height, const uint8_t *data)
+{
+	struct kitty_request *req = &k->req;
+	struct kitty_cmd cmd = req->cmd;
+	struct tsm_kitty_reservation res;
+	unsigned int bpp = 4;
+	uint32_t *pixels;
+	size_t n;
+	bool opaque;
+
+	req->out = false;
+	if (req->flags & TSM_VTE_IMAGE_DISCARD) {
+		reply(k, &cmd, cmd.i, req->refusal);
+		return;
+	}
+	if (status != TSM_VTE_IMAGE_OK) {
+		reply(k, &cmd, cmd.i, status_code(req, status));
+		return;
+	}
+	if (!(req->flags & TSM_VTE_IMAGE_PNG)) {
+		width = cmd.s;
+		height = cmd.v;
+		bpp = cmd.f / 8;
+	}
+	/* a raw format's s x v was checked before the hook, but
+	 * max-graphic-size may have been lowered since */
+	if (width > k->max_width || height > k->max_height ||
+	    (uint64_t)width * height * 4 + TSM_SCREEN_IMAGE_OVERHEAD >
+	    TSM_SCREEN_IMAGE_MAX_BYTES) {
+		reply(k, &cmd, cmd.i, -EINVAL);
+		return;
+	}
+	if (cmd.a == 'q') {
+		reply(k, &cmd, cmd.i, 0);
+		return;
+	}
+
+	n = (size_t)width * height;
+	if (screen_kitty_reserve(k->con, n * 4 + TSM_SCREEN_IMAGE_OVERHEAD, cmd.i, &res)) {
+		reply(k, &cmd, cmd.i, -ENOSPC);
+		return;
+	}
+	pixels = malloc(n * 4);
+	if (!pixels) {
+		screen_kitty_unreserve(k->con, &res);
+		reply(k, &cmd, cmd.i, -ENOSPC);
+		return;
+	}
+	opaque = rgba_premultiply(pixels, data, n, bpp);
+	store(k, &cmd, width, height, pixels, opaque, &res);
+}
+
+/*
+ * Hands @cmd to the host hook: a medium named k->name, or @len bytes of
+ * inline data; with @discard, a refused t=t or t=s command whose object the
+ * host removes, and @refusal the client's reply. Taken, the vte pauses until
+ * tsm_kitty_reply; refused, it is answered now as TSM_VTE_IMAGE_FAILED.
+ */
+static void request(struct tsm_kitty *k, const struct kitty_cmd *cmd, bool discard,
+		    int refusal, const uint8_t *data, size_t len)
+{
+	struct tsm_vte_image_request r = {
+		.id = ++k->last_request,
+		.medium = cmd->t,
+		.name = cmd->t == 'd' ? NULL : k->name,
+		/* an empty payload still points somewhere */
+		.data = cmd->t != 'd' ? NULL : data ? data : (const uint8_t *)"",
+		.data_len = len,
+	};
+	uint64_t cancels, hook_changes;
+	int ret;
+
+	if (discard)
+		r.flags = TSM_VTE_IMAGE_DISCARD;
+	else
+		request_terms(cmd, &r);
+	k->name[k->name_len] = 0;
+	k->req.id = r.id;
+	k->req.cmd = *cmd;
+	k->req.flags = r.flags;
+	k->req.min_bytes = r.min_bytes;
+	k->req.refusal = refusal;
+	cancels = k->cancels;
+	hook_changes = k->hook_changes;
+	k->in_hook = true;
+	ret = k->hook(k->vte, &r, k->hook_data);
+	k->in_hook = false;
+	/* a cancel from inside the hook dropped the request, with no reply;
+	 * a hook changed from inside it answers it as outside */
+	if (k->cancels != cancels)
+		return;
+	if (k->hook_changes != hook_changes) {
+		request_finish(k, TSM_VTE_IMAGE_FAILED, 0, 0, NULL);
+		return;
+	}
+	if (!ret) {
+		k->req.out = true;
+		return;
+	}
+	request_finish(k, TSM_VTE_IMAGE_FAILED, 0, 0, NULL);
+}
+
+/*
  * Direct transmission
  */
+
+/* whether the input call running may buffer for, and hand a request to, the
+ * hook; from tsm_vte_input, or with no hook, commands answer without one */
+static bool host_open(const struct tsm_kitty *k)
+{
+	return k->hook && k->host_ok;
+}
 
 static void upload_abort(struct tsm_kitty *k)
 {
@@ -459,8 +664,12 @@ static void upload_abort(struct tsm_kitty *k)
 	if (up->mode == UPLOAD_RAW) {
 		free(up->buf);
 		screen_kitty_unreserve(k->con, &up->res);
+	} else if (up->mode == UPLOAD_HOST) {
+		free(up->buf);
+		screen_images_unreserve(k->con, up->cap);
 	}
 	up->buf = NULL;
+	up->cap = 0;
 	up->mode = UPLOAD_NONE;
 }
 
@@ -499,9 +708,13 @@ static void upload_start(struct tsm_kitty *k)
 		up->err = err;
 		return;
 	}
-	/* PNG and zlib are the host's, and there is no host hook */
+	/* PNG and zlib are the host's: buffered for its hook when this input
+	 * call may hand it a request, else EINVAL, with nothing buffered */
 	if (cmd->f == 100 || cmd->o == 'z') {
-		up->err = -EINVAL;
+		if (host_open(k))
+			up->mode = UPLOAD_HOST;
+		else
+			up->err = -EINVAL;
 		return;
 	}
 
@@ -525,10 +738,59 @@ static void upload_start(struct tsm_kitty *k)
 	up->mode = UPLOAD_RAW;
 }
 
+/*
+ * Room in the host buffer for @n more bytes, each growth reserved before it
+ * is allocated; a refused reservation fails the upload with ENOSPC.
+ */
+static bool upload_grow(struct tsm_kitty *k, size_t n)
+{
+	struct kitty_upload *up = &k->up;
+	size_t cap = up->cap ? up->cap : 4096;
+	uint8_t *buf;
+
+	if (n <= up->cap - up->len)
+		return true;
+	while (cap - up->len < n) {
+		if (cap > SIZE_MAX / 2) {
+			upload_fail(k, -ENOSPC);
+			return false;
+		}
+		cap *= 2;
+	}
+	if (screen_images_reserve(k->con, cap - up->cap)) {
+		upload_fail(k, -ENOSPC);
+		return false;
+	}
+	buf = realloc(up->buf, cap);
+	if (!buf) {
+		screen_images_unreserve(k->con, cap - up->cap);
+		upload_fail(k, -ENOSPC);
+		return false;
+	}
+	k->work += cap - up->cap;
+	up->buf = buf;
+	up->cap = cap;
+	return true;
+}
+
 /* @n decoded bytes for the upload */
 static void upload_data(struct tsm_kitty *k, const uint8_t *data, size_t n)
 {
 	struct kitty_upload *up = &k->up;
+
+	if (up->mode == UPLOAD_HOST) {
+		/* a later input call that cannot hand the request out (the
+		 * upload begun in tsm_vte_input_bounded, continued in
+		 * tsm_vte_input) buffers nothing more: the upload fails as it
+		 * would have without a hook, its bytes given back */
+		if (!host_open(k))
+			upload_fail(k, -EINVAL);
+		else if (upload_grow(k, n)) {
+			memcpy(up->buf + up->len, data, n);
+			up->len += n;
+		}
+		return;
+	}
 
 	/* data past s x v x bytes per pixel is ignored, as kitty ignores it
 	 * (the operator's decision of 2026-10-24) */
@@ -570,7 +832,8 @@ static void upload_finish(struct tsm_kitty *k)
 	struct kitty_upload *up = &k->up;
 	struct kitty_cmd cmd = up->cmd;
 	uint32_t *pixels;
-	size_t n;
+	uint8_t *buf;
+	size_t n, cap;
 	bool opaque;
 
 	switch (up->mode) {
@@ -582,6 +845,22 @@ static void upload_finish(struct tsm_kitty *k)
 		up->mode = UPLOAD_NONE;
 		log_excess(k, &cmd, up->excess, 'd');
 		reply(k, &cmd, cmd.i, up->len < up->want ? -EINVAL : 0);
+		return;
+	case UPLOAD_HOST:
+		/* the buffer is this call's now: a cancel from inside the hook
+		 * finds no upload to free */
+		buf = up->buf;
+		cap = up->cap;
+		up->buf = NULL;
+		up->cap = 0;
+		up->mode = UPLOAD_NONE;
+		if (host_open(k))
+			request(k, &cmd, false, 0, buf, up->len);
+		else
+			reply(k, &cmd, cmd.i, -EINVAL);
+		/* the request's data was valid only during the hook call */
+		free(buf);
+		screen_images_unreserve(k->con, cap);
 		return;
 	case UPLOAD_RAW:
 		break;
@@ -602,7 +881,7 @@ static void upload_finish(struct tsm_kitty *k)
 	k->work += n;
 	up->buf = NULL;
 	up->mode = UPLOAD_NONE;
-	store(k, &cmd, pixels, opaque, &up->res);
+	store(k, &cmd, cmd.s, cmd.v, pixels, opaque, &up->res);
 }
 
 /*
@@ -658,7 +937,8 @@ static void emit(struct tsm_kitty *k, const uint8_t *data, size_t n)
 static bool target_open(struct tsm_kitty *k)
 {
 	if (k->target == TARGET_UPLOAD)
-		return k->up.mode == UPLOAD_RAW || k->up.mode == UPLOAD_COUNT;
+		return k->up.mode == UPLOAD_RAW || k->up.mode == UPLOAD_COUNT ||
+		       k->up.mode == UPLOAD_HOST;
 	return k->target == TARGET_NAME && !k->name_err;
 }
 
@@ -762,23 +1042,36 @@ static void command_start(struct tsm_kitty *k)
 }
 
 /*
- * A transmission from a file, temporary file or shared memory. Without a
- * host hook nothing reads them: a name libtsm can read answers EBADF, the
- * reply for any failure to read.
+ * A transmission from a file, temporary file or shared memory, which the
+ * host reads. An empty name, a longer one or one holding NUL answers EBADF
+ * with no request, as an unreadable file does. A t=t or t=s command libtsm
+ * refuses is still handed over, as a discard, since the spec gives the
+ * object's removal to the terminal. Without a hook (or from tsm_vte_input)
+ * every one answers EBADF.
  */
 static void media_finish(struct tsm_kitty *k)
 {
 	const struct kitty_cmd *cmd = &k->cmd;
-	int ret;
+	bool host = host_open(k);
+	int ret, name_err = k->name_err;
 
 	if (is_dropped(cmd))
 		return;
+	if (!name_err && !k->name_len)
+		name_err = -EBADF;
 	ret = refusal(k, cmd);
-	if (!ret && k->name_err)
-		ret = k->name_err;
-	if (!ret)
-		ret = -EBADF;
-	reply(k, cmd, cmd->i, ret);
+	if (ret) {
+		if (host && !name_err && (cmd->t == 't' || cmd->t == 's'))
+			request(k, cmd, true, ret, NULL, 0);
+		else
+			reply(k, cmd, cmd->i, ret);
+		return;
+	}
+	if (name_err || !host) {
+		reply(k, cmd, cmd->i, name_err ? name_err : -EBADF);
+		return;
+	}
+	request(k, cmd, false, 0, NULL, 0);
 }
 
 /* a=p: the image i names, or the newest with number I, at the cursor */
@@ -885,6 +1178,14 @@ void tsm_kitty_set_max_size(struct tsm_kitty *k, unsigned int width, unsigned in
 	k->max_height = height;
 }
 
+bool tsm_kitty_set_host(struct tsm_kitty *k, bool host_ok)
+{
+	bool old = k->host_ok;
+
+	k->host_ok = host_ok;
+	return old;
+}
+
 void tsm_kitty_begin(struct tsm_kitty *k)
 {
 	k->phase = PHASE_FIRST;
@@ -954,6 +1255,64 @@ void tsm_kitty_cancel(struct tsm_kitty *k)
 		return;
 	upload_abort(k);
 	k->phase = PHASE_IGNORE;
+	/* a request out is dropped, with no reply to the client */
+	k->req.out = false;
+	++k->cancels;
+}
+
+bool tsm_kitty_paused(struct tsm_kitty *k)
+{
+	return k->req.out;
+}
+
+void tsm_kitty_set_hook(struct tsm_kitty *k, tsm_vte_image_cb hook, void *data)
+{
+	if (k->req.out)
+		request_finish(k, TSM_VTE_IMAGE_FAILED, 0, 0, NULL);
+	k->hook = hook;
+	k->hook_data = data;
+	++k->hook_changes;
+}
+
+bool tsm_kitty_in_hook(struct tsm_kitty *k)
+{
+	return k->in_hook;
+}
+
+/* whether @len bytes are @w x @h pixels of RGBA, computed without a wrap */
+static bool rgba_len(unsigned int w, unsigned int h, size_t len)
+{
+	uint64_t n = (uint64_t)w * h;
+
+	return w && h && n <= UINT64_MAX / 4 && n * 4 == len;
+}
+
+int tsm_kitty_reply(struct tsm_kitty *k, uint64_t id, const struct tsm_vte_image_result *res)
+{
+	const struct kitty_request *req = &k->req;
+
+	if (k->in_hook)
+		return -EBUSY;
+	if (!req->out || id != req->id)
+		return -ENOENT;
+	/* a discard takes any result, and answers with libtsm's refusal */
+	if (req->flags & TSM_VTE_IMAGE_DISCARD) {
+		request_finish(k, TSM_VTE_IMAGE_FAILED, 0, 0, NULL);
+		return 0;
+	}
+	/* a result that disagrees with its request ends it with EBADF, so a
+	 * host's mistake cannot leave the vte paused */
+	if (!res || res->status > TSM_VTE_IMAGE_FAILED ||
+	    (res->status == TSM_VTE_IMAGE_OK &&
+	     (!res->data ||
+	      (req->flags & TSM_VTE_IMAGE_PNG ?
+	       !rgba_len(res->width, res->height, res->len) :
+	       res->len != req->min_bytes)))) {
+		request_finish(k, TSM_VTE_IMAGE_FAILED, 0, 0, NULL);
+		return -EINVAL;
+	}
+	request_finish(k, res->status, res->width, res->height, res->data);
+	return 0;
 }
 
 uint64_t tsm_kitty_work(struct tsm_kitty *k)
