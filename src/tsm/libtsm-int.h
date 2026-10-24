@@ -220,7 +220,9 @@ struct tsm_image {
 					   on a screen's own lines, or held) */
 	bool on_screen;			/* scratch: a kitty image placed on a
 					   screen's own lines, rank 3 */
-	bool doomed;			/* scratch: chosen by a kitty delete */
+	bool chosen;			/* scratch: named by a kitty delete */
+	bool doomed;			/* scratch: freed by an uppercase delete if
+					   left with no placement */
 	bool dying;			/* being freed: its placements go uncharged */
 	unsigned int hold;		/* never evicted while being placed */
 	unsigned int placements;	/* placements showing it */

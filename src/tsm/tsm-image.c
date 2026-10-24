@@ -1762,7 +1762,8 @@ static bool placement_covers(const struct tsm_placement *p, long long x, long lo
 /*
  * A kitty delete, as the spec's table says: lowercase removes placements,
  * uppercase also frees each image it touched that is left with no placement
- * anywhere. Placements are chosen on the screen's own lines for a, c, p, q
+ * anywhere. An image named by i, I or r is touched; with a placement id
+ * given too, only when it lost that placement. Placements are chosen on the screen's own lines for a, c, p, q
  * and y, and in the whole store for i, n, r, x and z, as Ghostty's
  * ImageStorage.delete chooses them (src/terminal/kitty/graphics_storage.zig,
  * MIT). Sixel placements are never touched.
@@ -1777,6 +1778,8 @@ void screen_kitty_delete(struct tsm_screen *con, const struct tsm_kitty_delete *
 	bool free_data = d->what >= 'A' && d->what <= 'Z';
 	long long x = (long long)d->x - 1, y = (long long)d->y - 1;
 	bool by_image = what == 'i' || what == 'n' || what == 'r', hit;
+	/* with a placement id, an image is chosen by the placement it loses */
+	bool by_placement = (what == 'i' || what == 'n') && d->placement;
 
 	/*
 	 * Every pass below counts against the input call's work, as the
@@ -1788,18 +1791,22 @@ void screen_kitty_delete(struct tsm_screen *con, const struct tsm_kitty_delete *
 	shl_dlist_for_each(iter, &st->images) {
 		image = shl_dlist_entry(iter, struct tsm_image, list);
 		image->doomed = false;
+		image->chosen = false;
 		if (image->kind != TSM_IMAGE_KITTY || !by_image)
 			continue;
 		if (what == 'i')
-			image->doomed = d->id && image->id == d->id;
+			image->chosen = d->id && image->id == d->id;
 		else if (what == 'r')
-			image->doomed = image->id && image->id >= d->x &&
+			image->chosen = image->id && image->id >= d->x &&
 					image->id <= d->y;
+		image->doomed = image->chosen && !by_placement;
 	}
 	if (what == 'n') {
 		image = screen_kitty_find(con, 0, d->number);
-		if (image)
-			image->doomed = true;
+		if (image) {
+			image->chosen = true;
+			image->doomed = !by_placement;
+		}
 	}
 
 	store_rows(con, st);
@@ -1813,10 +1820,10 @@ void screen_kitty_delete(struct tsm_screen *con, const struct tsm_kitty_delete *
 			break;
 		case 'i':
 		case 'n':
-			hit = p->image->doomed && (!d->placement || p->id == d->placement);
+			hit = p->image->chosen && (!d->placement || p->id == d->placement);
 			break;
 		case 'r':
-			hit = p->image->doomed;
+			hit = p->image->chosen;
 			break;
 		case 'c':
 			hit = placement_covers(p, d->cursor_x, d->cursor_y);

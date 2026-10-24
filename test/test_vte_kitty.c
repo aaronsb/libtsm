@@ -479,6 +479,25 @@ START_TEST(test_kitty_delete_bound)
 }
 END_TEST
 
+/* an uppercase N whose p matches no placement frees nothing */
+START_TEST(test_kitty_delete_number_placement)
+{
+	char *cmd = command("a=t,f=24,s=1,v=1,I=5", 1, 1, 3, RED);
+
+	input(cmd);
+	free(cmd);
+	reply_clear();
+	input("\033_Ga=d,d=N,I=5,p=3\033\\\033_Ga=p,I=5,C=1\033\\");
+	ck_assert_str_eq(reply, "\033_Gi=1,I=5;OK\033\\");
+	ck_assert_uint_eq(placements(), 1);
+
+	/* without p it frees the image once unplaced */
+	reply_clear();
+	input("\033_Ga=d,d=N,I=5\033\\\033_Ga=p,I=5\033\\");
+	ck_assert_str_eq(reply, "\033_GI=5;ENOENT:image not found\033\\");
+}
+END_TEST
+
 TEST_DEFINE_CASE(kitty)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_kitty_off)
@@ -491,6 +510,7 @@ TEST_DEFINE_CASE(kitty)
 	TEST(test_kitty_host_budget)
 	TEST(test_kitty_victim_stamp)
 	TEST(test_kitty_delete_bound)
+	TEST(test_kitty_delete_number_placement)
 TEST_END_CASE
 
 TEST_DEFINE(

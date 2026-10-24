@@ -1101,9 +1101,13 @@ def _():
 
 @case("kit-delete-i", 12, 4)
 def _():
-    # i and I, by id, and with p only that placement
-    return delete_case(kitty("a=d,d=i,i=1"), kitty("a=d,d=I,i=2,p=1") +
-                       kitty("a=d,d=I,i=3,p=2"))
+    # i and I, by id, and with p only that placement; an uppercase delete
+    # whose p matches none of an image's placements frees nothing, even
+    # an image with no placement at all (image 4, placed again at the end)
+    return (delete_case(kitty("a=t,f=32,s=8,v=8,i=4", rgba(8, 8, (255, 0, 255, 255))) +
+                        kitty("a=d,d=i,i=1"), kitty("a=d,d=I,i=2,p=1") +
+                        kitty("a=d,d=I,i=3,p=2") + kitty("a=d,d=I,i=4,p=9")) +
+            cup(4, 9) + kitty("a=p,i=4,C=1"))
 
 
 @case("kit-delete-n", 12, 4)
