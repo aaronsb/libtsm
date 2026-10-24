@@ -1168,6 +1168,25 @@ int tsm_vte_set_graphic_max_size(struct tsm_vte *vte, unsigned int width,
 int tsm_vte_set_sixel_registers(struct tsm_vte *vte, unsigned int count,
 				bool private_registers);
 
+/*
+ * The kitty graphics protocol (ADR-103 in aaronsb/kmscon): APC G ... ST
+ * commands transmit, place, query and delete images, as the kitty spec,
+ * https://sw.kovidgoyal.net/kitty/graphics-protocol/, describes them. Defined
+ * when the call below exists.
+ *
+ * Off until the host turns it on, and it needs an image budget on the screen
+ * as sixel does. While either is missing, kitty commands are parsed only to
+ * find where they end and get no reply, so a client's detection (a query
+ * followed by DA1) reports no support. Turning it off drops an upload in
+ * progress. libtsm decodes inline f=24 and f=32 data itself; without a host
+ * hook, files, temporary files and shared memory answer EBADF, and PNG and
+ * zlib data EINVAL. Animation, relative placements and Unicode placeholders
+ * answer EINVAL.
+ */
+#define TSM_VTE_KITTY_GRAPHICS 1
+
+void tsm_vte_set_kitty_graphics(struct tsm_vte *vte, bool enable);
+
 /**
  * @brief Set backspace key to send either backspace or delete.
  *

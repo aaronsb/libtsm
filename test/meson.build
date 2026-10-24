@@ -40,6 +40,11 @@ test_vte_sixel = executable(
     'test_vte_sixel.c',
     dependencies: test_deps,
 )
+test_vte_kitty = executable(
+    'test_vte_kitty',
+    'test_vte_kitty.c',
+    dependencies: test_deps,
+)
 
 test('htable', test_htable)
 test('image', test_image)
@@ -54,6 +59,7 @@ test('valgrind', test_valgrind,
 test('vte_mouse', test_vte_mouse)
 test('vte', test_vte)
 test('vte_sixel', test_vte_sixel)
+test('vte_kitty', test_vte_kitty)
 
 # Not a test: prints sixel decode throughput (bench-sixel [FILE.six] [SECONDS]).
 executable('bench-sixel', 'bench-sixel.c', dependencies: test_deps)
