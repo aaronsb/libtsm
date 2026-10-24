@@ -563,9 +563,18 @@ START_TEST(test_kitty_query_number)
 		"\033_Ga=q,t=s,f=24,s=1,v=1,I=52,q=2;L2tpdHR5LXNobQ==\033\\",
 		/* chunked: the continuation is swallowed, not read as a=t */
 		"\033_Ga=q,f=24,s=1,v=1,I=52,m=1;/w==\033\\\033_Gm=0;AAA=\033\\",
-		/* neither i nor I */
+		"\033_Ga=q,f=24,s=2,v=1,I=52,q=0;/wAA\033\\",
+		"\033_Ga=q,f=24,s=2,v=1,I=52,q=1;/wAA\033\\",
+		"\033_Ga=q,f=24,s=2,v=1,I=52,q=2;/wAA\033\\",
+		/* neither i nor I, under every q, loading and too short */
 		"\033_Ga=q,f=24,s=1,v=1;/wAA\033\\",
+		"\033_Ga=q,f=24,s=1,v=1,q=0;/wAA\033\\",
+		"\033_Ga=q,f=24,s=1,v=1,q=1;/wAA\033\\",
+		"\033_Ga=q,f=24,s=1,v=1,q=2;/wAA\033\\",
+		"\033_Ga=q,f=24,s=2,v=1;/wAA\033\\",
+		"\033_Ga=q,f=24,s=2,v=1,q=0;/wAA\033\\",
 		"\033_Ga=q,f=24,s=2,v=1,q=1;/wAA\033\\",
+		"\033_Ga=q,f=24,s=2,v=1,q=2;/wAA\033\\",
 		"\033_Ga=q,t=t,f=24,s=1,v=1;L3RtcC90dHktZ3JhcGhpY3MtcHJvdG9jb2wtMQ==\033\\",
 		"\033_Ga=q,t=s,f=24,s=1,v=1,q=2;L2tpdHR5LXNobQ==\033\\",
 		"\033_Ga=q,f=24,s=1,v=1,m=1;/w==\033\\\033_Gm=0;AAA=\033\\",
