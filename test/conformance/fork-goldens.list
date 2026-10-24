@@ -132,7 +132,7 @@ kit-delete-f        # d=f and d=F delete nothing
 kit-delete-sb       # a on the screen only, I in scrollback too, sixels untouched
 kit-replies         # q=0, 1 and 2; no reply without i or I
 kit-query           # a=q checks without storing or replacing
-kit-query-number    # a=q with I and no i: no reply under any q, nothing stored
+kit-query-number    # a=q without i: no reply under any q, nothing stored
 kit-refused         # EINVAL and EBADF refusals with no host; keys past 1 KiB ignored
 kit-cancel          # CAN and SUB abort a command
 kit-evict           # unplaced, scrollback, then kitty on screen; a sixel never; ENOSPC
