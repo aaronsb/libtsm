@@ -12,6 +12,7 @@ case, which belongs in cases.list.
 SPDX-License-Identifier: MIT
 """
 
+import base64
 import sys
 from pathlib import Path
 
@@ -916,6 +917,406 @@ def _():
 @case("six-img2sixel-highcolor", 12, 4)
 def _():
     return cell() + img2sixel("highcolor") + DSR
+
+
+# The kitty graphics protocol (ADR-103 step 4a): commands written from the
+# spec, https://sw.kovidgoyal.net/kitty/graphics-protocol/, alone (ADR-300).
+# Each case asks for the cursor (DSR 6) where the cursor matters, so its
+# replies record where it went beside the replies to the commands. Cells
+# are 8x16.
+
+def kitty(keys="", data=b"", raw=None):
+    """ESC _ G <keys> ; <base64 of data> ST; @raw replaces the payload."""
+    payload = raw if raw is not None else base64.b64encode(data).decode("ascii")
+    return APC + "G" + keys + (";" + payload if payload else "") + ST
+
+
+def rgba(w, h, px=(255, 0, 0, 255)):
+    """w x h pixels of one straight-alpha RGBA colour, f=32."""
+    return bytes(px) * (w * h)
+
+
+def rgb(w, h, px=(0, 0, 255)):
+    """w x h pixels of one RGB colour, f=24."""
+    return bytes(px) * (w * h)
+
+
+def chunks(keys, data, size=8):
+    """The base64 of @data cut into chunks of @size characters (a multiple of
+    4), m=1 on all but the last, the keys on the first only (spec)."""
+    enc = base64.b64encode(data).decode("ascii")
+    parts = [enc[i:i + size] for i in range(0, len(enc), size)]
+    out = ""
+    for n, part in enumerate(parts):
+        last = n == len(parts) - 1
+        head = (keys + "," if n == 0 else "") + ("m=0" if last else "m=1")
+        out += kitty(head, raw=part)
+    return out
+
+
+def kt(i, w=16, h=16, px=(255, 0, 0, 255), keys=""):
+    """Transmit and place image @i, f=32, at the cursor."""
+    return kitty(f"a=T,f=32,s={w},v={h},i={i}" + keys, rgba(w, h, px))
+
+
+@case("kit-transmit", 12, 4)
+def _():
+    # a=T with f=32 (half its pixels transparent) and f=24, each replying
+    # OK for its id and moving the cursor past its box; an anonymous a=T,
+    # which gets no reply; a=t stores without placing, and a=p places it
+    data = rgba(16, 8) + rgba(16, 8, (0, 255, 0, 0))
+    return (cell() + kitty("a=T,f=32,s=16,v=16,i=1", data) + DSR +
+            kitty("a=T,f=24,s=8,v=16,i=2", rgb(8, 16)) + DSR +
+            kitty("a=T,f=24,s=8,v=8", rgb(8, 8, (255, 255, 0))) + DSR +
+            kitty("a=t,f=32,s=8,v=8,i=3", rgba(8, 8, (0, 0, 255, 128))) + DSR +
+            cup(3, 1) + kitty("a=p,i=3") + DSR)
+
+
+@case("kit-chunked", 12, 4)
+def _():
+    # Chunked direct transmission: the keys on the first chunk, m=1 until
+    # the last; a chunk may change q. Text between chunks is not a graphics
+    # command and leaves the upload pending; the placement is at the cursor
+    # when the last chunk arrives (spec).
+    first = chunks("a=T,f=24,s=8,v=16,i=1", rgb(8, 16))
+    one, rest = first.split(ST, 1)
+    return (cell() + one + ST + "ab" + rest + DSR +
+            chunks("a=T,f=32,s=8,v=8,i=2,q=1", rgba(8, 8, (0, 255, 0, 255)), 12) +
+            DSR)
+
+
+def ramp(w, h):
+    """w x h pixels of f=24 whose colour encodes their position, so a lost,
+    doubled or misplaced byte changes the image's digest."""
+    return bytes(c for y in range(h) for x in range(w)
+                 for c in (x & 0xff, y & 0xff, (7 * x + 13 * y) & 0xff))
+
+
+@case("kit-chunk-large", 12, 4)
+def _():
+    # A chunk of 131072 base64 characters, the size kitten icat sends, 32
+    # times the spec's "no larger than 4096 bytes": the payload is
+    # streamed, so the chunk is accepted whole and the image is the one
+    # sent. 160x206 pixels of f=24 are 131840 characters, the big chunk
+    # (m=1) and a tail of 768 (m=0). FNV-1a over the pixels as tsm-replay
+    # reads them, A R G B with A=255, computed from ramp() alone: 5ce2ce65.
+    return cell() + chunks("a=T,f=24,s=160,v=206,i=1,c=4,r=2", ramp(160, 206),
+                           131072) + DSR
+
+
+@case("kit-chunk-abort", 12, 4)
+def _():
+    # A pending upload is aborted by a delete, by any other graphics
+    # command, and by CAN; its later chunks then arrive as commands of
+    # their own, which libtsm refuses (no s and v) without a reply (no id)
+    c1 = chunks("a=T,f=24,s=8,v=16,i=1", rgb(8, 16))
+    c2 = chunks("a=T,f=24,s=8,v=16,i=2", rgb(8, 16))
+    c3 = chunks("a=T,f=24,s=8,v=16,i=3", rgb(8, 16))
+    def first(c):
+        return c.split(ST, 1)[0] + ST
+    def rest(c):
+        return c.split(ST, 1)[1]
+    return (cell() + first(c1) + kitty("a=d") + rest(c1) +
+            first(c2) + kitty("a=p,i=9") + rest(c2) +
+            first(c3) + APC + "Gm=1;AAAA\x18" + rest(c3) +
+            kitty("a=p,i=1") + kitty("a=p,i=2") + kitty("a=p,i=3") + DSR)
+
+
+@case("kit-ids", 12, 4)
+def _():
+    # I: the terminal picks the lowest unused id, and a=p with I places the
+    # newest image with that number; i with I is refused; a=p of an id
+    # never sent is ENOENT
+    return (cell() + kitty("a=t,f=24,s=8,v=8,i=1", rgb(8, 8)) +
+            kitty("a=t,f=24,s=8,v=8,I=7", rgb(8, 8, (255, 0, 0))) +
+            kitty("a=t,f=24,s=8,v=8,I=7", rgb(8, 8, (0, 255, 0))) +
+            kitty("a=p,I=7,p=3") + kitty("a=T,f=24,s=8,v=8,i=5,I=7", rgb(8, 8)) +
+            kitty("a=p,i=4") + kitty("a=p,I=8"))
+
+
+@case("kit-replace", 12, 4)
+def _():
+    # A placement id names a placement to replace, which moves it: image 1
+    # ends with two placements, one moved from column 2 to row 1, column 6.
+    # Transmitting an id again replaces the image and deletes its
+    # placements (spec): image 2's two placements go, and the new image is
+    # not shown until placed.
+    return (cell() + kt(1) + kitty("a=p,i=1,p=5") +
+            cup(2, 7) + kitty("a=p,i=1,p=5") + DSR +
+            cup(3, 1) + kt(2, 8, 8) + kitty("a=p,i=2,C=1") +
+            kitty("a=t,f=24,s=8,v=8,i=2", rgb(8, 8)))
+
+
+@case("kit-replace-refused", 12, 4)
+def _():
+    # Under a tight limit, a replacement that does not fit beside a sixel
+    # is refused with ENOSPC, and the old image and its placement stay
+    # (libtsm#37): placed again, it is still the red one
+    cost = 16 * 16 * 4 + 512
+    # (the limit holds two images and one more placement)
+    return (cell() + tt("limit", b=2 * cost + 256) + kt(1) + six(2, 0, 16, 16) +
+            kitty("a=t,f=32,s=16,v=32,i=1", rgba(16, 32, (255, 255, 255, 255))) +
+            cup(3, 1) + kitty("a=p,i=1"))
+
+
+@case("kit-place-size", 24, 6)
+def _():
+    # c and r together letterbox or pillarbox the picture; one alone keeps
+    # the aspect; x, y, w, h choose the source rectangle, cut to the image;
+    # X, Y offset it in its first cell, and an offset outside the cell is
+    # refused
+    img = kitty("a=t,f=32,s=32,v=16,i=1", rgba(32, 16))
+    return (cell() + img + kitty("a=p,i=1,c=2,r=2,C=1") + cup(1, 4) +
+            kitty("a=p,i=1,c=3,C=1") + cup(1, 8) + kitty("a=p,i=1,r=2,C=1") +
+            cup(1, 14) + kitty("a=p,i=1,x=8,y=4,w=16,h=100,C=1") +
+            cup(4, 1) + kitty("a=p,i=1,X=3,Y=5,C=1") +
+            cup(4, 8) + kitty("a=p,i=1,X=8,C=1") + kitty("a=p,i=1,x=32") + DSR)
+
+
+@case("kit-bands", 12, 4)
+def _():
+    # z chooses the band: below cell backgrounds, below text, above it; at
+    # one z the lower id draws first (spec)
+    return (cell() + kt(3, 8, 8, keys=",z=-1073741825,C=1") +
+            kt(2, 8, 8, keys=",z=-1,C=1") + kt(5, 8, 8, keys=",z=4,C=1") +
+            kt(9, 8, 8, (0, 255, 0, 255), keys=",C=1") +
+            kt(4, 8, 8, (0, 0, 255, 255), keys=",C=1"))
+
+
+@case("kit-cursor", 12, 4)
+def _():
+    # C=1 leaves the cursor; otherwise it moves past the box: three rows
+    # from the last row scroll the screen twice; a box reaching the right
+    # edge sends the cursor to column 0 of the next row; inside a region
+    # the scroll is the region's
+    return (cell() + kt(1, 8, 32, keys=",C=1") + DSR +
+            cup(4, 1) + kt(2, 8, 48) + DSR +
+            cup(1, 11) + kt(3, 16, 16) + DSR +
+            CSI + "2;3r" + cup(3, 5) + kt(4, 8, 32) + DSR + CSI + "r")
+
+
+def delete_case(lower, upper, setup=""):
+    # images 1, 2 and 3 placed at columns 0, 4 and 8, with placement ids 1;
+    # @lower should remove image 1's placement and @upper image 2's, and
+    # placing each again shows which kept its data (OK) and which lost it
+    # (ENOENT); image 3 stays
+    return (cell() + setup +
+            kitty("a=T,f=32,s=16,v=16,i=1,p=1,z=1,C=1", rgba(16, 16)) +
+            cup(1, 5) + kitty("a=T,f=32,s=16,v=16,i=2,p=1,z=2,C=1",
+                              rgba(16, 16, (0, 255, 0, 255))) +
+            cup(1, 9) + kitty("a=T,f=32,s=16,v=16,i=3,p=1,z=3,C=1",
+                              rgba(16, 16, (0, 0, 255, 255))) +
+            lower + upper + cup(4, 1) + kitty("a=p,i=1,C=1") +
+            cup(4, 5) + kitty("a=p,i=2,C=1"))
+
+
+@case("kit-delete-a", 12, 4)
+def _():
+    # a and A: every placement on the screen; A frees what it leaves
+    # unplaced. Image 3 is placed again before A so A has something to do.
+    return delete_case(kitty("a=d,d=a"),
+                       kitty("a=p,i=2,C=1") + kitty("a=d,d=A"))
+
+
+@case("kit-delete-i", 12, 4)
+def _():
+    # i and I, by id, and with p only that placement; an uppercase delete
+    # whose p matches none of an image's placements frees nothing, even
+    # an image with no placement at all (image 4, placed again at the end)
+    return (delete_case(kitty("a=t,f=32,s=8,v=8,i=4", rgba(8, 8, (255, 0, 255, 255))) +
+                        kitty("a=d,d=i,i=1"), kitty("a=d,d=I,i=2,p=1") +
+                        kitty("a=d,d=I,i=3,p=2") + kitty("a=d,d=I,i=4,p=9")) +
+            cup(4, 9) + kitty("a=p,i=4,C=1"))
+
+
+@case("kit-delete-n", 12, 4)
+def _():
+    # n and N: the newest image with the number
+    return (cell() + kitty("a=T,f=32,s=16,v=16,I=4,C=1", rgba(16, 16)) +
+            cup(1, 5) + kitty("a=T,f=32,s=16,v=16,I=4,C=1",
+                              rgba(16, 16, (0, 255, 0, 255))) +
+            cup(1, 9) + kitty("a=T,f=32,s=16,v=16,I=6,C=1",
+                              rgba(16, 16, (0, 0, 255, 255))) +
+            kitty("a=d,d=n,I=4") + kitty("a=d,d=N,I=6") +
+            cup(4, 1) + kitty("a=p,i=2,C=1") + cup(4, 5) + kitty("a=p,i=3,C=1"))
+
+
+@case("kit-delete-c", 12, 4)
+def _():
+    # c and C: the placements under the cursor
+    return delete_case(cup(1, 2) + kitty("a=d,d=c"), cup(1, 6) + kitty("a=d,d=C"))
+
+
+@case("kit-delete-p", 12, 4)
+def _():
+    # p and P: the placements over cell x, y (1-based)
+    return delete_case(kitty("a=d,d=p,x=2,y=1"), kitty("a=d,d=P,x=5,y=1"))
+
+
+@case("kit-delete-q", 12, 4)
+def _():
+    # q and Q: over a cell and with a z; a wrong z deletes nothing
+    return delete_case(kitty("a=d,d=q,x=1,y=1,z=1") + kitty("a=d,d=Q,x=9,y=1,z=1"),
+                       kitty("a=d,d=Q,x=6,y=1,z=2"))
+
+
+@case("kit-delete-r", 12, 4)
+def _():
+    # r and R: images whose id lies in x to y; an inverted range deletes
+    # nothing
+    return delete_case(kitty("a=d,d=r,x=1,y=1") + kitty("a=d,d=R,x=3,y=1"),
+                       kitty("a=d,d=R,x=2,y=2"))
+
+
+@case("kit-delete-x", 12, 4)
+def _():
+    # x and X: the placements over a column (1-based)
+    return delete_case(kitty("a=d,d=x,x=2"), kitty("a=d,d=X,x=5"))
+
+
+@case("kit-delete-y", 12, 4)
+def _():
+    # y and Y: the placements over a row (1-based); image 1 is moved to
+    # row 3 and image 2 to row 4 first, its placement id replacing them
+    return delete_case(cup(3, 1) + kitty("a=p,i=1,p=1,C=1") + kitty("a=d,d=y,y=3"),
+                       cup(4, 5) + kitty("a=p,i=2,p=1,C=1") + kitty("a=d,d=Y,y=4"))
+
+
+@case("kit-delete-z", 12, 4)
+def _():
+    # z and Z: the placements with a z
+    return delete_case(kitty("a=d,d=z,z=1"), kitty("a=d,d=Z,z=2"))
+
+
+@case("kit-delete-f", 12, 4)
+def _():
+    # f and F: animation frames, which do not exist yet: nothing goes
+    return delete_case(kitty("a=d,d=f,i=1"), kitty("a=d,d=F,i=2"))
+
+
+@case("kit-delete-sb", 12, 4)
+def _():
+    # a deletes only on the screen and I in scrollback too: images 1 and
+    # 3 scroll into scrollback, and the view shows that a left image 1 and
+    # I took image 3; neither touches a sixel
+    return (cell() + tt("sb-max", n=10) + kt(1, 8, 16, keys=",C=1") +
+            cup(1, 4) + kt(3, 8, 16, keys=",C=1") + cup(4, 1) + "\n" +
+            kt(2, 8, 16, keys=",C=1") + six(4, 2, 8, 16) + kitty("a=d,d=a") +
+            kitty("a=d,d=I,i=3") + tt("sb-up", n=1))
+
+
+@case("kit-replies", 12, 4)
+def _():
+    # q=0 answers OK and errors, q=1 errors only, q=2 nothing; a command
+    # with neither i nor I gets no reply
+    return (cell() + kt(1, 8, 8, keys=",C=1") + kt(2, 8, 8, keys=",q=1,C=1") +
+            kt(3, 8, 8, keys=",q=2,C=1") + kitty("a=p,i=7") + kitty("a=p,i=7,q=1") +
+            kitty("a=p,i=7,q=2") + kitty("a=T,f=32,s=8,v=8", rgba(8, 8)))
+
+
+@case("kit-query", 12, 4)
+def _():
+    # a=q loads and checks without storing or replacing: OK, then EINVAL
+    # for data short of s x v, and a=p of its id finds nothing; an a=q with
+    # the id of a stored image leaves that image
+    return (cell() + kitty("a=q,f=24,s=1,v=1,i=31", rgb(1, 1)) +
+            kitty("a=q,f=24,s=2,v=1,i=32", rgb(1, 1)) + kitty("a=p,i=31") +
+            kt(5, 8, 8, keys=",C=1") + kitty("a=q,f=24,s=1,v=1,i=5", rgb(1, 1)) +
+            cup(2, 1) + kitty("a=p,i=5,C=1"))
+
+
+@case("kit-query-number", 12, 4)
+def _():
+    # an a=q with I and no i is dropped at its ST, as kitty 0.49.2 drops it
+    # (ADR-107, rounds 4 and 5): no reply under q absent, 1 or 2, on t=d,
+    # t=t and t=s, whether its data would load or not, and a chunked one's
+    # continuation is swallowed; a=p of number 52 then finds nothing
+    # (ENOENT), and the same a=q with i=51 answers OK
+    tmp, shm = b"/tmp/tty-graphics-protocol-q", b"/kitty-q"
+    out = cell()
+    for q in ("", ",q=1", ",q=2"):
+        out += (kitty("a=q,f=24,s=1,v=1,I=52" + q, rgb(1, 1)) +
+                kitty("a=q,f=24,s=2,v=1,I=52" + q, rgb(1, 1)) +
+                kitty("a=q,t=t,f=24,s=1,v=1,I=52" + q, tmp) +
+                kitty("a=q,t=s,f=24,s=1,v=1,I=52" + q, shm))
+    return (out + kitty("a=q,f=24,s=1,v=1,I=52,m=1", raw="/w==") +
+            kitty("m=0", raw="AAA=") + kitty("a=p,I=52") +
+            kitty("a=q,f=24,s=1,v=1,i=51", rgb(1, 1)))
+
+
+@case("kit-refused", 12, 4)
+def _():
+    # EINVAL: animation, Unicode placeholders, relative placements, a raw
+    # format without s and v, data short of s x v x bytes per pixel, a byte
+    # outside base64, a key it cannot read, an unknown action; PNG and zlib
+    # with no host hook; EBADF: files, temporary files and shared memory
+    # with no host hook, and an empty name. Data past s x v x bytes per
+    # pixel (i=4) is ignored, as kitty ignores it, an unknown key is
+    # ignored, and a key section past 1 KiB ignores the whole APC.
+    return (cell() + kitty("a=f,i=1,s=1,v=1", rgb(1, 1)) + kitty("a=a,i=1") +
+            kitty("a=c,i=1") + kitty("a=T,U=1,f=24,s=1,v=1,i=2", rgb(1, 1)) +
+            kitty("a=p,i=2,P=1,Q=1") + kitty("a=t,f=24,i=3", rgb(1, 1)) +
+            kitty("a=t,f=24,s=1,v=1,i=4", rgb(2, 1)) +
+            kitty("a=t,f=24,s=2,v=1,i=5", rgb(1, 1)) +
+            kitty("a=t,f=24,s=1,v=1,i=6", raw="AA*A") +
+            kitty("a=t,f=24,s=x,v=1,i=7", rgb(1, 1)) + kitty("a=Z,i=8") +
+            kitty("a=t,f=100,i=9", b"\x89PNG") +
+            kitty("a=t,f=24,s=1,v=1,o=z,i=10", b"x\x9c") +
+            kitty("a=t,t=f,f=100,i=11", b"/tmp/picture.png") +
+            kitty("a=t,t=t,f=24,s=1,v=1,i=12", b"/tmp/tty-graphics-protocol-1") +
+            kitty("a=t,t=s,s=1,v=1,i=13", b"/kitty-shm") +
+            kitty("a=t,t=f,f=100,i=14") +
+            kitty("a=T,f=24,s=1,v=1,i=15,K=9", rgb(1, 1)) +
+            kitty("a=T,f=24,s=1,v=1,i=16," + "N=0," * 260, rgb(1, 1)))
+
+
+@case("kit-cancel", 12, 4)
+def _():
+    # CAN and SUB abort a command: no image, no reply
+    return (cell() + APC + "Ga=T,f=24,s=1,v=1,i=1;AAAA\x18" +
+            APC + "Ga=T,f=24,s=1,v=1,i=2;AAAA\x1a" + kitty("a=p,i=1"))
+
+
+@case("kit-evict", 12, 4)
+def _():
+    # Past the limit, images go unplaced first, then placed only in
+    # scrollback, then kitty images placed on the screen, oldest
+    # transmission first; a sixel on the screen is never evicted, so a new
+    # image that does not fit beside it is refused with ENOSPC
+    cost = 8 * 16 * 4 + 512
+    return (cell() + tt("sb-max", n=10) + tt("limit", b=4 * cost) +
+            kt(1, 8, 16) + "\r\n\n\n\n" + six(2, 0, 8, 16) +
+            kt(2, 8, 16, keys=",C=1") + cup(1, 7) + kt(3, 8, 16, keys=",C=1") +
+            kitty("a=t,f=32,s=8,v=16,i=4", rgba(8, 16)) +
+            kitty("a=t,f=32,s=8,v=16,i=5", rgba(8, 16)) +
+            kitty("a=t,f=32,s=8,v=16,i=6", rgba(8, 16)) +
+            kitty("a=t,f=32,s=8,v=16,i=7", rgba(8, 16)) +
+            kitty("a=t,f=32,s=8,v=16,i=8", rgba(8, 16)) +
+            kitty("a=t,f=32,s=8,v=32,i=9", rgba(8, 32)) +
+            kitty("a=t,f=32,s=8,v=96,i=10", rgba(8, 96)) + tt("sb-up", n=4))
+
+
+@case("kit-evict-stamp", 12, 4)
+def _():
+    # Kitty images on the screen are evicted oldest transmission first: an
+    # old image placed again with a=p keeps its old stamp and goes before a
+    # newer one placed earlier
+    # (the limit holds two images and image 1's second placement)
+    cost = 8 * 16 * 4 + 512
+    return (cell() + tt("limit", b=2 * cost + 256) + kt(1, 8, 16, keys=",C=1") +
+            cup(1, 4) + kt(2, 8, 16, keys=",C=1") + cup(3, 1) +
+            kitty("a=p,i=1,C=1") + cup(1, 8) + kt(3, 8, 16, keys=",C=1") +
+            kitty("a=p,i=1") + kitty("a=p,i=2"))
+
+
+@case("kit-ed2", 12, 4)
+def _():
+    # ED 2 removes kitty placements and keeps their images, so a=p shows
+    # one again; the alternate screen's images go when it is left; RIS
+    # empties both stores
+    return (cell() + kt(1, 8, 16) + CSI + "2J" + kitty("a=p,i=1,C=1") +
+            CSI + "?1049h" + kt(2, 8, 8) + CSI + "?1049l" + kitty("a=p,i=2") +
+            cup(3, 1) + kt(3, 8, 8) + ESC + "c" + kitty("a=p,i=3") + kitty("a=p,i=1"))
 
 
 def main():

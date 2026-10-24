@@ -105,3 +105,36 @@ six-off                 # no budget: sixel ignored, no attribute 4
 six-img2sixel-palette16 # img2sixel stream: 16 colours
 six-img2sixel-gradient  # img2sixel stream: a gradient
 six-img2sixel-highcolor # img2sixel stream: registers redefined band by band
+#
+# ADR-103 step 4a: the kitty graphics protocol, which upstream ignores.
+apc-kitty-graphics  # the a=T pixel is placed at the cursor, which moves past it
+kit-transmit        # a=T with f=32 and f=24, anonymous, a=t then a=p; replies and cursor
+kit-chunked         # chunked direct data, placed where the last chunk finds the cursor
+kit-chunk-large     # a chunk of 131072 characters (icat's size) streams whole into the image sent
+kit-chunk-abort     # a delete, another command and CAN abort an upload
+kit-ids             # I picks the lowest free id; i with I refused; ENOENT
+kit-replace         # an id sent again replaces its image and placements; p moves one
+kit-replace-refused # a replacement refused with ENOSPC keeps the old image (libtsm#37)
+kit-place-size      # c and r, source rectangles, offsets, an offset outside the cell
+kit-bands           # z chooses the band; at one z the lower id first
+kit-cursor          # C=1; the cursor past the box, at the bottom, the right edge, a region
+kit-delete-a        # d=a and d=A
+kit-delete-i        # d=i and d=I, with and without p
+kit-delete-n        # d=n and d=N
+kit-delete-c        # d=c and d=C
+kit-delete-p        # d=p and d=P
+kit-delete-q        # d=q and d=Q
+kit-delete-r        # d=r and d=R
+kit-delete-x        # d=x and d=X
+kit-delete-y        # d=y and d=Y
+kit-delete-z        # d=z and d=Z
+kit-delete-f        # d=f and d=F delete nothing
+kit-delete-sb       # a on the screen only, I in scrollback too, sixels untouched
+kit-replies         # q=0, 1 and 2; no reply without i or I
+kit-query           # a=q checks without storing or replacing
+kit-query-number    # a=q with I and no i: no reply under any q, nothing stored
+kit-refused         # EINVAL and EBADF refusals with no host; keys past 1 KiB ignored
+kit-cancel          # CAN and SUB abort a command
+kit-evict           # unplaced, scrollback, then kitty on screen; a sixel never; ENOSPC
+kit-evict-stamp     # an old image placed again keeps its transmission stamp
+kit-ed2             # ED 2 keeps the image; leaving the alternate screen and RIS empty stores

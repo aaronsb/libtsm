@@ -83,7 +83,8 @@
  *   image M WxH digest HEX    (FNV-1a of the pixels, each as A, R, G, B)
  *
  * Against a libtsm that declares TSM_VTE_SIXEL, sixel is on, so a stream's
- * sixel strings make placements and DA1 replies with attribute 4.
+ * sixel strings make placements and DA1 replies with attribute 4. Against
+ * one that declares TSM_VTE_KITTY_GRAPHICS, kitty graphics are on too.
  *
  * There, too, the stream may hold test commands, for what no protocol makes
  * yet (kitty images, ADR-103 step 4a) and for the host's side of the screen
@@ -961,6 +962,9 @@ int main(int argc, char **argv)
 #ifdef TSM_VTE_SIXEL
 	/* paid for from that limit */
 	tsm_vte_set_sixel(vte, true);
+#endif
+#ifdef TSM_VTE_KITTY_GRAPHICS
+	tsm_vte_set_kitty_graphics(vte, true);
 #endif
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
 	if (view != VIEW_DRAW && tsm_vte_set_palette(vte, DRAW2_PALETTE) < 0) {

@@ -52,6 +52,7 @@
 #include <string.h>
 #include "libtsm.h"
 #include "libtsm-int.h"
+#include "tsm-kitty.h"
 #include "tsm-sixel.h"
 #include "shl-llog.h"
 
@@ -76,6 +77,7 @@ enum parser_state {
 	STATE_DCS_IGNORE,	/* DCS error; ignore this DCS sequence */
 	STATE_OSC_STRING,	/* parsing OCS sequence */
 	STATE_ST_IGNORE,	/* unimplemented seq; ignore until ST */
+	STATE_APC_STRING,	/* APC: a kitty graphics command, or ignored */
 	STATE_NUM
 };
 
@@ -96,6 +98,9 @@ enum parser_action {
 	ACTION_OSC_START,	/* start of OSC data */
 	ACTION_OSC_COLLECT,	/* collect OSC data */
 	ACTION_OSC_END,		/* end of OSC data */
+	ACTION_APC_START,	/* start of APC data */
+	ACTION_APC_COLLECT,	/* collect APC data */
+	ACTION_APC_END,		/* end of APC data */
 	ACTION_NUM
 };
 
@@ -233,12 +238,17 @@ struct tsm_vte {
 	struct tsm_sixel *sixel;
 	struct tsm_sixel_palette *sixel_shared;
 	bool sixel_active;			/* a DCS q streams into it */
+	/* the kitty graphics protocol (ADR-103 step 4) */
+	bool kitty_enabled;
+	struct tsm_kitty *kitty;
+	bool apc_kitty;				/* the APC streams into it */
 	/* the image work tsm_vte_input_bounded has left in this call */
 	uint64_t work_left;
 };
 
 static void sixel_drop(struct tsm_vte *vte);
 static void sixel_reset(struct tsm_vte *vte);
+static void kitty_write(struct tsm_vte *vte, const char *u8, size_t len);
 
 static uint8_t color_palette_legacy[TSM_COLOR_NUM][3] = {
 	[TSM_COLOR_BLACK]         = {   0,   0,   0 }, /* black */
@@ -567,6 +577,10 @@ int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
 	ret = tsm_utf8_mach_new(&vte->mach);
 	if (ret)
 		goto err_free;
+	ret = tsm_kitty_new(&vte->kitty, vte, con, kitty_write);
+	if (ret)
+		goto err_mach;
+	tsm_kitty_set_max_size(vte->kitty, vte->graphic_max_w, vte->graphic_max_h);
 
 	tsm_vte_reset(vte);
 	tsm_screen_erase_screen(vte->con, false);
@@ -576,6 +590,8 @@ int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
 	*out = vte;
 	return 0;
 
+err_mach:
+	tsm_utf8_mach_free(vte->mach);
 err_free:
 	free(vte);
 	return ret;
@@ -603,6 +619,7 @@ void tsm_vte_unref(struct tsm_vte *vte)
 	free(vte->palette_name);
 	/* a picture in progress gives its bytes back to the screen first */
 	sixel_drop(vte);
+	tsm_kitty_free(vte->kitty);
 	tsm_screen_unref(vte->con);
 	tsm_utf8_mach_free(vte->mach);
 	free(vte->custom_palette_storage);
@@ -904,11 +921,14 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	tsm_screen_set_flags(vte->con, TSM_SCREEN_AUTO_WRAP);
 
 	tsm_utf8_mach_reset(vte->mach);
-	/* leaving a DCS without its end discards the picture */
+	/* leaving a DCS without its end discards the picture, and a kitty
+	 * upload in progress goes */
 	if (vte->sixel_active) {
 		tsm_sixel_abort(vte->sixel);
 		vte->sixel_active = false;
 	}
+	tsm_kitty_cancel(vte->kitty);
+	vte->apc_kitty = false;
 	vte->state = STATE_GROUND;
 	vte->gl = &vte->g0;
 	vte->gr = &vte->g1;
@@ -1017,12 +1037,13 @@ static bool sixel_ready(struct tsm_vte *vte)
 }
 
 /*
- * The image work done so far: the decoder's, and the eviction scans' the
- * screen's budget and store limits cost
+ * The image work done so far: the sixel decoder's, the kitty parser's, and
+ * the eviction scans' the screen's budget and store limits cost
  */
 static uint64_t sixel_work(struct tsm_vte *vte)
 {
-	return tsm_sixel_work(vte->sixel) + vte->con->img.work;
+	return tsm_sixel_work(vte->sixel) + tsm_kitty_work(vte->kitty) +
+	       vte->con->img.work;
 }
 
 /* counts @work against what this input call may still do */
@@ -1098,6 +1119,60 @@ static void do_dcs_end(struct tsm_vte *vte, uint32_t data)
 			   img.height, ret);
 		screen_image_drop(vte->con, image);
 	}
+}
+
+/*
+ * The kitty graphics protocol (ADR-103 in aaronsb/kmscon, step 4): an APC
+ * streams into the kitty parser (tsm-kitty.c) while kitty graphics are on and
+ * the screen has an image budget; otherwise it is parsed only to find where
+ * it ends, and gets no reply.
+ */
+static bool kitty_on(struct tsm_vte *vte)
+{
+	return vte->kitty_enabled && (vte->con->img.reserve || vte->con->img.limit);
+}
+
+static void kitty_write(struct tsm_vte *vte, const char *u8, size_t len)
+{
+	vte_write(vte, u8, len);
+}
+
+static void do_apc_start(struct tsm_vte *vte)
+{
+	vte->apc_kitty = kitty_on(vte);
+	if (vte->apc_kitty)
+		tsm_kitty_begin(vte->kitty);
+	else
+		tsm_kitty_cancel(vte->kitty);
+}
+
+static void do_apc_collect(struct tsm_vte *vte, uint32_t data)
+{
+	uint64_t work;
+
+	if (!vte->apc_kitty)
+		return;
+	work = sixel_work(vte);
+	tsm_kitty_feed(vte->kitty, data);
+	sixel_charge(vte, sixel_work(vte) - work);
+}
+
+/* the end of the string: @data is what ended it */
+static void do_apc_end(struct tsm_vte *vte, uint32_t data)
+{
+	uint64_t work;
+
+	if (!vte->apc_kitty)
+		return;
+	vte->apc_kitty = false;
+	/* kitty graphics went off while it streamed (its budget removed) */
+	if (!kitty_on(vte)) {
+		tsm_kitty_cancel(vte->kitty);
+		return;
+	}
+	work = sixel_work(vte);
+	tsm_kitty_end(vte->kitty, data);
+	sixel_charge(vte, sixel_work(vte) - work);
 }
 
 static void send_primary_da(struct tsm_vte *vte)
@@ -2749,6 +2824,15 @@ static void do_action(struct tsm_vte *vte, uint32_t data, int action)
 		case ACTION_OSC_END:
 			do_osc_end(vte, data);
 			break;
+		case ACTION_APC_START:
+			do_apc_start(vte);
+			break;
+		case ACTION_APC_COLLECT:
+			do_apc_collect(vte, data);
+			break;
+		case ACTION_APC_END:
+			do_apc_end(vte, data);
+			break;
 		default:
 			llog_warning(vte, "invalid action %d", action);
 	}
@@ -2761,6 +2845,7 @@ static const int entry_action[] = {
 	[STATE_DCS_PASS] = ACTION_DCS_START,
 	[STATE_ESC] = ACTION_CLEAR,
 	[STATE_OSC_STRING] = ACTION_OSC_START,
+	[STATE_APC_STRING] = ACTION_APC_START,
 	[STATE_NUM] = ACTION_NONE,
 };
 
@@ -2768,6 +2853,7 @@ static const int entry_action[] = {
 static const int exit_action[] = {
 	[STATE_DCS_PASS] = ACTION_DCS_END,
 	[STATE_OSC_STRING] = ACTION_OSC_END,
+	[STATE_APC_STRING] = ACTION_APC_END,
 	[STATE_NUM] = ACTION_NONE,
 };
 
@@ -2812,8 +2898,10 @@ static void parse_data(struct tsm_vte *vte, uint32_t raw)
 			return;
 		case 0x98:
 		case 0x9e:
-		case 0x9f:
 			do_trans(vte, raw, STATE_ST_IGNORE, ACTION_NONE);
+			return;
+		case 0x9f:
+			do_trans(vte, raw, STATE_APC_STRING, ACTION_NONE);
 			return;
 		case 0x90:
 			do_trans(vte, raw, STATE_DCS_ENTRY, ACTION_NONE);
@@ -2876,8 +2964,10 @@ static void parse_data(struct tsm_vte *vte, uint32_t raw)
 			return;
 		case 0x58:
 		case 0x5e:
-		case 0x5f:
 			do_trans(vte, raw, STATE_ST_IGNORE, ACTION_NONE);
+			return;
+		case 0x5f:
+			do_trans(vte, raw, STATE_APC_STRING, ACTION_NONE);
 			return;
 		}
 		do_trans(vte, raw, STATE_ESC_INT, ACTION_COLLECT);
@@ -3125,6 +3215,23 @@ static void parse_data(struct tsm_vte *vte, uint32_t raw)
 		}
 		do_trans(vte, raw, STATE_NONE, ACTION_IGNORE);
 		return;
+	case STATE_APC_STRING:
+		switch (raw) {
+		case 0x00 ... 0x17:
+		case 0x19:
+		case 0x1c ... 0x1f:
+		case 0x7f:
+			do_trans(vte, raw, STATE_NONE, ACTION_IGNORE);
+			return;
+		case 0x20 ... 0x7e:
+			do_trans(vte, raw, STATE_NONE, ACTION_APC_COLLECT);
+			return;
+		case 0x9c:
+			do_trans(vte, raw, STATE_GROUND, ACTION_NONE);
+			return;
+		}
+		do_trans(vte, raw, STATE_NONE, ACTION_APC_COLLECT);
+		return;
 	}
 
 	llog_warning(vte, "unhandled input %u in state %d", raw, vte->state);
@@ -3156,6 +3263,31 @@ static size_t sixel_run(struct tsm_vte *vte, const char *u8, size_t len)
 	return n;
 }
 
+/* a byte a kitty payload's run takes as it is, in every mode */
+static inline bool kitty_byte(unsigned char c)
+{
+	return c >= 0x20 && c < 0x7f;
+}
+
+/*
+ * Feeds the run of payload bytes at @u8 straight to the kitty parser, as the
+ * parser would hand them over one at a time, at most as many as the work
+ * left allows (each byte is a unit of work); returns how many it took.
+ */
+static size_t kitty_run(struct tsm_vte *vte, const char *u8, size_t len)
+{
+	uint64_t work = sixel_work(vte);
+	size_t n;
+
+	for (n = 1; n < len && n < vte->work_left && kitty_byte(u8[n]); ++n)
+		;
+	tsm_kitty_feed_run(vte->kitty, u8, n);
+	sixel_charge(vte, sixel_work(vte) - work);
+	if (!(vte->flags & (TSM_VTE_FLAG_7BIT_MODE | TSM_VTE_FLAG_8BIT_MODE)))
+		tsm_utf8_mach_feed(vte->mach, u8[n - 1]);
+	return n;
+}
+
 /* parses until @len bytes are read or the image work runs out */
 static size_t vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 {
@@ -3169,13 +3301,18 @@ static size_t vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 		    ((vte->flags & (TSM_VTE_FLAG_7BIT_MODE | TSM_VTE_FLAG_8BIT_MODE)) ||
 		     tsm_utf8_mach_idle(vte->mach))) {
 			i += sixel_run(vte, u8 + i, len - i);
+		} else if (vte->apc_kitty && vte->state == STATE_APC_STRING &&
+			   kitty_byte(u8[i]) && tsm_kitty_in_payload(vte->kitty) &&
+			   ((vte->flags & (TSM_VTE_FLAG_7BIT_MODE | TSM_VTE_FLAG_8BIT_MODE)) ||
+			    tsm_utf8_mach_idle(vte->mach))) {
+			i += kitty_run(vte, u8 + i, len - i);
 		} else if (vte->flags & TSM_VTE_FLAG_7BIT_MODE) {
 			if (u8[i] & 0x80)
 				llog_debug(vte, "receiving 8bit character U+%d from pty while in 7bit mode",
 					   (int)u8[i]);
 			parse_data(vte, u8[i++] & 0x7f);
 		} else if (vte->flags & TSM_VTE_FLAG_8BIT_MODE) {
-			parse_data(vte, u8[i++]);
+			parse_data(vte, (uint8_t)u8[i++]);
 		} else {
 			state = tsm_utf8_mach_feed(vte->mach, u8[i++]);
 			if (state == TSM_UTF8_ACCEPT ||
@@ -3248,7 +3385,21 @@ int tsm_vte_set_graphic_max_size(struct tsm_vte *vte, unsigned int width,
 	vte->graphic_max_h = !height ? TSM_SIXEL_MAX_SIZE_DEFAULT :
 			     height > TSM_SCREEN_IMAGE_MAX ? TSM_SCREEN_IMAGE_MAX : height;
 	sixel_drop(vte);
+	tsm_kitty_set_max_size(vte->kitty, vte->graphic_max_w, vte->graphic_max_h);
 	return 0;
+}
+
+SHL_EXPORT
+void tsm_vte_set_kitty_graphics(struct tsm_vte *vte, bool enable)
+{
+	if (!vte)
+		return;
+
+	vte->kitty_enabled = enable;
+	if (!enable) {
+		tsm_kitty_cancel(vte->kitty);
+		vte->apc_kitty = false;
+	}
 }
 
 SHL_EXPORT
