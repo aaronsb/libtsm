@@ -108,6 +108,31 @@
  *                             and row are given
  *   graphic-max;w=;h=         tsm_vte_set_graphic_max_size (TSM_VTE_SIXEL)
  *   registers;n=[;private=0]  tsm_vte_set_sixel_registers (TSM_VTE_SIXEL)
+ *   host;on=0|1               remove or install the fixture host (below)
+ *
+ * Against a libtsm that declares TSM_VTE_IMAGE_HOST, tsm-replay installs a
+ * fixture host as the kitty host hook (ADR-103, the Notes of 2026-10-24),
+ * feeds the stream through tsm_vte_input_bounded, and answers each request
+ * with tsm_vte_image_reply before it feeds the rest, the path kmscon takes,
+ * pause and resume included. Answers come from FILE's fixture directory, FILE
+ * with ".bin" replaced by ".files". A request names a fixture: the last
+ * component of its path or name for t=f, t=t and t=s, and direct-<n> for the
+ * case's nth inline request, from 1. A discard is answered EINVAL, as the
+ * image helper answers one; otherwise the first that applies:
+ *   <fixture>.error           its first word, EBADF, EINVAL or ENOSPC, is the error
+ *   <fixture>.rgba            a decoded image: width and height as little-endian
+ *                             32-bit integers, then RGBA; it stands in for a PNG
+ *                             or compressed fixture, as tsm-replay decodes nothing
+ *   <fixture>                 for f=24 or f=32 without o=z: the data itself, from
+ *                             O for S bytes (to its end with S 0), exactly s x v
+ *                             pixels (EINVAL otherwise), shorter EBADF
+ *   otherwise                 EBADF for the file media, EINVAL for inline data
+ * It deletes nothing and applies none of the image helper's path rules. Each
+ * request is printed among the replies, where it happened:
+ *   host: ID t=M f=F o=z|- discard=0|1 s=W v=H O=OFF S=SIZE name=NAME len=LEN
+ *                             (NAME as received, every byte outside 0x21 to
+ *                              0x7e, and the backslash, as \xNN; empty for
+ *                              inline data)
  *
  * SPDX-License-Identifier: MIT
  */
@@ -136,9 +161,17 @@ struct grid {
 	struct cell *cells;
 };
 
+/* the bytes libtsm wrote back, and the host lines printed among them */
+struct host_line {
+	size_t at;			/* the reply bytes before it */
+	char *text;
+};
+
 struct reply {
 	unsigned char *buf;
 	size_t len, cap;
+	struct host_line *lines;
+	size_t nlines;
 };
 
 static void on_write(struct tsm_vte *vte, const char *u8, size_t len, void *data)
@@ -442,6 +475,11 @@ static void dump_images(struct tsm_screen *screen, const struct tsm_frame *f, bo
 	free(keys);
 }
 
+#ifdef TSM_VTE_IMAGE_HOST
+static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
+		   void *data);
+#endif
+
 /* the value of KEY= among @argc tokens, or @def */
 static long test_arg(char **argv, int argc, const char *key, long def)
 {
@@ -558,6 +596,10 @@ static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
 		r = tsm_vte_set_sixel_registers(vte, test_arg(argv, argc, "n", 0),
 						test_arg(argv, argc, "private", 1));
 #endif
+#ifdef TSM_VTE_IMAGE_HOST
+	} else if (!strcmp(argv[0], "host")) {
+		tsm_vte_set_image_cb(vte, test_arg(argv, argc, "on", 1) ? host_cb : NULL, NULL);
+#endif
 	} else {
 		fprintf(stderr, "tsm-replay: unknown test command %s\n", argv[0]);
 		exit(2);
@@ -580,6 +622,181 @@ static const char *find_bytes(const char *hay, size_t len, const char *needle, s
 }
 #endif
 
+#ifdef TSM_VTE_IMAGE_HOST
+/* the fixture host: the request out, and where its answers come from */
+static struct {
+	bool out;
+	uint64_t id;
+	unsigned int medium, format, width, height;
+	bool zlib, discard;
+	uint64_t offset, size;
+	char fixture[4200];
+	unsigned int direct;		/* inline requests so far */
+	char dir[4096];			/* the case's fixture directory */
+	struct reply *reply;
+} host;
+
+static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
+		   void *data)
+{
+	struct reply *r = host.reply;
+	const char *base;
+	char line[8400];
+	size_t len, i;
+
+	(void)vte;
+	(void)data;
+	host.out = true;
+	host.id = req->id;
+	host.medium = req->medium;
+	host.format = req->format;
+	host.zlib = req->zlib;
+	host.discard = req->discard;
+	host.width = req->width;
+	host.height = req->height;
+	host.offset = req->offset;
+	host.size = req->size;
+	if (req->name) {
+		base = strrchr(req->name, '/');
+		snprintf(host.fixture, sizeof(host.fixture), "%s", base ? base + 1 : req->name);
+	} else {
+		snprintf(host.fixture, sizeof(host.fixture), "direct-%u", ++host.direct);
+	}
+
+	len = snprintf(line, sizeof(line),
+		       "host: %llu t=%c f=%u o=%c discard=%d s=%u v=%u O=%llu S=%llu name=",
+		       (unsigned long long)req->id, req->medium, req->format,
+		       req->zlib ? 'z' : '-', req->discard, req->width, req->height,
+		       (unsigned long long)req->offset, (unsigned long long)req->size);
+	for (i = 0; req->name && req->name[i] && len < sizeof(line) - 64; i++) {
+		unsigned char c = req->name[i];
+
+		if (c > 0x20 && c < 0x7f && c != '\\')
+			line[len++] = c;
+		else
+			len += snprintf(line + len, sizeof(line) - len, "\\x%02x", c);
+	}
+	snprintf(line + len, sizeof(line) - len, " len=%zu", req->data_len);
+
+	r->lines = realloc(r->lines, (r->nlines + 1) * sizeof(*r->lines));
+	if (!r->lines) {
+		perror("realloc");
+		exit(2);
+	}
+	r->lines[r->nlines].at = r->len;
+	r->lines[r->nlines].text = strdup(line);
+	r->nlines++;
+	return 0;
+}
+
+/* fixture @name's bytes in @len, or NULL when it does not exist */
+static unsigned char *host_file(const char *suffix, size_t *len)
+{
+	char path[8400];
+	FILE *f;
+
+	snprintf(path, sizeof(path), "%s/%s%s", host.dir, host.fixture, suffix);
+	f = fopen(path, "rb");
+	if (!f)
+		return NULL;
+	fclose(f);
+	return read_file(path, len);
+}
+
+/* answers the request out from the fixtures */
+static void host_answer(struct tsm_vte *vte)
+{
+	unsigned char *buf, *rgba = NULL;
+	size_t len, n, bpp, i;
+	unsigned int w = 0, h = 0;
+	int error = 0;
+
+	host.out = false;
+	if (host.discard) {
+		error = -EINVAL;
+	} else if ((buf = host_file(".error", &len))) {
+		if (len >= 5 && !memcmp(buf, "EBADF", 5))
+			error = -EBADF;
+		else if (len >= 6 && !memcmp(buf, "EINVAL", 6))
+			error = -EINVAL;
+		else if (len >= 6 && !memcmp(buf, "ENOSPC", 6))
+			error = -ENOSPC;
+		else {
+			fprintf(stderr, "tsm-replay: %s.error names no error\n", host.fixture);
+			exit(2);
+		}
+		free(buf);
+	} else if ((buf = host_file(".rgba", &len))) {
+		if (len < 8) {
+			fprintf(stderr, "tsm-replay: %s.rgba is short\n", host.fixture);
+			exit(2);
+		}
+		w = buf[0] | buf[1] << 8 | buf[2] << 16 | (uint32_t)buf[3] << 24;
+		h = buf[4] | buf[5] << 8 | buf[6] << 16 | (uint32_t)buf[7] << 24;
+		if ((uint64_t)w * h * 4 != len - 8) {
+			fprintf(stderr, "tsm-replay: %s.rgba is not %ux%u\n", host.fixture, w, h);
+			exit(2);
+		}
+		rgba = malloc(len - 8 + 1);
+		memcpy(rgba, buf + 8, len - 8);
+		free(buf);
+	} else if (host.format != 100 && !host.zlib && (buf = host_file("", &len))) {
+		bpp = host.format / 8;
+		n = (size_t)host.width * host.height;
+		if (host.offset > len || (host.size && host.size > len - host.offset)) {
+			error = -EBADF;
+		} else if ((host.size ? host.size : len - host.offset) != n * bpp) {
+			error = -EINVAL;
+		} else {
+			w = host.width;
+			h = host.height;
+			rgba = malloc(n * 4 + 1);
+			for (i = 0; i < n; i++) {
+				memcpy(rgba + i * 4, buf + host.offset + i * bpp, bpp);
+				if (bpp == 3)
+					rgba[i * 4 + 3] = 255;
+			}
+		}
+		free(buf);
+	} else {
+		error = host.medium == 'd' ? -EINVAL : -EBADF;
+	}
+
+	if (tsm_vte_image_reply(vte, host.id, error, w, h, rgba) < 0) {
+		fprintf(stderr, "tsm-replay: tsm_vte_image_reply refused request %llu\n",
+			(unsigned long long)host.id);
+		exit(3);
+	}
+	free(rgba);
+}
+#endif
+
+/*
+ * Feeds @len bytes to the vte: through tsm_vte_input_bounded where the fork
+ * has the host hook, answering each request before the rest, else through
+ * tsm_vte_input.
+ */
+static void vte_feed(struct tsm_vte *vte, const char *data, size_t len)
+{
+#ifdef TSM_VTE_IMAGE_HOST
+	size_t n;
+
+	while (len) {
+		n = tsm_vte_input_bounded(vte, data, len);
+		data += n;
+		len -= n;
+		if (host.out) {
+			host_answer(vte);
+		} else if (!n) {
+			fprintf(stderr, "tsm-replay: input paused with no request out\n");
+			exit(3);
+		}
+	}
+#else
+	tsm_vte_input(vte, data, len);
+#endif
+}
+
 /*
  * Feeds @len bytes to the vte. Where the fork has images, a test command in
  * them runs in its place; a command must lie wholly between two checkpoints.
@@ -591,7 +808,7 @@ static void feed(struct tsm_screen *screen, struct tsm_vte *vte, const char *dat
 	const char *start, *end;
 
 	while ((start = find_bytes(data, len, intro, sizeof(intro) - 1))) {
-		tsm_vte_input(vte, data, start - data);
+		vte_feed(vte, data, start - data);
 		start += sizeof(intro) - 1;
 		end = find_bytes(start, len - (start - data), "\x1b\\", 2);
 		if (!end) {
@@ -604,7 +821,7 @@ static void feed(struct tsm_screen *screen, struct tsm_vte *vte, const char *dat
 	}
 #endif
 	(void)screen;
-	tsm_vte_input(vte, data, len);
+	vte_feed(vte, data, len);
 }
 
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
@@ -826,23 +1043,45 @@ enum view {
 	VIEW_FRAME,
 };
 
+/* the reply bytes from @from to @to, as one line */
+static void print_reply_bytes(const struct reply *reply, size_t from, size_t to)
+{
+	size_t i;
+
+	if (from == to)
+		return;
+	printf("reply ");
+	for (i = from; i < to; i++)
+		printf("%02x", reply->buf[i]);
+	putchar('\n');
+}
+
+/* the replies since the last dump, a host line where each request came */
+static void print_reply(struct reply *reply)
+{
+	size_t i, from = 0;
+
+	for (i = 0; i < reply->nlines; i++) {
+		print_reply_bytes(reply, from, reply->lines[i].at);
+		printf("%s\n", reply->lines[i].text);
+		from = reply->lines[i].at;
+		free(reply->lines[i].text);
+	}
+	print_reply_bytes(reply, from, reply->len);
+	reply->len = 0;
+	reply->nlines = 0;
+}
+
 static void dump(struct tsm_screen *screen, struct tsm_vte *vte, struct grid *grid,
 		 struct reply *reply, enum view view)
 {
 	unsigned int flags = tsm_screen_get_flags(screen);
 	unsigned int row;
-	size_t i;
 
 	printf("size %ux%u\n", tsm_screen_get_width(screen), tsm_screen_get_height(screen));
 	printf("cursor %u,%u\n", tsm_screen_get_cursor_x(screen), tsm_screen_get_cursor_y(screen));
 	print_flags(flags);
-	if (reply->len) {
-		printf("reply ");
-		for (i = 0; i < reply->len; i++)
-			printf("%02x", reply->buf[i]);
-		putchar('\n');
-		reply->len = 0;
-	}
+	print_reply(reply);
 
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
 	if (view == VIEW_DRAW2) {
@@ -966,6 +1205,15 @@ int main(int argc, char **argv)
 #ifdef TSM_VTE_KITTY_GRAPHICS
 	tsm_vte_set_kitty_graphics(vte, true);
 #endif
+#ifdef TSM_VTE_IMAGE_HOST
+	/* the fixtures beside the stream: cases/<case>.files/ */
+	i = strlen(argv[3]);
+	if (i >= 4 && !strcmp(argv[3] + i - 4, ".bin"))
+		i -= 4;
+	snprintf(host.dir, sizeof(host.dir), "%.*s.files", (int)i, argv[3]);
+	host.reply = &reply;
+	tsm_vte_set_image_cb(vte, host_cb, NULL);
+#endif
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
 	if (view != VIEW_DRAW && tsm_vte_set_palette(vte, DRAW2_PALETTE) < 0) {
 		fprintf(stderr, "tsm-replay: cannot set palette %s\n", DRAW2_PALETTE);
@@ -993,5 +1241,6 @@ int main(int argc, char **argv)
 	free(grid.cells);
 	free(data);
 	free(reply.buf);
+	free(reply.lines);
 	return 0;
 }

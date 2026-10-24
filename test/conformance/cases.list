@@ -129,6 +129,14 @@ kit-cancel 12 4
 kit-evict 12 4
 kit-evict-stamp 12 4
 kit-ed2 12 4
+kit-host-media 12 4
+kit-host-names 12 4
+kit-host-mpv 12 4
+kit-host-icat 12 4
+kit-host-icat-gif 12 4
+kit-host-pause 12 4
+kit-host-errors 12 4
+kit-host-nohook 12 4
 # Real programs, recorded by record-programs.py (checkpoints in cases/<name>.cuts):
 prog-shell 80 24
 prog-less 80 24

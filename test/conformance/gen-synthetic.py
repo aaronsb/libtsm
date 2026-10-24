@@ -6,8 +6,9 @@ sequences. The streams are committed; rerun this script only to add or change
 a case, and review the resulting goldens as their own change.
 
 Usage: gen-synthetic.py CASES_DIR
-Writes CASES_DIR/<name>.bin and prints one "<name> <cols> <rows>" line per
-case, which belongs in cases.list.
+Writes CASES_DIR/<name>.bin, and the fixtures tsm-replay's host serves a
+case into CASES_DIR/<name>.files/, and prints one "<name> <cols> <rows>"
+line per case, which belongs in cases.list.
 
 SPDX-License-Identifier: MIT
 """
@@ -33,6 +34,8 @@ def cup(row, col):
 
 
 CASES = {}
+# fixtures for tsm-replay's host, by case: {file name: bytes}
+FILES = {}
 
 
 def case(name, cols=80, rows=24):
@@ -1210,7 +1213,9 @@ def _():
     # action; PNG and zlib with no host hook; EBADF: files, temporary files
     # and shared memory with no host hook, and an empty name. An unknown
     # key is ignored, and a key section past 1 KiB ignores the whole APC.
-    return (cell() + kitty("a=f,i=1,s=1,v=1", rgb(1, 1)) + kitty("a=a,i=1") +
+    # The fixture host is removed first, so no command reaches a hook.
+    return (cell() + tt("host", on=0) + kitty("a=f,i=1,s=1,v=1", rgb(1, 1)) +
+            kitty("a=a,i=1") +
             kitty("a=c,i=1") + kitty("a=T,U=1,f=24,s=1,v=1,i=2", rgb(1, 1)) +
             kitty("a=p,i=2,P=1,Q=1") + kitty("a=t,f=24,i=3", rgb(1, 1)) +
             kitty("a=t,f=24,s=1,v=1,i=4", rgb(2, 1)) +
@@ -1276,6 +1281,133 @@ def _():
             cup(3, 1) + kt(3, 8, 8) + ESC + "c" + kitty("a=p,i=3") + kitty("a=p,i=1"))
 
 
+# The host hook (ADR-103 step 4a, the Notes of 2026-10-24), through
+# tsm-replay's fixture host: each request is printed among the replies as a
+# "host:" line, and answered from cases/<case>.files/ (see tsm-replay.c).
+
+def rgba_fixture(w, h, px=(255, 0, 0, 255)):
+    """A .rgba fixture: width and height, little-endian, then the pixels."""
+    return w.to_bytes(4, "little") + h.to_bytes(4, "little") + bytes(px) * (w * h)
+
+
+@case("kit-host-media", 12, 4)
+def _():
+    # Each medium reaches the host: t=f with raw f=24 read from the
+    # fixture, t=t with f=100 (a PNG the .rgba stands in for), t=s with
+    # f=32, O and S, then inline PNG and inline zlib data, buffered and
+    # handed over whole; inline raw data stays in libtsm (no host line)
+    FILES["kit-host-media"] = {
+        "picture.rgb": rgb(8, 16, (0, 0, 255)),
+        "tty-graphics-protocol-pic.png.rgba": rgba_fixture(8, 8, (0, 255, 0, 255)),
+        "frame": b"skip" + rgba(8, 8, (255, 255, 0, 255)) + b"tail",
+        "direct-1.rgba": rgba_fixture(8, 8, (255, 0, 255, 255)),
+        "direct-2.rgba": rgba_fixture(8, 8, (0, 255, 255, 255)),
+    }
+    png = b"\x89PNG\r\n\x1a\n" + bytes(range(40))
+    return (cell() + kitty("a=T,t=f,f=24,s=8,v=16,i=1", b"/srv/img/picture.rgb") +
+            kitty("a=T,t=t,f=100,i=2", b"/tmp/tty-graphics-protocol-pic.png") +
+            kitty("a=T,t=s,f=32,s=8,v=8,O=4,S=256,i=3", b"/frame") +
+            chunks("a=T,f=100,i=4", png, 12) +
+            kitty("a=T,f=32,s=8,v=8,o=z,i=5", b"x\x9c" + bytes(30)) +
+            kitty("a=T,f=24,s=8,v=8,i=6", rgb(8, 8)) + DSR)
+
+
+@case("kit-host-names", 12, 4)
+def _():
+    # A name past 4095 bytes, or holding NUL, answers EBADF with no
+    # request; a name with a space, a backslash and a newline reaches the
+    # host as received, its host line escaping them
+    return (cell() + kitty("a=t,t=f,f=100,i=1", b"/" + b"a" * 4095) +
+            kitty("a=t,t=f,f=100,i=2", b"/tmp/a\x00b") +
+            kitty("a=t,t=f,f=100,i=3", b"/tmp/a b\\c\nd") +
+            kitty("a=t,t=f,f=100,i=4", b"/" + b"a" * 4094))
+
+
+def recorded(path):
+    # a stream a client wrote in the probes of ADR-105 and ADR-106, kept in
+    # test/conformance/recorded/
+    return (Path(__file__).resolve().parent / "recorded" / path).read_bytes().decode("latin-1")
+
+
+@case("kit-host-mpv", 12, 4)
+def _():
+    # mpv 0.41.0's shared memory frames (ADR-105): each whole t=s command
+    # carries m=1 and no m=0 follows, and each is taken whole, a request of
+    # its own; the name has no leading /, which the image helper refuses
+    # with EBADF, as the fixture does here, and q=2 keeps it quiet
+    FILES["kit-host-mpv"] = {"mpv-kitty-0x5645ad83d520.error": b"EBADF\n"}
+    return cell() + recorded("mpv-shm-frames.bin") + DSR
+
+
+@case("kit-host-icat", 12, 4)
+def _():
+    # kitten icat's detection (ADR-106): a=q direct, a=q with t=t and a=q
+    # with t=s, then DA1; the three OK replies come before DA1's. icat's
+    # t=t and t=s queries give S as the length of their name, not of 1x1 of
+    # f=24, so their fixtures are .rgba, which apply before the raw rule.
+    FILES["kit-host-icat"] = {
+        "kitty-tty-graphics-protocol-2526776889.rgba": rgba_fixture(1, 1),
+        "icat-KMIKYT5GUOEHE.rgba": rgba_fixture(1, 1),
+    }
+    return cell() + recorded("icat-detect.bin")
+
+
+@case("kit-host-icat-gif", 12, 4)
+def _():
+    # kitten icat's GIF (ADR-106) after its first frame: a=a, answered
+    # EINVAL for its I (no q); a=f with t=s, refused, and handed to the host
+    # as a discard (discard=1) so its object is removed, q=2 keeping the
+    # refusal quiet
+    return cell() + recorded("icat-gif-frames.bin")
+
+
+@case("kit-host-pause", 12, 4)
+def _():
+    # The pause: a put right after a file transmission, and text and DSR
+    # after it, are parsed only after the host's reply, in order: the put
+    # finds the image, its OK follows the transmission's, and the cursor
+    # report comes last
+    FILES["kit-host-pause"] = {"pic.rgba": rgba_fixture(8, 16)}
+    return (cell() + kitty("a=t,t=f,f=100,i=1", b"/tmp/pic") + kitty("a=p,i=1") +
+            "ab" + DSR)
+
+
+@case("kit-host-errors", 12, 4)
+def _():
+    # The host's errors (EBADF, EINVAL, ENOSPC, each from a .error fixture);
+    # a missing fixture (EBADF); a=q through the host storing nothing; a
+    # reply past max-graphic-size, and one differing from s and v (EINVAL);
+    # ENOSPC from the reply's reservation, and from the inline buffer's
+    FILES["kit-host-errors"] = {
+        "e1.error": b"EBADF\n", "e2.error": b"EINVAL\n", "e3.error": b"ENOSPC\n",
+        "q.rgba": rgba_fixture(1, 1),
+        "big.rgba": rgba_fixture(40, 1), "odd.rgba": rgba_fixture(3, 3),
+        "huge.rgba": rgba_fixture(64, 64),
+    }
+    return (cell() + kitty("a=t,t=f,f=100,i=1", b"/e1") +
+            kitty("a=t,t=f,f=100,i=2", b"/e2") + kitty("a=t,t=f,f=100,i=3", b"/e3") +
+            kitty("a=t,t=f,f=100,i=4", b"/none") +
+            kitty("a=q,t=f,f=100,i=5", b"/q") + kitty("a=p,i=5") +
+            tt("graphic-max", w=32, h=32) + kitty("a=t,t=f,f=100,i=6", b"/big") +
+            tt("graphic-max", w=0, h=0) +
+            kitty("a=t,t=f,f=32,s=2,v=2,i=7", b"/odd") +
+            tt("limit", b=8192) + kitty("a=t,t=f,f=100,i=8", b"/huge") +
+            kitty("a=t,f=100,i=9", bytes(9000)))
+
+
+@case("kit-host-nohook", 12, 4)
+def _():
+    # With the host removed: t=f, t=t and t=s answer EBADF and inline PNG
+    # and zlib EINVAL, with no request; a refused t=s is not discarded
+    return (cell() + tt("host", on=0) +
+            kitty("a=t,t=f,f=24,s=8,v=16,i=1", b"/srv/img/picture.rgb") +
+            kitty("a=t,t=t,f=100,i=2", b"/tmp/tty-graphics-protocol-pic.png") +
+            kitty("a=t,t=s,f=32,s=8,v=8,i=3", b"/frame") +
+            kitty("a=t,f=100,i=4", b"\x89PNG") +
+            kitty("a=t,f=32,s=8,v=8,o=z,i=5", b"x\x9c") +
+            kitty("a=f,t=s,s=1,v=1,i=6", b"/frame"))
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -1283,6 +1415,11 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     for name, (cols, rows, fn) in CASES.items():
         (out / f"{name}.bin").write_bytes(fn().encode("utf-8"))
+        if name in FILES:
+            files = out / f"{name}.files"
+            files.mkdir(exist_ok=True)
+            for fixture, data in FILES[name].items():
+                (files / fixture).write_bytes(data)
         print(name, cols, rows)
 
 
