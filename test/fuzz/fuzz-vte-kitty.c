@@ -19,11 +19,18 @@
  *    its source rectangle lies inside that image;
  *  - every reply is a whole kitty reply, a DA, DSR or other reply libtsm
  *    writes, never a fragment;
+ *  - a request the host hook takes pauses the bounded call, which then
+ *    consumes nothing until the reply, and only the request out is answered;
  *  - freeing the vte and the screen gives every byte back.
  *
+ * The host hook takes every request; after each bounded call the target
+ * answers the one out, in turn: an image, each error, an image unlike s and
+ * v, and a reply with no pixels; or the hook refuses the request itself.
+ *
  * Input: byte 0 picks the screen size, cell size, scrollback and budget,
- * byte 1 the max-graphic-size and how the stream is fed (whole, or in chunks
- * through tsm_vte_input_bounded); the rest is the stream.
+ * byte 1 the max-graphic-size, how the stream is fed (whole, or in chunks
+ * through tsm_vte_input_bounded) and where the answers start; the rest is
+ * the stream.
  *
  * Built two ways, as fuzz-vte-sixel is: with libFuzzer (meson -Dfuzz=true
  * under clang, make fuzz FUZZ_TARGET=vte-kitty), and with -DFUZZ_REPLAY as a
@@ -90,6 +97,59 @@ static const struct { unsigned int w, h; } graphic[4] = {
 };
 static const size_t chunks[4] = { 1, 7, 4096, 0 };
 
+/* the host hook: the request out, and the answer the next one gets */
+static struct {
+	bool out;
+	uint64_t id, last;
+	unsigned int turn;
+} host;
+
+static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
+		   void *data)
+{
+	(void)vte;
+	(void)data;
+	check(!host.out);
+	check(req->id == host.last + 1);
+	check(req->medium == 'd' ? req->data && !req->name : req->name && !req->data);
+	check(!req->discard || req->medium == 't' || req->medium == 's');
+	host.last = req->id;
+	/* every fifth request the hook refuses itself */
+	if (++host.turn % 5 == 4)
+		return host.turn & 8 ? -EIO : -ENOSPC;
+	host.out = true;
+	host.id = req->id;
+	return 0;
+}
+
+/* answers the request out: an image, the errors, or a mistake */
+static void host_answer(struct tsm_vte *vte)
+{
+	static const uint8_t px[4 * 4 * 4] = { 255, 0, 0, 128 };
+	int r;
+
+	host.out = false;
+	/* a stale id changes nothing */
+	check(tsm_vte_image_reply(vte, host.id + 1, 0, 1, 1, px) == -ENOENT);
+	switch (host.turn % 5) {
+	case 0:
+		r = tsm_vte_image_reply(vte, host.id, 0, 4, 4, px);
+		break;
+	case 1:
+		r = tsm_vte_image_reply(vte, host.id, host.turn & 4 ? -EINVAL : -EBADF,
+					0, 0, NULL);
+		break;
+	case 2:
+		r = tsm_vte_image_reply(vte, host.id, 0, 1, 3, px);
+		break;
+	default:
+		r = tsm_vte_image_reply(vte, host.id, 0, 4, 4, NULL);
+		check(r == -EINVAL);
+		return;
+	}
+	check(r == 0);
+}
+
 static void check_frame(struct tsm_screen *screen)
 {
 	const struct tsm_frame *f = tsm_screen_frame(screen);
@@ -138,13 +198,18 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	check(tsm_screen_set_image_budget(screen, reserve, release, NULL) == 0);
 	check(tsm_vte_new(&vte, screen, write_cb, NULL, NULL, NULL) == 0);
 	tsm_vte_set_kitty_graphics(vte, true);
+	memset(&host, 0, sizeof(host));
+	host.turn = b >> 6;
+	tsm_vte_set_image_cb(vte, host_cb, NULL);
 	tsm_vte_set_sixel(vte, !(b & 4));
 	check(tsm_vte_set_graphic_max_size(vte, graphic[b & 3].w,
 					   graphic[b & 3].h) == 0);
 
 	chunk = chunks[b >> 4 & 3];
 	if (!chunk) {
+		/* tsm_vte_input hands out no request */
 		tsm_vte_input(vte, (const char *)data, size);
+		check(!host.out);
 		check_frame(screen);
 	} else {
 		for (pos = 0; pos < size; pos += used) {
@@ -152,6 +217,12 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 			used = tsm_vte_input_bounded(vte, (const char *)data + pos, n);
 			check(used >= 1 && used <= n);
 			check(tsm_screen_get_image_bytes(screen) == held);
+			if (host.out) {
+				/* paused: nothing more until the reply */
+				check(tsm_vte_input_bounded(vte, "x", 1) == 0);
+				host_answer(vte);
+				check(tsm_screen_get_image_bytes(screen) == held);
+			}
 		}
 		check_frame(screen);
 	}
