@@ -1338,13 +1338,14 @@ def _():
     # Each medium reaches the host: t=f with raw f=24 read from the
     # fixture, t=t with f=100 (a PNG the .rgba stands in for), t=s with
     # f=32, O and S, then inline PNG and inline zlib data, buffered and
-    # handed over whole; inline raw data stays in libtsm (no host line)
+    # handed over whole (the inflated bytes from .bytes); inline raw data
+    # stays in libtsm (no host line)
     FILES["kit-host-media"] = {
         "picture.rgb": rgb(8, 16, (0, 0, 255)),
         "tty-graphics-protocol-pic.png.rgba": rgba_fixture(8, 8, (0, 255, 0, 255)),
         "frame": b"skip" + rgba(8, 8, (255, 255, 0, 255)) + b"tail",
         "direct-1.rgba": rgba_fixture(8, 8, (255, 0, 255, 255)),
-        "direct-2.rgba": rgba_fixture(8, 8, (0, 255, 255, 255)),
+        "direct-2.bytes": rgba(8, 8, (0, 255, 255, 255)),
     }
     png = b"\x89PNG\r\n\x1a\n" + bytes(range(40))
     return (cell() + kitty("a=T,t=f,f=24,s=8,v=16,i=1", b"/srv/img/picture.rgb") +
@@ -1377,8 +1378,8 @@ def _():
     # mpv 0.41.0's shared memory frames (ADR-105): each whole t=s command
     # carries m=1 and no m=0 follows, and each is taken whole, a request of
     # its own; the name has no leading /, which the image helper refuses
-    # with EBADF, as the fixture does here, and q=2 keeps it quiet
-    FILES["kit-host-mpv"] = {"mpv-kitty-0x5645ad83d520.error": b"EBADF\n"}
+    # (UNREADABLE, EBADF), as the fixture does here, and q=2 keeps it quiet
+    FILES["kit-host-mpv"] = {"mpv-kitty-0x5645ad83d520.error": b"UNREADABLE\n"}
     return cell() + recorded("mpv-shm-frames.bin") + DSR
 
 
@@ -1386,11 +1387,12 @@ def _():
 def _():
     # kitten icat's detection (ADR-106): a=q direct, a=q with t=t and a=q
     # with t=s, then DA1; the three OK replies come before DA1's. icat's
-    # t=t and t=s queries give S as the length of their name, not of 1x1 of
-    # f=24, so their fixtures are .rgba, which apply before the raw rule.
+    # t=t and t=s queries hold 3 bytes and give S as the length of their
+    # name (47 and 19), which as kitty's maximum (ADR-107) reads to the
+    # end, so each query loads.
     FILES["kit-host-icat"] = {
-        "kitty-tty-graphics-protocol-2526776889.rgba": rgba_fixture(1, 1),
-        "icat-KMIKYT5GUOEHE.rgba": rgba_fixture(1, 1),
+        "kitty-tty-graphics-protocol-2526776889": rgb(1, 1),
+        "icat-KMIKYT5GUOEHE": rgb(1, 1),
     }
     return cell() + recorded("icat-detect.bin")
 
@@ -1417,38 +1419,135 @@ def _():
 
 @case("kit-host-errors", 12, 4)
 def _():
-    # The host's errors (EBADF, EINVAL, ENOSPC, each from a .error fixture);
-    # a missing fixture (EBADF); a=q through the host storing nothing; a
-    # reply past max-graphic-size, and one differing from s and v (EINVAL);
-    # ENOSPC from the reply's reservation, and from the inline buffer's
+    # The host's outcomes from .error fixtures for t=f PNG (UNREADABLE
+    # EBADF, CORRUPT EINVAL, OVER_BUDGET ENOSPC, TOO_LARGE EINVAL); a
+    # missing fixture (UNREADABLE, EBADF); a=q through the host storing
+    # nothing; a reply past max-graphic-size (EINVAL); a raw f=32 file too
+    # short for s x v (TOO_SHORT, EBADF); ENOSPC from the reply's
+    # reservation, and from the inline buffer's
     FILES["kit-host-errors"] = {
-        "e1.error": b"EBADF\n", "e2.error": b"EINVAL\n", "e3.error": b"ENOSPC\n",
+        "e1.error": b"UNREADABLE\n", "e2.error": b"CORRUPT\n",
+        "e3.error": b"OVER_BUDGET\n", "e4.error": b"TOO_LARGE\n",
         "q.rgba": rgba_fixture(1, 1),
-        "big.rgba": rgba_fixture(40, 1), "odd.rgba": rgba_fixture(3, 3),
+        "big.rgba": rgba_fixture(40, 1), "short": rgba(3, 1),
         "huge.rgba": rgba_fixture(64, 64),
     }
     return (cell() + kitty("a=t,t=f,f=100,i=1", b"/e1") +
             kitty("a=t,t=f,f=100,i=2", b"/e2") + kitty("a=t,t=f,f=100,i=3", b"/e3") +
+            kitty("a=t,t=f,f=100,i=10", b"/e4") +
             kitty("a=t,t=f,f=100,i=4", b"/none") +
             kitty("a=q,t=f,f=100,i=5", b"/q") + kitty("a=p,i=5") +
             tt("graphic-max", w=32, h=32) + kitty("a=t,t=f,f=100,i=6", b"/big") +
             tt("graphic-max", w=0, h=0) +
-            kitty("a=t,t=f,f=32,s=2,v=2,i=7", b"/odd") +
+            kitty("a=t,t=f,f=32,s=2,v=2,i=7", b"/short") +
             tt("limit", b=8192) + kitty("a=t,t=f,f=100,i=8", b"/huge") +
             kitty("a=t,f=100,i=9", bytes(9000)))
 
 
-@case("kit-host-nohook", 12, 4)
+@case("kit-host-requests", 12, 4)
 def _():
-    # With the host removed: t=f, t=t and t=s answer EBADF and inline PNG
-    # and zlib EINVAL, with no request; a refused t=s is not discarded
-    return (cell() + tt("host", on=0) +
-            kitty("a=t,t=f,f=24,s=8,v=16,i=1", b"/srv/img/picture.rgb") +
-            kitty("a=t,t=t,f=100,i=2", b"/tmp/tty-graphics-protocol-pic.png") +
-            kitty("a=t,t=s,f=32,s=8,v=8,i=3", b"/frame") +
-            kitty("a=t,f=100,i=4", b"\x89PNG") +
-            kitty("a=t,f=32,s=8,v=8,o=z,i=5", b"x\x9c") +
-            kitty("a=f,t=s,s=1,v=1,i=6", b"/frame"))
+    # The request each row of ADR-103's What libtsm asks for produces, its
+    # host line judged: t=f raw (O and S as offset and read_max, s x v x
+    # bpp as min); t=t raw with o=z (inflate); t=s PNG (png, min 0); t=f
+    # PNG with o=z and S (inflate,png; S a read bound, no exact); inline
+    # raw with o=z (inflate, min s x v x bpp); inline PNG, S ignored;
+    # inline PNG with o=z and S=30 (inflate,png,exact, min 30); without S
+    # and with S=0, no exact; a refused t=t and a refused t=s handed over
+    # as discards (EINVAL); a refused t=f and a refused inline PNG never
+    # reaching the host (EINVAL). No fixture exists: the file media answer
+    # UNREADABLE (EBADF) and inline data CORRUPT (EINVAL)
+    return (cell() + kitty("a=t,t=f,f=24,s=2,v=1,O=5,S=9,i=1", b"/r1") +
+            kitty("a=t,t=t,f=32,s=2,v=2,o=z,O=1,S=100,i=2",
+                  b"/tmp/tty-graphics-protocol-r2") +
+            kitty("a=t,t=s,f=100,O=2,S=50,i=3", b"/r3") +
+            kitty("a=t,t=f,f=100,o=z,S=40,i=4", b"/r4") +
+            kitty("a=t,f=24,s=2,v=2,o=z,i=5", b"x\x9c") +
+            kitty("a=t,f=100,S=99,i=6", b"\x89PNG") +
+            kitty("a=t,f=100,o=z,S=30,i=7", b"x\x9c") +
+            kitty("a=t,f=100,o=z,i=8", b"x\x9c") +
+            kitty("a=t,f=100,o=z,S=0,i=9", b"x\x9c") +
+            kitty("a=t,t=t,f=24,i=10", b"/tmp/tty-graphics-protocol-r10") +
+            kitty("a=f,t=s,s=1,v=1,i=11", b"/r11") +
+            kitty("a=t,t=f,f=24,i=12", b"/r12") +
+            kitty("a=t,f=100,i=13,I=1", b"\x89PNG"))
+
+
+OUTCOMES = ("UNREADABLE", "TOO_SHORT", "CORRUPT", "TOO_LARGE", "OVER_BUDGET")
+
+
+@case("kit-host-outcomes", 12, 4)
+def _():
+    # The reply each outcome of ADR-103's What libtsm answers produces, in
+    # its three columns: for t=f raw without o=z (i=1 to 5) UNREADABLE and
+    # TOO_SHORT are EBADF; with o=z (i=11 to 15) and inline PNG (i=21 to
+    # 25) TOO_SHORT is EINVAL; in all three CORRUPT and TOO_LARGE are
+    # EINVAL and OVER_BUDGET ENOSPC. t=f PNG's TOO_SHORT (i=6) is EBADF, no
+    # inflate. Then OK in each: raw from the file (i=7), inflated from
+    # .bytes (i=16), inline PNG from .rgba (i=26), each stored
+    files = {}
+    out = cell()
+    for n, name in enumerate(OUTCOMES):
+        files[f"f{n + 1}.error"] = name.encode() + b"\n"
+        files[f"z{n + 1}.error"] = name.encode() + b"\n"
+        files[f"direct-{n + 1}.error"] = name.encode() + b"\n"
+        out += kitty(f"a=t,t=f,f=24,s=1,v=1,i={n + 1}", f"/f{n + 1}".encode())
+    for n in range(len(OUTCOMES)):
+        out += kitty(f"a=t,t=f,f=24,s=1,v=1,o=z,i={n + 11}", f"/z{n + 1}".encode())
+    for n in range(len(OUTCOMES)):
+        out += kitty(f"a=t,f=100,i={n + 21}", b"\x89PNG")
+    files["p6.error"] = b"TOO_SHORT\n"
+    files["f7"] = rgb(1, 1)
+    files["z16.bytes"] = rgb(1, 1, (0, 255, 0))
+    files["direct-6.rgba"] = rgba_fixture(1, 1, (255, 255, 0, 255))
+    FILES["kit-host-outcomes"] = files
+    return (out + kitty("a=t,t=f,f=100,i=6", b"/p6") +
+            kitty("a=T,t=f,f=24,s=1,v=1,C=1,i=7", b"/f7") +
+            kitty("a=T,t=f,f=24,s=1,v=1,o=z,C=1,i=16", b"/z16") +
+            kitty("a=T,f=100,C=1,i=26", b"\x89PNG"))
+
+
+def pix47():
+    # 47 distinct bytes, byte i being (37 i + 11) mod 256, as ADR-107's
+    # third probe round held on each medium
+    return bytes((37 * i + 11) % 256 for i in range(47))
+
+
+@case("kit-host-lengths", 12, 4)
+def _():
+    # kitty's length rules (ADR-107), applied by the fixture host as the
+    # image helper applies them: S past the end of a 3-byte file reads to
+    # the end (OK, i=1); no S reads to the end and takes the first 3 bytes,
+    # the excess ignored (OK, i=2, colour of bytes 0 to 2); O=10 with S=3
+    # and O=10 alone take bytes 10 to 12 (OK, i=3 and 4); S=2 for 3 bytes,
+    # and S=3 for a 2x1 that needs 6, too few (TOO_SHORT, EBADF, i=5 and
+    # 6); an offset at the end and one past it (UNREADABLE, EBADF, i=7 and
+    # 8); the same on t=t (OK, i=9); inline, too few (EINVAL, i=10) and
+    # past s x v (OK, the excess ignored, i=11)
+    FILES["kit-host-lengths"] = {
+        "pix3": pix47()[:3], "pix47": pix47(),
+        "tty-graphics-protocol-pix47": pix47(),
+    }
+    return (cell() + kitty("a=T,t=f,f=24,s=1,v=1,S=47,C=1,i=1", b"/pix3") +
+            kitty("a=T,t=f,f=24,s=1,v=1,C=1,i=2", b"/pix47") +
+            kitty("a=T,t=f,f=24,s=1,v=1,O=10,S=3,C=1,i=3", b"/pix47") +
+            kitty("a=T,t=f,f=24,s=1,v=1,O=10,C=1,i=4", b"/pix47") +
+            kitty("a=T,t=f,f=24,s=1,v=1,S=2,C=1,i=5", b"/pix47") +
+            kitty("a=T,t=f,f=24,s=2,v=1,S=3,C=1,i=6", b"/pix47") +
+            kitty("a=T,t=f,f=24,s=1,v=1,O=47,C=1,i=7", b"/pix47") +
+            kitty("a=T,t=f,f=24,s=1,v=1,O=50,C=1,i=8", b"/pix3") +
+            kitty("a=T,t=t,f=24,s=1,v=1,S=47,C=1,i=9",
+                  b"/tmp/tty-graphics-protocol-pix47") +
+            kitty("a=T,f=24,s=1,v=1,C=1,i=10", pix47()[:2]) +
+            kitty("a=T,f=24,s=1,v=1,C=1,i=11", pix47()[:6]))
+
+
+# Every host case again with the host removed (ADR-103's Testing): t=f,
+# t=t and t=s answer EBADF and inline PNG and zlib EINVAL, with no request
+# and no discard
+for _name in [n for n in CASES if n.startswith("kit-host-")]:
+    def _nohook(fn=CASES[_name][2]):
+        return tt("host", on=0) + fn()
+    CASES[_name + "-nohook"] = (CASES[_name][0], CASES[_name][1], _nohook)
 
 
 def main():

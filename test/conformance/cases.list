@@ -138,7 +138,19 @@ kit-host-icat 12 4
 kit-host-icat-gif 12 4
 kit-host-pause 12 4
 kit-host-errors 12 4
-kit-host-nohook 12 4
+kit-host-requests 12 4
+kit-host-outcomes 12 4
+kit-host-lengths 12 4
+kit-host-media-nohook 12 4
+kit-host-names-nohook 12 4
+kit-host-mpv-nohook 12 4
+kit-host-icat-nohook 12 4
+kit-host-icat-gif-nohook 12 4
+kit-host-pause-nohook 12 4
+kit-host-errors-nohook 12 4
+kit-host-requests-nohook 12 4
+kit-host-outcomes-nohook 12 4
+kit-host-lengths-nohook 12 4
 # Real programs, recorded by record-programs.py (checkpoints in cases/<name>.cuts):
 prog-shell 80 24
 prog-less 80 24
