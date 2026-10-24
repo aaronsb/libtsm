@@ -1301,7 +1301,9 @@ struct tsm_vte_image_result {
  * top to bottom with no padding (f=32's layout), and libtsm checks the size
  * against max-graphic-size (EINVAL to the client otherwise); any other
  * request's are exactly min_bytes bytes, which libtsm converts as f=24 or
- * f=32 data of s x v pixels. libtsm reads them only during the call. Unless
+ * f=32 data of s x v pixels, with s x v checked against max-graphic-size
+ * again (EINVAL to the client), since it may have been lowered while the
+ * request was out. libtsm reads them only during the call. Unless
  * the command is a=q, it then reserves the image's bytes from the budget
  * (which may evict, or refuse with ENOSPC), stores the image and places it
  * for a=T; a=q stores nothing. Any other status answers the client with the

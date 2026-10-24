@@ -1075,6 +1075,14 @@ START_TEST(test_hook_budget)
 	ck_assert_int_eq(answer(5, TSM_VTE_IMAGE_OK, 1, 4, PX2, 16), 0);
 	ck_assert_str_eq(reply, "\033_Gi=5;EINVAL:invalid argument\033\\"
 				"\033_Gi=6;EINVAL:invalid argument\033\\");
+
+	/* a raw image whose max-graphic-size was lowered while it was out */
+	reply_clear();
+	bounded("\033_Ga=t,t=f,f=24,s=1,v=2,i=7;L3RtcC94\033\\");
+	ck_assert_int_eq(tsm_vte_set_graphic_max_size(vte, 1, 1), 0);
+	ck_assert_int_eq(answer(6, TSM_VTE_IMAGE_OK, 0, 0, PX2, 6), 0);
+	ck_assert_str_eq(reply, "\033_Gi=7;EINVAL:invalid argument\033\\");
+	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(2, 2));
 }
 END_TEST
 

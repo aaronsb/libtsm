@@ -567,9 +567,12 @@ static void request_finish(struct tsm_kitty *k, unsigned int status, unsigned in
 		width = cmd.s;
 		height = cmd.v;
 		bpp = cmd.f / 8;
-	} else if (width > k->max_width || height > k->max_height ||
-		   (uint64_t)width * height * 4 + TSM_SCREEN_IMAGE_OVERHEAD >
-		   TSM_SCREEN_IMAGE_MAX_BYTES) {
+	}
+	/* a raw format's s x v was checked before the hook, but
+	 * max-graphic-size may have been lowered since */
+	if (width > k->max_width || height > k->max_height ||
+	    (uint64_t)width * height * 4 + TSM_SCREEN_IMAGE_OVERHEAD >
+	    TSM_SCREEN_IMAGE_MAX_BYTES) {
 		reply(k, &cmd, cmd.i, -EINVAL);
 		return;
 	}
