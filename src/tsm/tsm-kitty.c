@@ -523,23 +523,26 @@ static void upload_data(struct tsm_kitty *k, const uint8_t *data, size_t n)
 }
 
 /*
- * Data past s x v x bytes per pixel, at debug level only, since a video can
- * send it every frame
+ * Data past s x v x bytes per pixel, at debug severity, since a video can send
+ * it every frame. Written with llog_dprintf, which every build keeps, so the
+ * host's own log level decides whether it shows.
  */
 static void log_excess(struct tsm_kitty *k, const struct kitty_cmd *cmd, size_t excess,
 		       char medium)
 {
+	char image[32];
+
 	if (!excess)
 		return;
 	if (cmd->i)
-		llog_debug(k->con, "kitty image i=%u, t=%c: %zu bytes past s x v ignored",
-			   cmd->i, medium, excess);
+		snprintf(image, sizeof(image), "i=%u", cmd->i);
 	else if (cmd->I)
-		llog_debug(k->con, "kitty image I=%u, t=%c: %zu bytes past s x v ignored",
-			   cmd->I, medium, excess);
+		snprintf(image, sizeof(image), "I=%u", cmd->I);
 	else
-		llog_debug(k->con, "kitty image (anonymous), t=%c: %zu bytes past s x v ignored",
-			   medium, excess);
+		snprintf(image, sizeof(image), "(anonymous)");
+	llog_dprintf(k->con->llog, k->con->llog_data, LLOG_DEBUG,
+		     "kitty image %s, t=%c: %zu bytes past s x v ignored", image, medium,
+		     excess);
 }
 
 /* its last chunk has arrived */

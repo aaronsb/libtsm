@@ -246,10 +246,7 @@ START_TEST(test_kitty_excess)
 	input(cmd);
 	free(cmd);
 	ck_assert_str_eq(reply, "\033_Gi=1;OK\033\\");
-	/* logged only in a build with BUILD_ENABLE_DEBUG (-Dextra_debug) */
-#ifdef BUILD_ENABLE_DEBUG
 	ck_assert_str_eq(debug_log, "kitty image i=1, t=d: 6 bytes past s x v ignored");
-#endif
 	ck_assert_uint_eq(placements(), 1);
 	ck_assert_uint_eq(pixel(placement(0), 0, 0), 0xff0000ffu);
 	ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), COST(1, 1));
@@ -265,10 +262,8 @@ START_TEST(test_kitty_excess)
 	cmd = command("a=T,f=32,s=1,v=1,C=1", 6, 1, 1, blue);
 	input(cmd);
 	free(cmd);
-#ifdef BUILD_ENABLE_DEBUG
 	ck_assert_str_eq(debug_log,
 			 "kitty image (anonymous), t=d: 2 bytes past s x v ignored");
-#endif
 
 	reply_clear();
 	cmd = command("a=q,f=24,s=2,v=1,i=3", 1, 1, 3, blue);
