@@ -535,7 +535,8 @@ static void request(struct tsm_kitty *k, const struct kitty_cmd *cmd, bool disca
 		.offset = cmd->O,
 		.size = cmd->S,
 		.name = cmd->t == 'd' ? NULL : k->name,
-		.data = data,
+		/* an empty payload still points somewhere */
+		.data = cmd->t != 'd' ? NULL : data ? data : (const uint8_t *)"",
 		.data_len = len,
 	};
 	int ret;
