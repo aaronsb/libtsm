@@ -125,6 +125,7 @@ kit-delete-f 12 4
 kit-delete-sb 12 4
 kit-replies 12 4
 kit-query 12 4
+kit-query-number 12 4
 kit-refused 12 4
 kit-cancel 12 4
 kit-evict 12 4

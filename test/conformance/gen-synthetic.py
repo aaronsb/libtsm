@@ -1225,6 +1225,25 @@ def _():
             cup(2, 1) + kitty("a=p,i=5,C=1"))
 
 
+@case("kit-query-number", 12, 4)
+def _():
+    # an a=q with I and no i is dropped at its ST, as kitty 0.49.2 drops it
+    # (ADR-107, rounds 4 and 5): no reply under q absent, 1 or 2, on t=d,
+    # t=t and t=s, whether its data would load or not, and a chunked one's
+    # continuation is swallowed; a=p of number 52 then finds nothing
+    # (ENOENT), and the same a=q with i=51 answers OK
+    tmp, shm = b"/tmp/tty-graphics-protocol-q", b"/kitty-q"
+    out = cell()
+    for q in ("", ",q=1", ",q=2"):
+        out += (kitty("a=q,f=24,s=1,v=1,I=52" + q, rgb(1, 1)) +
+                kitty("a=q,f=24,s=2,v=1,I=52" + q, rgb(1, 1)) +
+                kitty("a=q,t=t,f=24,s=1,v=1,I=52" + q, tmp) +
+                kitty("a=q,t=s,f=24,s=1,v=1,I=52" + q, shm))
+    return (out + kitty("a=q,f=24,s=1,v=1,I=52,m=1", raw="/w==") +
+            kitty("m=0", raw="AAA=") + kitty("a=p,I=52") +
+            kitty("a=q,f=24,s=1,v=1,i=51", rgb(1, 1)))
+
+
 @case("kit-refused", 12, 4)
 def _():
     # EINVAL: animation, Unicode placeholders, relative placements, a raw
