@@ -3175,7 +3175,7 @@ static size_t vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 					   (int)u8[i]);
 			parse_data(vte, u8[i++] & 0x7f);
 		} else if (vte->flags & TSM_VTE_FLAG_8BIT_MODE) {
-			parse_data(vte, u8[i++]);
+			parse_data(vte, (uint8_t)u8[i++]);
 		} else {
 			state = tsm_utf8_mach_feed(vte->mach, u8[i++]);
 			if (state == TSM_UTF8_ACCEPT ||
