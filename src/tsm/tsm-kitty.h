@@ -9,8 +9,9 @@
  * tsm-kitty.c), fed by the vte one APC at a time: tsm_kitty_begin when an APC
  * starts, its bytes through tsm_kitty_feed or, in its payload, tsm_kitty_feed
  * _run, and tsm_kitty_end with the byte that ended it. A chunked upload spans
- * several APCs and lives here between them. Replies go out through the write
- * callback the vte gives.
+ * several APCs and lives here between them, and so does a request to the
+ * host hook until it is answered. Replies go out through the write callback
+ * the vte gives.
  */
 
 #ifndef TSM_KITTY_H
@@ -42,11 +43,22 @@ bool tsm_kitty_in_payload(struct tsm_kitty *k);
 /* @len payload bytes, each 0x20 to 0x7e, as tsm_kitty_feed would take them */
 void tsm_kitty_feed_run(struct tsm_kitty *k, const char *u8, size_t len);
 /* the APC ends with @data: CAN and SUB abort the command, anything else
- * completes it */
-void tsm_kitty_end(struct tsm_kitty *k, uint32_t data);
+ * completes it; with @host_ok it may hand the host hook a request */
+void tsm_kitty_end(struct tsm_kitty *k, uint32_t data, bool host_ok);
 
-/* a reset: drops an upload in progress, and ignores the rest of an APC */
+/* a reset: drops an upload in progress and a request that is out, and
+ * ignores the rest of an APC */
 void tsm_kitty_cancel(struct tsm_kitty *k);
+
+/*
+ * The host hook (TSM_VTE_IMAGE_HOST): while a request is out the vte parses
+ * nothing, and tsm_kitty_reply answers it, with tsm_vte_image_reply's
+ * arguments and returns. Setting the hook answers a request out with EBADF.
+ */
+bool tsm_kitty_paused(struct tsm_kitty *k);
+void tsm_kitty_set_hook(struct tsm_kitty *k, tsm_vte_image_cb hook, void *data);
+int tsm_kitty_reply(struct tsm_kitty *k, uint64_t id, int error, unsigned int width,
+		    unsigned int height, const uint8_t *rgba);
 
 /* the image work done so far, in pixels and payload bytes, which the vte
  * counts against an input call's bound */

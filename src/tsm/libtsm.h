@@ -1128,11 +1128,15 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len);
 
 /*
  * As tsm_vte_input, but stops once the image work this call has done passes
- * a bound, and returns the bytes it consumed: at least one when @len is not 0.
- * The work is counted in pixels written, allocated or copied, about 16
- * million per call, since a few bytes of sixel can fill a large picture. A
- * host feeds the rest in a later call, after its other events, so one read of
- * crafted input cannot hold its event loop for long.
+ * a bound, and returns the bytes it consumed: at least one when @len is not 0
+ * and no request is out. The work is counted in pixels written, allocated or
+ * copied, about 16 million per call, since a few bytes of sixel can fill a
+ * large picture. A host feeds the rest in a later call, after its other
+ * events, so one read of crafted input cannot hold its event loop for long.
+ *
+ * It also stops after the byte that ends a kitty command it hands to the
+ * host hook (TSM_VTE_IMAGE_HOST), and returns 0, consuming nothing, until
+ * tsm_vte_image_reply answers it. Only this call hands out requests.
  */
 size_t tsm_vte_input_bounded(struct tsm_vte *vte, const char *u8, size_t len);
 
@@ -1186,6 +1190,90 @@ int tsm_vte_set_sixel_registers(struct tsm_vte *vte, unsigned int count,
 #define TSM_VTE_KITTY_GRAPHICS 1
 
 void tsm_vte_set_kitty_graphics(struct tsm_vte *vte, bool enable);
+
+/*
+ * The kitty graphics protocol's host hook (ADR-103 in aaronsb/kmscon, the
+ * Notes of 2026-10-24): what libtsm does not do itself, reading t=f, t=t and
+ * t=s media and decoding PNG (f=100) and zlib (o=z), goes to the host.
+ * Defined when the calls below exist.
+ *
+ * A transmission (a=t, a=T or a=q) from a file, temporary file or shared
+ * memory, and one sent directly with f=100 or o=z, reaches the hook once,
+ * when its last chunk ends, after libtsm has checked its keys. A refused t=t
+ * or t=s command still reaches it, as a discard: the host removes the object
+ * and reads nothing, and the client gets libtsm's own refusal whatever the
+ * host answers. Inline f=24 and f=32 data without o=z stays in libtsm, as
+ * does every other refused command.
+ *
+ * The hook returns 0 to take the request: tsm_vte_input_bounded then returns
+ * the bytes up to and including the one that ended the command (the ESC of
+ * ESC \, or a C1 ST), and 0 on every call after until tsm_vte_image_reply
+ * answers. A negative errno answers at once: -EBADF, -EINVAL and -ENOSPC
+ * their code, anything else EBADF; parsing goes on in the same call.
+ *
+ * The request and what it points to are valid only during the hook call. One
+ * request per vte is out at a time. tsm_vte_input never hands one out: there
+ * the commands answer as without a hook, t=f, t=t and t=s EBADF and PNG and
+ * zlib EINVAL, and bytes it is given while a request is out are dropped.
+ */
+#define TSM_VTE_IMAGE_HOST 1
+
+enum tsm_vte_image_medium {
+	TSM_VTE_IMAGE_DIRECT = 'd',	/* t=d: PNG or zlib data sent inline */
+	TSM_VTE_IMAGE_FILE = 'f',	/* t=f */
+	TSM_VTE_IMAGE_TEMP = 't',	/* t=t */
+	TSM_VTE_IMAGE_SHM = 's',	/* t=s */
+};
+
+struct tsm_vte_image_request {
+	uint64_t id;		/* names the request in tsm_vte_image_reply; from 1, per vte */
+	unsigned int medium;	/* enum tsm_vte_image_medium */
+	unsigned int format;	/* f: 24, 32 or 100 */
+	bool zlib;		/* o=z */
+	bool discard;		/* refused: remove a TEMP or SHM object, read nothing */
+	unsigned int width;	/* s, 0 when not given */
+	unsigned int height;	/* v, 0 when not given */
+	uint64_t offset;	/* O */
+	uint64_t size;		/* S, 0 when not given */
+	const char *name;	/* FILE, TEMP, SHM: the path or name, NUL-terminated; else NULL */
+	const uint8_t *data;	/* DIRECT: the payload, base64-decoded; else NULL */
+	size_t data_len;
+};
+
+typedef int (*tsm_vte_image_cb)(struct tsm_vte *vte,
+				const struct tsm_vte_image_request *req,
+				void *data);
+
+/*
+ * Installs @image_cb, or with NULL removes it. Installing or removing it
+ * while a request is out answers that request EBADF.
+ */
+void tsm_vte_set_image_cb(struct tsm_vte *vte, tsm_vte_image_cb image_cb,
+			  void *image_data);
+
+/*
+ * Answers request @id: @error 0 with @width x @height pixels of
+ * straight-alpha 8-bit R, G, B, A at @rgba, rows top to bottom with no
+ * padding (f=32's layout), read only during the call; or @error -EBADF,
+ * -EINVAL or -ENOSPC (any other negative value answers EBADF), the rest
+ * ignored. libtsm checks the size against max-graphic-size, and against s and
+ * v for a raw format, then stores and places the image, reserving its bytes
+ * from the budget, which may evict or refuse with ENOSPC; a=q stores nothing.
+ * The client's reply is libtsm's. The placement is made at the cursor as it
+ * is now.
+ *
+ * Returns 0 when the request is answered; -ENOENT when @id is not the request
+ * out (a reply after a cancel), and nothing happens; -EINVAL for a NULL @rgba
+ * or a zero size with @error 0, which ends the request with EBADF to the
+ * client; -EBUSY from inside the hook, leaving the request out. The
+ * conversion runs in this call, outside tsm_vte_input_bounded's work bound.
+ *
+ * tsm_vte_reset, tsm_vte_hard_reset, turning kitty graphics off and freeing
+ * the vte drop a request that is out, with no reply to the client.
+ */
+int tsm_vte_image_reply(struct tsm_vte *vte, uint64_t id, int error,
+			unsigned int width, unsigned int height,
+			const uint8_t *rgba);
 
 /**
  * @brief Set backspace key to send either backspace or delete.
