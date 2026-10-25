@@ -220,6 +220,8 @@ struct tsm_vte {
 	bool sixel_active;			/* a DCS q streams into it */
 	/* the kitty graphics protocol (ADR-103 step 4) */
 	bool kitty_enabled;
+	/* the host blinks the cursor in the styles that blink (mode 12) */
+	bool cursor_blink;
 	struct tsm_kitty *kitty;
 	bool apc_kitty;				/* the APC streams into it */
 	/* the image work tsm_vte_input_bounded has left in this call */
@@ -627,6 +629,7 @@ int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
 	vte->graphic_max_h = TSM_SIXEL_MAX_SIZE_DEFAULT;
 	vte->sixel_max_registers = TSM_SIXEL_REGISTERS_DEFAULT;
 	vte->sixel_private_default = true;
+	vte->cursor_blink = true;
 	sixel_reset(vte);
 
 	ret = tsm_utf8_mach_new(&vte->mach);
@@ -2213,9 +2216,10 @@ static bool mode_PIXMOUSE_get(struct tsm_vte *vte)
 }
 
 /*
- * AT&T 610 cursor blink. DECRQM reports whether the cursor style blinks, as
- * kmscon draws it: the default style and the odd DECSCUSR styles. SM and RM
- * do nothing yet (aaronsb/libtsm#57).
+ * AT&T 610 cursor blink. DECRQM reports whether the cursor blinks: the host
+ * blinks it (tsm_vte_set_cursor_blink) and the style is one that blinks, the
+ * default or an odd DECSCUSR style, as kmscon draws them. SM and RM do
+ * nothing yet (aaronsb/libtsm#57).
  */
 static void mode_CURBLINK_set(struct tsm_vte *vte, bool set)
 {
@@ -2227,7 +2231,7 @@ static bool mode_CURBLINK_get(struct tsm_vte *vte)
 {
 	enum tsm_screen_cursor_style style = tsm_screen_get_cursor_style(vte->con);
 
-	return style == TSM_SCREEN_CURSOR_DEFAULT || (style & 1);
+	return vte->cursor_blink && (style == TSM_SCREEN_CURSOR_DEFAULT || (style & 1));
 }
 
 /*
@@ -3736,6 +3740,15 @@ void tsm_vte_set_kitty_graphics(struct tsm_vte *vte, bool enable)
 		tsm_kitty_cancel(vte->kitty);
 		vte->apc_kitty = false;
 	}
+}
+
+SHL_EXPORT
+void tsm_vte_set_cursor_blink(struct tsm_vte *vte, bool enable)
+{
+	if (!vte)
+		return;
+
+	vte->cursor_blink = enable;
 }
 
 SHL_EXPORT

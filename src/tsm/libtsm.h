@@ -1117,6 +1117,11 @@ int tsm_vte_get_palette_color(struct tsm_vte *vte, unsigned int index,
 int tsm_vte_set_width_method(struct tsm_vte *vte, enum tsm_width_method method);
 
 void tsm_vte_get_def_attr(struct tsm_vte *vte, struct tsm_screen_attr *out);
+/*
+ * The TSM_VTE_FLAG_* bits. The bits of modes libtsm accepts with no effect
+ * (KAM, DECARM, DECNRCM) still follow SM, RM and the resets;
+ * tsm_vte_get_mode reports what the terminal does instead.
+ */
 unsigned int tsm_vte_get_flags(struct tsm_vte *vte);
 
 unsigned int tsm_vte_get_mouse_mode(struct tsm_vte *vte);
@@ -1126,6 +1131,9 @@ unsigned int tsm_vte_get_mouse_event(struct tsm_vte *vte);
  * The state of an ANSI mode (@dec false) or a DEC private mode (@dec true),
  * as DECRQM reports it to a program: 1 set, 2 reset, 3 permanently set, 4
  * permanently reset, 0 not recognised. Defined when tsm_vte_get_mode exists.
+ * It reports what the terminal does: KAM, DECARM and DECNRCM, which have no
+ * effect, report their fixed state here while their legacy bits in
+ * tsm_vte_get_flags still follow SM and RM.
  *
  * @retval -EINVAL if vte is NULL.
  */
@@ -1200,6 +1208,15 @@ int tsm_vte_set_sixel_registers(struct tsm_vte *vte, unsigned int count,
 #define TSM_VTE_KITTY_GRAPHICS 1
 
 void tsm_vte_set_kitty_graphics(struct tsm_vte *vte, bool enable);
+
+/*
+ * Whether the host blinks the cursor in the styles that blink (the default
+ * and the odd DECSCUSR styles). DECRQM of mode 12 reports the cursor as
+ * blinking only while this is on. On by default. Defined when
+ * tsm_vte_set_cursor_blink exists.
+ */
+#define TSM_VTE_SET_CURSOR_BLINK 1
+void tsm_vte_set_cursor_blink(struct tsm_vte *vte, bool enable);
 
 /*
  * The kitty graphics protocol's host hook (ADR-103 in aaronsb/kmscon, the

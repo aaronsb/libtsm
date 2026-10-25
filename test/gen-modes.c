@@ -202,7 +202,7 @@ static void print_md(const int *values, const unsigned int *seen)
 	       ROW_COUNT, count[0], count[1], count[2], count[3]);
 	printf("- **Status.** Supported: set and reset do what the spec says. Partial: part of it, and the spec column names the issue for the rest. Ignored: accepted with no effect; the spec column says why, or names the issue for an effect that is wanted. Refused: deliberately not implemented.\n");
 	printf("- **DECRQM.** The reply to `CSI ? Ps $ p` (DEC) or `CSI Ps $ p` (ANSI), as `tsm_vte_get_mode` also gives it: 1 set, 2 reset, 3 permanently set, 4 permanently reset. \"At start\" is a new vte with libtsm's default settings; \"1 or 2\" means both were seen after the mode's SM and RM, under the SGR mouse encoding and under a steady cursor; a single value is the only one seen. A number with no row replies 0, not recognised, and SM and RM log it at debug level.\n");
-	printf("- **Reset.** Which resets restore the default: soft (DECSTR and RIS), hard (RIS only), or none.\n");
+	printf("- **Reset.** Which resets restore the default: soft (DECSTR and RIS), hard (RIS only), or none. For an ignored row, which resets restore its legacy bit in `tsm_vte_get_flags`.\n");
 	printf("- **Host.** What the program embedding libtsm must do for the mode to work: input (report pointer or focus events), paste (paste through `tsm_vte_paste`), draw (present frames by the mode), or none.\n");
 	printf("- **Terminfo.** The capabilities whose strings set or reset the mode.\n");
 	printf("- **Tests.** The unit tests (`START_TEST` names) and tier 1 cases that set and reset the mode.\n\n");

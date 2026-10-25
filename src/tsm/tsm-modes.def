@@ -28,7 +28,8 @@
  *  dflt      the state after tsm_vte_new: true (set), false (reset), or
  *            CONFIGURED(expression), a host setting read from the vte
  *  reset     which resets restore dflt: RESET_SOFT (DECSTR and RIS),
- *            RESET_HARD (RIS only), RESET_NONE
+ *            RESET_HARD (RIS only), RESET_NONE; for an IGNORED row, which
+ *            resets restore its legacy flag bit
  *  host      what the embedding program must do for the mode to work:
  *            HOST_NONE, HOST_INPUT (it reports pointer or focus events),
  *            HOST_PASTE (it pastes through tsm_vte_paste), HOST_DRAW (it
@@ -40,7 +41,7 @@
  *            test/conformance/cases.list
  */
 
-MODE(ANSI, 2,    KAM,        IGNORED,   false, RESET_NONE, HOST_NONE,  "",            "ECMA-48 KAM; libtsm#57",                         "")
+MODE(ANSI, 2,    KAM,        IGNORED,   false, RESET_SOFT, HOST_NONE,  "",            "ECMA-48 KAM; libtsm#57",                         "")
 MODE(ANSI, 4,    IRM,        SUPPORTED, false, RESET_SOFT, HOST_NONE,  "",            "ECMA-48 IRM",                                    "test_mode_irm vs16-insert-mode")
 MODE(ANSI, 12,   SRM,        SUPPORTED, true,  RESET_SOFT, HOST_NONE,  "",            "ECMA-48 SRM",                                    "test_mode_srm")
 MODE(ANSI, 20,   LNM,        SUPPORTED, false, RESET_SOFT, HOST_NONE,  "",            "ECMA-48 LNM",                                    "test_mode_lnm")
@@ -51,13 +52,13 @@ MODE(DEC,  4,    DECSCLM,    IGNORED,   false, RESET_NONE, HOST_NONE,  "",      
 MODE(DEC,  5,    DECSCNM,    SUPPORTED, false, RESET_SOFT, HOST_NONE,  "flash",       "ctlseqs DECSCNM",                                "test_mode_decscnm test_vte_frame_inverse_screen")
 MODE(DEC,  6,    DECOM,      SUPPORTED, false, RESET_SOFT, HOST_NONE,  "",            "ctlseqs DECOM",                                  "test_mode_decom origin-mode")
 MODE(DEC,  7,    DECAWM,     SUPPORTED, true,  RESET_SOFT, HOST_NONE,  "",            "ctlseqs DECAWM",                                 "test_mode_decawm autowrap")
-MODE(DEC,  8,    DECARM,     IGNORED,   true,  RESET_NONE, HOST_NONE,  "",            "ctlseqs DECARM; libtsm#57",                      "")
+MODE(DEC,  8,    DECARM,     IGNORED,   true,  RESET_SOFT, HOST_NONE,  "",            "ctlseqs DECARM; libtsm#57",                      "")
 MODE(DEC,  9,    X10MOUSE,   PARTIAL,   false, RESET_SOFT, HOST_INPUT, "",            "ctlseqs, X10 mouse; DECRQM reports what is sent; libtsm#30",                  "test_mode_mouse_x10 test_mouse_x10")
-MODE(DEC,  12,   CURBLINK,   PARTIAL,   true,  RESET_NONE, HOST_NONE,  "",            "ctlseqs, AT&T 610 cursor blink; reported from the DECSCUSR style; SM and RM do nothing yet, libtsm#57", "test_mode_cursor_blink")
+MODE(DEC,  12,   CURBLINK,   PARTIAL,   CONFIGURED(vte->cursor_blink), RESET_NONE, HOST_NONE, "", "ctlseqs, AT&T 610 cursor blink; reported from the DECSCUSR style and tsm_vte_set_cursor_blink; SM and RM do nothing yet, libtsm#57", "test_mode_cursor_blink test_mode_cursor_blink_host")
 MODE(DEC,  18,   DECPFF,     IGNORED,   false, RESET_NONE, HOST_NONE,  "",            "ctlseqs DECPFF; a console has no printer",       "")
 MODE(DEC,  19,   DECPEX,     IGNORED,   false, RESET_NONE, HOST_NONE,  "",            "ctlseqs DECPEX; a console has no printer",       "")
 MODE(DEC,  25,   DECTCEM,    SUPPORTED, true,  RESET_SOFT, HOST_NONE,  "civis cnorm", "ctlseqs DECTCEM",                                "test_mode_dectcem")
-MODE(DEC,  42,   DECNRCM,    IGNORED,   false, RESET_NONE, HOST_NONE,  "",            "ctlseqs DECNRCM; libtsm#57",                     "")
+MODE(DEC,  42,   DECNRCM,    IGNORED,   false, RESET_SOFT, HOST_NONE,  "",            "ctlseqs DECNRCM; libtsm#57",                     "")
 MODE(DEC,  47,   ALTBUF,     SUPPORTED, false, RESET_SOFT, HOST_NONE,  "",            "ctlseqs, alternate screen buffer",               "test_mode_altbuf_47 img-alt-47")
 MODE(DEC,  80,   DECSDM,     SUPPORTED, false, RESET_HARD, HOST_NONE,  "",            "ctlseqs DECSDM; ADR-103",                        "test_sixel_display_mode")
 MODE(DEC,  1000, VT200MOUSE, PARTIAL,   false, RESET_SOFT, HOST_INPUT, "",            "ctlseqs, normal mouse tracking; DECRQM reports what is sent; libtsm#30",      "test_mode_mouse_vt200 test_mode_mouse_decrqm_matches_reports")

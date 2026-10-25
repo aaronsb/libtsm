@@ -719,6 +719,24 @@ START_TEST(test_mode_decrqm_form)
 }
 END_TEST
 
+/* a host that never blinks the cursor (kmscon's blink=false) says so, and
+ * mode 12 then reports reset for every style */
+START_TEST(test_mode_cursor_blink_host)
+{
+	tsm_vte_set_cursor_blink(vte, false);
+	assert_decrqm(true, 12, 2);
+	input("\e[5 q");
+	assert_decrqm(true, 12, 2);
+
+	tsm_vte_set_cursor_blink(vte, true);
+	assert_decrqm(true, 12, 1);
+	input("\e[6 q");
+	assert_decrqm(true, 12, 2);
+
+	tsm_vte_set_cursor_blink(NULL, false);
+}
+END_TEST
+
 TEST_DEFINE_CASE(ansi)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_mode_irm)
@@ -756,6 +774,7 @@ TEST_DEFINE_CASE(report)
 	TEST(test_mode_mouse_decrqm_matches_reports)
 	TEST(test_mode_mouse_resets)
 	TEST(test_mode_cursor_blink)
+	TEST(test_mode_cursor_blink_host)
 	TEST(test_mode_xtrestore_not_margins)
 TEST_END_CASE
 

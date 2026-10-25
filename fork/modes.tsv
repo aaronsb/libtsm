@@ -1,5 +1,5 @@
 kind	number	name	status	decrqm_start	decrqm_seen	default	reset	host	terminfo	spec	tests
-ansi	2	KAM	ignored	4	4	reset	none	none		ECMA-48 KAM; libtsm#57	
+ansi	2	KAM	ignored	4	4	reset	soft	none		ECMA-48 KAM; libtsm#57	
 ansi	4	IRM	supported	2	1 2	reset	soft	none		ECMA-48 IRM	test_mode_irm vs16-insert-mode
 ansi	12	SRM	supported	1	1 2	set	soft	none		ECMA-48 SRM	test_mode_srm
 ansi	20	LNM	supported	2	1 2	reset	soft	none		ECMA-48 LNM	test_mode_lnm
@@ -10,13 +10,13 @@ dec	4	DECSCLM	ignored	4	4	reset	none	none		ctlseqs DECSCLM; a console has no smo
 dec	5	DECSCNM	supported	2	1 2	reset	soft	none	flash	ctlseqs DECSCNM	test_mode_decscnm test_vte_frame_inverse_screen
 dec	6	DECOM	supported	2	1 2	reset	soft	none		ctlseqs DECOM	test_mode_decom origin-mode
 dec	7	DECAWM	supported	1	1 2	set	soft	none		ctlseqs DECAWM	test_mode_decawm autowrap
-dec	8	DECARM	ignored	3	3	set	none	none		ctlseqs DECARM; libtsm#57	
+dec	8	DECARM	ignored	3	3	set	soft	none		ctlseqs DECARM; libtsm#57	
 dec	9	X10MOUSE	partial	2	1 2	reset	soft	input		ctlseqs, X10 mouse; DECRQM reports what is sent; libtsm#30	test_mode_mouse_x10 test_mouse_x10
-dec	12	CURBLINK	partial	1	1 2	set	none	none		ctlseqs, AT&T 610 cursor blink; reported from the DECSCUSR style; SM and RM do nothing yet, libtsm#57	test_mode_cursor_blink
+dec	12	CURBLINK	partial	1	1 2	host:vte->cursor_blink	none	none		ctlseqs, AT&T 610 cursor blink; reported from the DECSCUSR style and tsm_vte_set_cursor_blink; SM and RM do nothing yet, libtsm#57	test_mode_cursor_blink test_mode_cursor_blink_host
 dec	18	DECPFF	ignored	4	4	reset	none	none		ctlseqs DECPFF; a console has no printer	
 dec	19	DECPEX	ignored	4	4	reset	none	none		ctlseqs DECPEX; a console has no printer	
 dec	25	DECTCEM	supported	1	1 2	set	soft	none	civis cnorm	ctlseqs DECTCEM	test_mode_dectcem
-dec	42	DECNRCM	ignored	4	4	reset	none	none		ctlseqs DECNRCM; libtsm#57	
+dec	42	DECNRCM	ignored	4	4	reset	soft	none		ctlseqs DECNRCM; libtsm#57	
 dec	47	ALTBUF	supported	2	1 2	reset	soft	none		ctlseqs, alternate screen buffer	test_mode_altbuf_47 img-alt-47
 dec	80	DECSDM	supported	2	1 2	reset	hard	none		ctlseqs DECSDM; ADR-103	test_sixel_display_mode
 dec	1000	VT200MOUSE	partial	2	1 2	reset	soft	input		ctlseqs, normal mouse tracking; DECRQM reports what is sent; libtsm#30	test_mode_mouse_vt200 test_mode_mouse_decrqm_matches_reports
