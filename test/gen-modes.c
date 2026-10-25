@@ -7,7 +7,8 @@
  * Both come from src/tsm/tsm-modes.def. The DECRQM column is what a vte with
  * libtsm's default settings answers: at start, and the values it gives in
  * the states the probes below reach, then the values it gives with the
- * host's settings that offer a mode turned on (tsm_vte_set_sync). `make
+ * host's settings that offer a mode turned on (tsm_vte_set_sync, and sixel
+ * with an image budget). `make
  * modes` rewrites both files, and the modes-doc test fails when they differ
  * from what this prints.
  *
@@ -75,8 +76,11 @@ static unsigned int probe(const struct mode_row *r, bool host)
 			if (tsm_screen_new(&screen, NULL, NULL) ||
 			    tsm_vte_new(&vte, screen, write_cb, NULL, NULL, NULL))
 				return 0;
-			if (host)
+			if (host) {
 				tsm_vte_set_sync(vte, true);
+				tsm_screen_set_image_limit(screen, 1 << 20);
+				tsm_vte_set_sixel(vte, true);
+			}
 			tsm_vte_input(vte, contexts[c], strlen(contexts[c]));
 			if (step >= 1) {
 				snprintf(seq, sizeof(seq), "\e[%s%uh", r->dec ? "?" : "", r->number);
@@ -209,9 +213,9 @@ static void print_md(const int *values, const unsigned int *seen,
 	printf("%zu modes: %u supported, %u partial, %u ignored, %u refused.\n\n",
 	       ROW_COUNT, count[0], count[1], count[2], count[3]);
 	printf("- **Status.** Supported: set and reset do what the spec says. Partial: part of it, and the spec column names the issue for the rest. Ignored: accepted with no effect; the spec column says why, or names the issue for an effect that is wanted. Refused: deliberately not implemented.\n");
-	printf("- **DECRQM.** The reply to `CSI ? Ps $ p` (DEC) or `CSI Ps $ p` (ANSI), as `tsm_vte_get_mode` also gives it: 1 set, 2 reset, 3 permanently set, 4 permanently reset. \"At start\" is a new vte with libtsm's default settings; \"1 or 2\" means both were seen after the mode's SM and RM, and under a steady cursor; a single value is the only one seen. \"Once the host offers it\": the host's setting that says it does what the mode needs is on, `tsm_vte_set_sync` for mode 2026; until then the mode replies its fixed state and SM does nothing. A number with no row replies 0, not recognised, and SM and RM log it at debug level.\n");
+	printf("- **DECRQM.** The reply to `CSI ? Ps $ p` (DEC) or `CSI Ps $ p` (ANSI), as `tsm_vte_get_mode` also gives it: 1 set, 2 reset, 3 permanently set, 4 permanently reset. \"At start\" is a new vte with libtsm's default settings; \"1 or 2\" means both were seen after the mode's SM and RM, and under a steady cursor; a single value is the only one seen. \"Once the host offers it\": the host's setting that says it does what the mode needs is on: `tsm_vte_set_sync` for mode 2026, until which SM does nothing; sixel turned on with an image budget for 80, 1070 and 8452, whose SM and RM are stored meanwhile. Until then the mode replies its fixed state. A number with no row replies 0, not recognised, and SM and RM log it at debug level.\n");
 	printf("- **Reset.** Which resets restore the default: soft (DECSTR and RIS), hard (RIS only), or none. For an ignored row, which resets restore its legacy bit in `tsm_vte_get_flags`.\n");
-	printf("- **Host.** What the program embedding libtsm must do for the mode to work: input (report pointer or focus events), paste (paste through `tsm_vte_paste`), draw (present frames by the mode), or none.\n");
+	printf("- **Host.** What the program embedding libtsm must do for the mode to work: input (report pointer or focus events), paste (paste through `tsm_vte_paste`), draw (present frames by the mode), sixel (turn sixel on and give the screen an image budget), or none.\n");
 	printf("- **Terminfo.** The capabilities whose strings set or reset the mode.\n");
 	printf("- **Tests.** The unit tests (`START_TEST` names) and tier 1 cases that set and reset the mode.\n\n");
 	printf("## ANSI modes (SM, RM)\n\n");

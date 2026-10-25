@@ -1140,7 +1140,8 @@ unsigned int tsm_vte_get_mouse_event(struct tsm_vte *vte);
  * permanently reset, 0 not recognised. Defined when tsm_vte_get_mode exists.
  * It reports what the terminal does: KAM, DECARM and DECNRCM, which have no
  * effect, report their fixed state here while their legacy bits in
- * tsm_vte_get_flags still follow SM and RM.
+ * tsm_vte_get_flags still follow SM and RM, and so do sixel's modes, 80,
+ * 1070 and 8452, while sixel is off (TSM_VTE_SIXEL).
  *
  * @retval -EINVAL if vte is NULL.
  */
@@ -1175,7 +1176,10 @@ size_t tsm_vte_input_bounded(struct tsm_vte *vte, const char *u8, size_t len);
  * Sixel is off until the host turns it on, and needs an image budget on the
  * screen as well (tsm_screen_set_image_budget or tsm_screen_set_image_limit).
  * While either is missing, sixel strings are ignored, DA1 omits attribute 4,
- * and XTSMGRAPHICS reports no graphics. Both on, the picture's memory comes
+ * XTSMGRAPHICS reports no graphics, and DECRQM replies the fixed state of
+ * sixel's modes: 4 for 80 and 8452, and for 1070 3 or 4 from
+ * private-color-registers (tsm_vte_set_sixel_registers). SM and RM still
+ * store them, for when sixel comes on. Both on, the picture's memory comes
  * from that budget, and a picture that does not fit is dropped.
  */
 #define TSM_VTE_SIXEL 1

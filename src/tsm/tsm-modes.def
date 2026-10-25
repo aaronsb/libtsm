@@ -35,9 +35,14 @@
  *            HOST_PASTE (it pastes through tsm_vte_paste), HOST_DRAW (it
  *            presents frames by the mode; until the host says it does, SM
  *            does nothing and DECRQM replies the row's fixed state, as for
- *            an IGNORED row). Every HOST_DRAW row is offered by one
- *            setting, tsm_vte_set_sync (sync_enabled, mode_offered in
- *            tsm-vte.c); mode 2026 is the only such row today.
+ *            an IGNORED row), HOST_SIXEL (it turns sixel on and gives the
+ *            screen an image budget; until both, DECRQM replies the row's
+ *            fixed state, while SM and RM still store the mode for when
+ *            sixel comes on). Every HOST_DRAW row is offered by one
+ *            setting, tsm_vte_set_sync (sync_enabled), and every HOST_SIXEL
+ *            row by sixel being on (sixel_on); mode_offered in tsm-vte.c
+ *            says which. Mode 2026 is the only HOST_DRAW row today, and 80,
+ *            1070 and 8452 the HOST_SIXEL rows.
  *  terminfo  the capabilities whose strings set or reset the mode
  *  spec      the reference
  *  tests     the tests that set and reset the mode: a START_TEST in a
@@ -64,7 +69,7 @@ MODE(DEC,  19,   DECPEX,     IGNORED,   false, RESET_NONE, HOST_NONE,  "",      
 MODE(DEC,  25,   DECTCEM,    SUPPORTED, true,  RESET_SOFT, HOST_NONE,  "civis cnorm", "ctlseqs DECTCEM",                                "test_mode_dectcem")
 MODE(DEC,  42,   DECNRCM,    IGNORED,   false, RESET_SOFT, HOST_NONE,  "",            "ctlseqs DECNRCM; libtsm#57",                     "")
 MODE(DEC,  47,   ALTBUF,     SUPPORTED, false, RESET_SOFT, HOST_NONE,  "",            "ctlseqs, alternate screen buffer",               "test_mode_altbuf_47 img-alt-47")
-MODE(DEC,  80,   DECSDM,     SUPPORTED, false, RESET_HARD, HOST_NONE,  "",            "ctlseqs DECSDM; ADR-103",                        "test_sixel_display_mode")
+MODE(DEC,  80,   DECSDM,     SUPPORTED, false, RESET_HARD, HOST_SIXEL, "",            "ctlseqs DECSDM; ADR-103; offered while sixel is on", "test_sixel_display_mode")
 MODE(DEC,  1000, VT200MOUSE, SUPPORTED, false, RESET_SOFT, HOST_INPUT, "",            "ctlseqs, normal mouse tracking",                 "test_mode_mouse_vt200 test_mode_mouse_decrqm_matches_reports")
 MODE(DEC,  1002, BTNMOUSE,   SUPPORTED, false, RESET_SOFT, HOST_INPUT, "",            "ctlseqs, button-event tracking",                 "test_mode_mouse_btn_event")
 MODE(DEC,  1003, ANYMOUSE,   SUPPORTED, false, RESET_SOFT, HOST_INPUT, "",            "ctlseqs, any-event tracking",                    "test_mode_mouse_any_event")
@@ -73,8 +78,8 @@ MODE(DEC,  1016, PIXMOUSE,   SUPPORTED, false, RESET_SOFT, HOST_INPUT, "",      
 MODE(DEC,  1047, ALTBUF1047, SUPPORTED, false, RESET_SOFT, HOST_NONE,  "",            "ctlseqs, alternate screen buffer",               "test_mode_altbuf_1047 img-alt-1047")
 MODE(DEC,  1048, SAVECUR,    SUPPORTED, false, RESET_NONE, HOST_NONE,  "",            "ctlseqs, save cursor as in DECSC",               "test_mode_save_cursor_1048")
 MODE(DEC,  1049, ALTBUF1049, SUPPORTED, false, RESET_SOFT, HOST_NONE,  "smcup rmcup", "ctlseqs, alternate screen buffer",               "test_mode_altbuf_1049 alt-screen img-alt-1049")
-MODE(DEC,  1070, SIXPRIV,    SUPPORTED, CONFIGURED(vte->sixel_private_default), RESET_HARD, HOST_NONE, "", "ctlseqs, private sixel registers; ADR-103", "test_sixel_registers")
+MODE(DEC,  1070, SIXPRIV,    SUPPORTED, CONFIGURED(vte->sixel_private_default), RESET_HARD, HOST_SIXEL, "", "ctlseqs, private sixel registers; ADR-103; offered while sixel is on", "test_sixel_registers")
 MODE(DEC,  2004, BRPASTE,    SUPPORTED, false, RESET_SOFT, HOST_PASTE, "BD BE PS PE", "ctlseqs, bracketed paste",                       "test_mode_bracketed_paste test_mode_bracketed_paste_resets")
 MODE(DEC,  2026, SYNC,       SUPPORTED, false, RESET_SOFT, HOST_DRAW,  "Sync",        "contour synchronized-output; offered while the host presents by it, tsm_vte_set_sync", "test_mode_sync test_mode_sync_resets test_mode_sync_bounded mode-2026")
 MODE(DEC,  2027, GRAPHEME,   SUPPORTED, CONFIGURED(vte->width_method == TSM_WIDTH_UNICODE), RESET_SOFT, HOST_NONE, "", "terminal-unicode-core; ADR-102", "test_vte_width_method_resets mode-2027-decrqm")
-MODE(DEC,  8452, SIXRIGHT,   SUPPORTED, false, RESET_HARD, HOST_NONE,  "",            "ctlseqs, sixel cursor right; ADR-103",           "test_sixel_cursor_right")
+MODE(DEC,  8452, SIXRIGHT,   SUPPORTED, false, RESET_HARD, HOST_SIXEL, "",            "ctlseqs, sixel cursor right; ADR-103; offered while sixel is on", "test_sixel_cursor_right")

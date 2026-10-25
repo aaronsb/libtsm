@@ -701,18 +701,19 @@ struct mode_reply {
 	unsigned int value;
 };
 
-/* every row in its default state, and numbers with no row */
+/* every row in its default state, and numbers with no row; sixel is off,
+ * so its modes, 80, 1070 and 8452, reply their fixed state */
 static const struct mode_reply mode_defaults[] = {
 	{ false, 2, 4 }, { false, 4, 2 }, { false, 12, 1 }, { false, 20, 2 },
 	{ true, 1, 2 }, { true, 2, 3 }, { true, 3, 4 }, { true, 4, 4 },
 	{ true, 5, 2 }, { true, 6, 2 }, { true, 7, 1 }, { true, 8, 3 },
 	{ true, 9, 2 }, { true, 12, 1 }, { true, 18, 4 }, { true, 19, 4 },
-	{ true, 25, 1 }, { true, 42, 4 }, { true, 47, 2 }, { true, 80, 2 },
+	{ true, 25, 1 }, { true, 42, 4 }, { true, 47, 2 }, { true, 80, 4 },
 	{ true, 1000, 2 }, { true, 1002, 2 }, { true, 1003, 2 },
 	{ true, 1006, 2 }, { true, 1016, 2 }, { true, 1047, 2 },
-	{ true, 1048, 2 }, { true, 1049, 2 }, { true, 1070, 1 },
+	{ true, 1048, 2 }, { true, 1049, 2 }, { true, 1070, 3 },
 	{ true, 2004, 2 }, { true, 2026, 4 }, { true, 2027, 1 },
-	{ true, 8452, 2 },
+	{ true, 8452, 4 },
 	/* not recognised */
 	{ false, 0, 0 }, { false, 1, 0 }, { false, 3, 0 }, { false, 25, 0 },
 	{ false, 2004, 0 }, { true, 0, 0 }, { true, 10, 0 }, { true, 1004, 0 },
@@ -744,7 +745,11 @@ END_TEST
 
 START_TEST(test_mode_decrqm_set)
 {
-	/* each supported row reports set after SM, reset after RM */
+	/* each supported row reports set after SM, reset after RM; sixel's
+	 * rows with sixel on, as they report their fixed state while it is off
+	 * (test_mode_decrqm_sixel_off) */
+	tsm_screen_set_image_limit(screen, 1 << 20);
+	tsm_vte_set_sixel(vte, true);
 	input("\e[4;20h\e[?1;5;6;80;2004;8452h");
 	assert_decrqm(false, 4, 1);
 	assert_decrqm(false, 20, 1);
@@ -800,6 +805,43 @@ START_TEST(test_mode_decrqm_set)
 	assert_decrqm(true, 9, 1);
 	assert_decrqm(true, 1003, 2);
 	assert_decrqm(true, 1016, 1);
+}
+END_TEST
+
+/*
+ * Sixel's modes reply their fixed state whichever way sixel is off: not
+ * turned on, turned on with no image budget, or turned off again. SM and RM
+ * still store them, and the stored state shows once sixel is on (ADR-103,
+ * Replies stay truthful).
+ */
+START_TEST(test_mode_decrqm_sixel_off)
+{
+	input("\e[?80;8452h\e[?1070l");
+	assert_decrqm(true, 80, 4);
+	assert_decrqm(true, 1070, 3);
+	assert_decrqm(true, 8452, 4);
+
+	/* on, with no budget */
+	tsm_vte_set_sixel(vte, true);
+	assert_decrqm(true, 80, 4);
+	assert_decrqm(true, 1070, 3);
+	assert_decrqm(true, 8452, 4);
+
+	/* on, with a budget: the stored state */
+	tsm_screen_set_image_limit(screen, 1 << 20);
+	assert_decrqm(true, 80, 1);
+	assert_decrqm(true, 1070, 2);
+	assert_decrqm(true, 8452, 1);
+
+	/* off again */
+	tsm_vte_set_sixel(vte, false);
+	assert_decrqm(true, 80, 4);
+	assert_decrqm(true, 1070, 3);
+	assert_decrqm(true, 8452, 4);
+
+	/* 1070's fixed state follows private-color-registers */
+	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 0, false), 0);
+	assert_decrqm(true, 1070, 4);
 }
 END_TEST
 
@@ -1169,6 +1211,7 @@ TEST_DEFINE_CASE(report)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_mode_decrqm_defaults)
 	TEST(test_mode_decrqm_set)
+	TEST(test_mode_decrqm_sixel_off)
 	TEST(test_mode_decrqm_form)
 	TEST(test_mode_mouse_decrqm_matches_reports)
 	TEST(test_mode_mouse_resets)

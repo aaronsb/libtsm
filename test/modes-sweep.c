@@ -11,6 +11,10 @@
  * changes one of these and fails here, unless all it changes is held behind
  * a pointer (cell contents, the tab ruler, image state).
  *
+ * A row of sixel's (HOST_SIXEL) replies its fixed state, 3 or 4, while sixel
+ * is off and 1 or 2 while it is on, and an SM or RM made while it is off
+ * holds when it comes on.
+ *
  * SPDX-License-Identifier: MIT
  */
 
@@ -24,13 +28,21 @@
 struct mode_row {
 	bool dec;
 	unsigned int number;
+	bool sixel;
 };
 
 #define MODE_KIND_ANSI false
 #define MODE_KIND_DEC true
+/* one per host value, so a new one fails to compile until it is placed */
+#define MODE_SIXEL_HOST_NONE false
+#define MODE_SIXEL_HOST_INPUT false
+#define MODE_SIXEL_HOST_PASTE false
+#define MODE_SIXEL_HOST_DRAW false
+#define MODE_SIXEL_HOST_SIXEL true
 
 static const struct mode_row rows[] = {
-#define MODE(kind, number, ...) { MODE_KIND_##kind, number },
+#define MODE(kind, number, name, status, dflt, reset, host, ...) \
+	{ MODE_KIND_##kind, number, MODE_SIXEL_##host },
 #include "tsm-modes.def"
 #undef MODE
 };
@@ -123,12 +135,56 @@ static void input(struct tsm_vte *vte, const char *s)
 	tsm_vte_input(vte, s, strlen(s));
 }
 
+/* the failures among the rows of sixel's, each set and reset with sixel off */
+static unsigned int check_sixel_rows(unsigned int *checked)
+{
+	struct tsm_screen *con;
+	struct tsm_vte *vte;
+	unsigned int failures = 0, i, set;
+	int off, after, on, again;
+	char seq[32];
+
+	for (i = 0; i < ROW_COUNT; ++i) {
+		if (!rows[i].sixel)
+			continue;
+		++*checked;
+		for (set = 0; set < 2; ++set) {
+			if (tsm_screen_new(&con, NULL, NULL) ||
+			    tsm_vte_new(&vte, con, write_cb, NULL, NULL, NULL)) {
+				fprintf(stderr, "modes-sweep: cannot make a vte\n");
+				exit(1);
+			}
+			off = tsm_vte_get_mode(vte, true, rows[i].number);
+			snprintf(seq, sizeof(seq), "\e[?%u%c", rows[i].number,
+				 set ? 'h' : 'l');
+			input(vte, seq);
+			after = tsm_vte_get_mode(vte, true, rows[i].number);
+			tsm_screen_set_image_limit(con, 1 << 20);
+			tsm_vte_set_sixel(vte, true);
+			on = tsm_vte_get_mode(vte, true, rows[i].number);
+			tsm_vte_set_sixel(vte, false);
+			again = tsm_vte_get_mode(vte, true, rows[i].number);
+			if ((off != 3 && off != 4) || after != off || again != off ||
+			    on != (set ? 1 : 2)) {
+				printf("modes-sweep: DEC %u is sixel's: with sixel off it replied %d, then %d after %s; with sixel on %d, want %d; off again %d\n",
+				       rows[i].number, off, after, set ? "SM" : "RM",
+				       on, set ? 1 : 2, again);
+				++failures;
+			}
+			tsm_vte_unref(vte);
+			tsm_screen_unref(con);
+		}
+	}
+	return failures;
+}
+
 int main(void)
 {
 	struct tsm_screen *con;
 	struct tsm_vte *vte;
 	struct state base, now;
 	unsigned int failures = 0, rows_seen = 0, unknown = 0, number, kind;
+	unsigned int sixel_rows = 0;
 	char seq[32], want[32];
 	const char *what;
 	bool dec, row;
@@ -188,6 +244,12 @@ int main(void)
 		}
 	}
 
+	failures += check_sixel_rows(&sixel_rows);
+	if (!sixel_rows) {
+		printf("modes-sweep: no row is sixel's (HOST_SIXEL)\n");
+		++failures;
+	}
+
 	if (rows_seen != ROW_COUNT) {
 		printf("modes-sweep: met %u of the table's %zu rows\n", rows_seen,
 		       ROW_COUNT);
@@ -199,7 +261,7 @@ out:
 	tsm_screen_unref(con);
 	if (failures)
 		return 1;
-	printf("modes-sweep: %u rows answer DECRQM; %u numbers with no row reply 0 and SM and RM change nothing\n",
-	       rows_seen, unknown);
+	printf("modes-sweep: %u rows answer DECRQM; %u numbers with no row reply 0 and SM and RM change nothing; %u rows of sixel's reply their fixed state while sixel is off\n",
+	       rows_seen, unknown, sixel_rows);
 	return 0;
 }
