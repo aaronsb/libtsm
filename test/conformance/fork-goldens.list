@@ -32,6 +32,7 @@ vs15-width                  # VS15 never changes width
 width-methods               # unicode and wcwidth on the same text
 mode-2027-decrqm            # DECRQM replies for mode 2027
 mode-2027-resets            # RIS and DECSTR return to the configured method
+mode-2026                   # mode 2026 (ADR-201 step 3): DECRQM in and out of a frame, the ends, the host setting off
 combining-after-move        # a mark after cursor movement joins the cell before it
 cluster-reuse-erase         # clusters erased and printed again
 cluster-max                 # a 33-codepoint cluster keeps 32
