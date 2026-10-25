@@ -2123,7 +2123,8 @@ static bool mode_DECTCEM_get(struct tsm_vte *vte)
  * exclusive. The protocol, 9, 1000, 1002 or 1003, says which events are
  * reported, and the encoding, 1006 or 1016 (SGR in cells or in pixels), how;
  * with neither, the X10 encoding. SM of a mode replaces the other in its
- * set, and RM of any mode in a set clears the set, as libtsm always has.
+ * set. RM of any protocol clears the protocol, as libtsm always has; RM of
+ * an encoding clears it only when it is the one set, as xterm does.
  * 1001 (highlight tracking), 1005 (UTF-8) and 1015 (urxvt) have no row.
  */
 
@@ -2142,18 +2143,30 @@ static void mouse_notify(struct tsm_vte *vte)
 		      vte->mouse_data);
 }
 
+/* the host hears only of a change, since kmscon drops the selection when
+ * told */
 static void mouse_tracking_set(struct tsm_vte *vte, unsigned int mode, bool set)
 {
-	vte->mouse_track = set ? mode : 0;
+	unsigned int track = set ? mode : 0;
+
+	if (track == vte->mouse_track)
+		return;
+	vte->mouse_track = track;
 	vte->mouse_last_col = 0;
 	vte->mouse_last_row = 0;
 	mouse_notify(vte);
 }
 
-/* the host hears of an encoding only while something is tracked */
+/* the host hears of an encoding only while something is tracked, and only
+ * of a change */
 static void mouse_encoding_set(struct tsm_vte *vte, unsigned int encoding, bool set)
 {
-	vte->mouse_encoding = set ? encoding : 0;
+	if (set)
+		vte->mouse_encoding = encoding;
+	else if (vte->mouse_encoding == encoding)
+		vte->mouse_encoding = 0;
+	else
+		return;
 	if (vte->mouse_track)
 		mouse_notify(vte);
 }
@@ -4524,23 +4537,25 @@ bool tsm_vte_handle_mouse(struct tsm_vte *vte, unsigned int cell_x,
 	if (released && button >= 64)
 		return false;
 
-	if (vte->mouse_track == TSM_VTE_MOUSE_MODE_X10)
+	/* X10 has codes for three buttons and no modifiers */
+	if (vte->mouse_track == TSM_VTE_MOUSE_MODE_X10) {
+		if (button >= 64)
+			return false;
 		modifiers = 0;
-
-	if (moved) {
-		/* motion is reported when it enters another cell; in pixels,
-		 * whenever it moves */
-		if (vte->mouse_encoding != TSM_VTE_MOUSE_MODE_PIXEL) {
-			if (cell_x + 1 == vte->mouse_last_col &&
-			    cell_y + 1 == vte->mouse_last_row)
-				return false;
-			vte->mouse_last_col = cell_x + 1;
-			vte->mouse_last_row = cell_y + 1;
-		}
-		/* motion with no button down is button 3, a release, plus 32 */
-		if (!drag)
-			button = 35;
 	}
+
+	/* motion is reported when it enters a cell other than the last one
+	 * reported, by any event; in pixels, whenever it moves */
+	if (vte->mouse_encoding != TSM_VTE_MOUSE_MODE_PIXEL) {
+		if (moved && cell_x + 1 == vte->mouse_last_col &&
+		    cell_y + 1 == vte->mouse_last_row)
+			return false;
+		vte->mouse_last_col = cell_x + 1;
+		vte->mouse_last_row = cell_y + 1;
+	}
+	/* motion with no button down is button 3, a release, plus 32 */
+	if (moved && !drag)
+		button = 35;
 	cb = button | modifiers;
 
 	switch (vte->mouse_encoding) {
