@@ -7,6 +7,7 @@ Tier 1 of the kmscon fork's conformance harness (ADR-301 in aaronsb/kmscon). Rec
 | `tsm-replay.c` | Replays a stream through libtsm's public API and prints the screen: size, cursor, flags, replies, then each row's text and attribute runs. With a `.cuts` file it prints the screen at every checkpoint. |
 | `cases.list` | One case per line: name, columns, rows. |
 | `fork-goldens.list` | The cases whose golden comes from a fork commit, each with the change of behaviour it judges. |
+| `images-cases.list` | The cases that need images (sixel strings, kitty commands, or a reply that says sixel is on). A build with `-Dimages=false` leaves them out (`check.py --no-images`), and each must differ there from its golden. |
 | `cases/*.bin`, `cases/*.cuts` | The streams, and checkpoint offsets for recorded programs. |
 | `golden/*.txt` | The expected output for each case. |
 | `golden-draw2/*.txt` | The expected output of every case through the draw2 view, all fork-sourced (below). |

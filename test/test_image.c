@@ -495,6 +495,8 @@ START_TEST(test_image_store_cap)
 }
 END_TEST
 
+/* sixel strings make its pictures: a build with images only */
+#if TSM_TEST_IMAGES
 /*
  * A kitty id transmitted again while a cut piece still owes its charge: the
  * old image is held while what is owed is settled, so settling cannot evict
@@ -532,6 +534,7 @@ START_TEST(test_image_replace_while_owed)
 	teardown(screen, vte);
 }
 END_TEST
+#endif
 
 /*
  * A sixel placement that reaches from scrollback onto the screen keeps its
@@ -633,6 +636,8 @@ static void host_release(struct tsm_screen *con, size_t bytes, void *data)
 	h->used -= bytes;
 }
 
+/* sixel strings make its pictures: a build with images only */
+#if TSM_TEST_IMAGES
 /*
  * A victim's bytes are what the host gets back when it is evicted: with a
  * piece's charge still owed, as after a host write outside an input call,
@@ -683,6 +688,7 @@ START_TEST(test_image_victim_owed)
 	teardown(screen, vte);
 }
 END_TEST
+#endif
 
 /*
  * With a host budget the host is asked for every reservation, told of every
@@ -1405,6 +1411,8 @@ START_TEST(test_image_frame_wrap)
 }
 END_TEST
 
+/* sixel strings make its pictures: a build with images only */
+#if TSM_TEST_IMAGES
 /*
  * tsm_screen_frame_changed_since: whether a caller's next frame would differ
  * from its last, without building it. A kmscon display asks it before each
@@ -1507,6 +1515,7 @@ START_TEST(test_changed_since_screen)
 	teardown(screen, vte);
 }
 END_TEST
+#endif
 
 /* placements: added, given a new picture, removed by an erase or evicted */
 START_TEST(test_changed_since_images)
@@ -1859,11 +1868,15 @@ TEST_DEFINE_CASE(store)
 	TEST(test_image_eviction_order)
 	TEST(test_image_victim_walk)
 	TEST(test_image_victim_walk_read_only)
+#if TSM_TEST_IMAGES
 	TEST(test_image_victim_owed)
+#endif
 	TEST(test_image_eviction_partly_on_screen)
 	TEST(test_image_lru)
 	TEST(test_image_store_cap)
+#if TSM_TEST_IMAGES
 	TEST(test_image_replace_while_owed)
+#endif
 	TEST(test_image_host_budget)
 	TEST(test_image_host_budget_install)
 	TEST(test_image_replace_refused)
@@ -1888,7 +1901,9 @@ TEST_END_CASE
  * but close to four on a macOS runner, where check's default timeout of 4 s
  * failed it */
 TEST_DEFINE_CASE(changed)
+#if TSM_TEST_IMAGES
 	TEST(test_changed_since_screen)
+#endif
 	TEST(test_changed_since_images)
 	TEST(test_changed_since_wrap)
 TEST_END_CASE

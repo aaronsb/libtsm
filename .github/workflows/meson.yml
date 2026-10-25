@@ -18,13 +18,24 @@ jobs:
             name: "Ubuntu",
             os: ubuntu-latest,
             tests: "true",
-            gtk_tsm: "true"
+            gtk_tsm: "true",
+            images: "true"
+          }
+        # without sixel and the kitty graphics protocol (ADR-103 in
+        # aaronsb/kmscon, libtsm's images option)
+        - {
+            name: "Ubuntu, no images",
+            os: ubuntu-latest,
+            tests: "true",
+            gtk_tsm: "false",
+            images: "false"
           }
         - {
             name: "macOS",
             os: macos-latest,
             tests: "true",
-            gtk_tsm: "false"
+            gtk_tsm: "false",
+            images: "true"
           }
 
     steps:
@@ -43,7 +54,7 @@ jobs:
       run: brew install check meson ninja
 
     - name: Configure Meson
-      run: meson setup -Dtests=${{matrix.config.tests}} -Dgtktsm=${{matrix.config.gtk_tsm}} -Dextra_debug=true build
+      run: meson setup -Dtests=${{matrix.config.tests}} -Dgtktsm=${{matrix.config.gtk_tsm}} -Dimages=${{matrix.config.images}} -Dextra_debug=true build
 
     - name: Build
       working-directory: ./build

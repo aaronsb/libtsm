@@ -1181,6 +1181,11 @@ size_t tsm_vte_input_bounded(struct tsm_vte *vte, const char *u8, size_t len);
  * private-color-registers (tsm_vte_set_sixel_registers). SM and RM still
  * store them, for when sixel comes on. Both on, the picture's memory comes
  * from that budget, and a picture that does not fit is dropped.
+ *
+ * In a libtsm built with -Dimages=false (ADR-103, libtsm's images option)
+ * sixel is never on: the calls below and the kitty graphics and host hook
+ * calls exist, accept their arguments and do nothing, returning 0 where they
+ * return a value, and a DCS q is consumed with no effect.
  */
 #define TSM_VTE_SIXEL 1
 
@@ -1189,7 +1194,8 @@ void tsm_vte_set_sixel(struct tsm_vte *vte, bool enable);
 /*
  * max-graphic-size: the largest picture in pixels, for each dimension; pixels
  * past it are dropped. 0 is the default, 10000; larger values are clamped to
- * TSM_SCREEN_IMAGE_MAX. Returns 0 or -EINVAL.
+ * TSM_SCREEN_IMAGE_MAX. Returns 0 or -EINVAL; 0 without images
+ * (TSM_VTE_SIXEL).
  */
 int tsm_vte_set_graphic_max_size(struct tsm_vte *vte, unsigned int width,
 				 unsigned int height);
@@ -1199,7 +1205,8 @@ int tsm_vte_set_graphic_max_size(struct tsm_vte *vte, unsigned int width,
  * private-color-registers, the state mode 1070 starts in and returns to on
  * RIS: set, each picture starts from the default colours; reset, pictures
  * share their registers until RIS. Both apply at once, as after RIS. Returns
- * 0 or -EINVAL.
+ * 0 or -EINVAL; 0 without images (TSM_VTE_SIXEL), where mode 1070 stays at
+ * its default, set.
  */
 int tsm_vte_set_sixel_registers(struct tsm_vte *vte, unsigned int count,
 				bool private_registers);
@@ -1217,7 +1224,8 @@ int tsm_vte_set_sixel_registers(struct tsm_vte *vte, unsigned int count,
  * progress. libtsm decodes inline f=24 and f=32 data itself; without a host
  * hook, files, temporary files and shared memory answer EBADF, and PNG and
  * zlib data EINVAL. Animation, relative placements and Unicode placeholders
- * answer EINVAL.
+ * answer EINVAL. Without images (TSM_VTE_SIXEL), kitty graphics are never
+ * on: an APC is ignored to its end.
  */
 #define TSM_VTE_KITTY_GRAPHICS 1
 
@@ -1400,6 +1408,9 @@ struct tsm_vte_image_result {
  *
  * tsm_vte_reset, tsm_vte_hard_reset, turning kitty graphics off and freeing
  * the vte drop a request that is out, with no reply to the client.
+ *
+ * Without images (TSM_VTE_SIXEL), no request is ever out, and this returns 0
+ * and does nothing.
  */
 int tsm_vte_image_reply(struct tsm_vte *vte, uint64_t id,
 			const struct tsm_vte_image_result *res);

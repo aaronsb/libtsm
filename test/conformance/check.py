@@ -2,8 +2,10 @@
 """Replay every conformance case and compare it with its golden.
 
 Usage:
-  check.py REPLAY DIR [--draw2 | --frame] [--report FILE]   compare; exit 1 on any difference
-  check.py REPLAY DIR [--draw2 | --frame] --update          rewrite the goldens from this REPLAY
+  check.py REPLAY DIR [--draw2 | --frame] [--no-images] [--report FILE]
+                                                compare; exit 1 on any difference
+  check.py REPLAY DIR [--draw2 | --frame] --update
+                                                rewrite the goldens from this REPLAY
 
 --draw2 and --frame replay every case through tsm-replay's draw2 or frame view
 (resolved colours, the cells a renderer reads) and compare it with
@@ -19,6 +21,12 @@ disagree.
 DIR holds cases.list ("<name> <cols> <rows>" per line, # comments allowed),
 cases/<name>.bin, an optional cases/<name>.cuts of checkpoint offsets, and
 golden/<name>.txt.
+
+--no-images is for a tsm-replay built against a libtsm with -Dimages=false
+(ADR-103 in aaronsb/kmscon): the cases DIR/images-cases.list names need
+images and are left out, and each must differ from its golden there, so the
+list names no case that does not need them. Every name in that list must be
+in cases.list, with or without the flag; --update does not read the list.
 
 --update is for producing goldens from a reference build (make-golden.sh);
 accepting a changed golden is a reviewed change of its own (ADR-301).
@@ -70,6 +78,19 @@ def load_cases(root):
     return cases
 
 
+def load_image_cases(root, cases):
+    names = set()
+    for line in (root / "images-cases.list").read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            names.add(line)
+    unknown = names - {name for name, _, _ in cases}
+    if unknown:
+        raise SystemExit(f"conformance: images-cases.list names cases not in cases.list: "
+                         f"{', '.join(sorted(unknown))}")
+    return names
+
+
 def replay(tool, root, name, cols, rows, view=None):
     cmd = [tool] + ([f"--{view}"] if view else []) + [cols, rows, str(root / "cases" / f"{name}.bin")]
     cuts = root / "cases" / f"{name}.cuts"
@@ -85,8 +106,9 @@ def replay(tool, root, name, cols, rows, view=None):
 def main():
     args = sys.argv[1:]
     update = "--update" in args
+    no_images = "--no-images" in args
     view = "draw2" if "--draw2" in args else "frame" if "--frame" in args else None
-    args = [a for a in args if a not in ("--update", "--draw2", "--frame")]
+    args = [a for a in args if a not in ("--update", "--draw2", "--frame", "--no-images")]
     report = None
     if "--report" in args:
         i = args.index("--report")
@@ -99,13 +121,22 @@ def main():
     if not cases:
         print("conformance: no cases listed; refusing to report a pass")
         return 1
+    if no_images and update:
+        sys.exit("conformance: goldens come from a build with images; --update with --no-images refused")
+    # make-golden.sh's --update reads the cases from a copy without the list
+    image_cases = set() if update else load_image_cases(root, cases)
 
     golden_dir = root / (f"golden-{view}" if view else "golden")
     label = f"conformance-{view}" if view else "conformance"
-    failed, missing, results = [], [], []
+    failed, missing, results, skipped, stale = [], [], [], [], []
     for name, cols, rows in cases:
         got = replay(tool, root, name, cols, rows, view)
         golden = golden_dir / f"{name}.txt"
+        if no_images and name in image_cases:
+            skipped.append(name)
+            if golden.exists() and golden.read_text() == got:
+                stale.append(name)
+            continue
         if update:
             golden_dir.mkdir(exist_ok=True)
             golden.write_text(got)
@@ -133,11 +164,15 @@ def main():
         report.write_text(json.dumps({"tier": 1, "tools": tool_versions(), "cases": results}, ensure_ascii=False, indent=1) + "\n")
     for name in missing:
         print(f"{label}: {name}: no golden")
-    passed = len(cases) - len(failed) - len(missing)
-    print(f"{label}: {passed}/{len(cases)} match"
+    for name in stale:
+        print(f"{label}: {name}: in images-cases.list, but matches its golden without images")
+    passed = len(cases) - len(failed) - len(missing) - len(skipped)
+    print(f"{label}: {passed}/{len(cases) - len(skipped)} match"
+          + (f" ({len(skipped)} cases that need images left out, a build without images)"
+             if no_images else "")
           + (f"; differ: {', '.join(failed)}" if failed else "")
           + (f"; missing golden: {', '.join(missing)}" if missing else ""))
-    return 1 if failed or missing else 0
+    return 1 if failed or missing or stale else 0
 
 
 if __name__ == "__main__":

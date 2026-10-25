@@ -13,7 +13,9 @@
  *
  * A row of sixel's (HOST_SIXEL) replies its fixed state, 3 or 4, while sixel
  * is off and 1 or 2 while it is on, and an SM or RM made while it is off
- * holds when it comes on.
+ * holds when it comes on. With --no-images, for a libtsm built with
+ * -Dimages=false (ADR-103), sixel never comes on, and the row keeps its fixed
+ * state when the host turns sixel on and gives it a budget.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -135,8 +137,9 @@ static void input(struct tsm_vte *vte, const char *s)
 	tsm_vte_input(vte, s, strlen(s));
 }
 
-/* the failures among the rows of sixel's, each set and reset with sixel off */
-static unsigned int check_sixel_rows(unsigned int *checked)
+/* the failures among the rows of sixel's, each set and reset with sixel off;
+ * @images says whether turning sixel on offers them */
+static unsigned int check_sixel_rows(bool images, unsigned int *checked)
 {
 	struct tsm_screen *con;
 	struct tsm_vte *vte;
@@ -165,10 +168,10 @@ static unsigned int check_sixel_rows(unsigned int *checked)
 			tsm_vte_set_sixel(vte, false);
 			again = tsm_vte_get_mode(vte, true, rows[i].number);
 			if ((off != 3 && off != 4) || after != off || again != off ||
-			    on != (set ? 1 : 2)) {
+			    on != (images ? (set ? 1 : 2) : off)) {
 				printf("modes-sweep: DEC %u is sixel's: with sixel off it replied %d, then %d after %s; with sixel on %d, want %d; off again %d\n",
 				       rows[i].number, off, after, set ? "SM" : "RM",
-				       on, set ? 1 : 2, again);
+				       on, images ? (set ? 1 : 2) : off, again);
 				++failures;
 			}
 			tsm_vte_unref(vte);
@@ -178,13 +181,14 @@ static unsigned int check_sixel_rows(unsigned int *checked)
 	return failures;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
 	struct tsm_screen *con;
 	struct tsm_vte *vte;
 	struct state base, now;
 	unsigned int failures = 0, rows_seen = 0, unknown = 0, number, kind;
 	unsigned int sixel_rows = 0;
+	bool images = !(argc > 1 && !strcmp(argv[1], "--no-images"));
 	char seq[32], want[32];
 	const char *what;
 	bool dec, row;
@@ -244,7 +248,7 @@ int main(void)
 		}
 	}
 
-	failures += check_sixel_rows(&sixel_rows);
+	failures += check_sixel_rows(images, &sixel_rows);
 	if (!sixel_rows) {
 		printf("modes-sweep: no row is sixel's (HOST_SIXEL)\n");
 		++failures;
@@ -261,7 +265,8 @@ out:
 	tsm_screen_unref(con);
 	if (failures)
 		return 1;
-	printf("modes-sweep: %u rows answer DECRQM; %u numbers with no row reply 0 and SM and RM change nothing; %u rows of sixel's reply their fixed state while sixel is off\n",
-	       rows_seen, unknown, sixel_rows);
+	printf("modes-sweep: %u rows answer DECRQM; %u numbers with no row reply 0 and SM and RM change nothing; %u rows of sixel's reply their fixed state while sixel is off%s\n",
+	       rows_seen, unknown, sixel_rows,
+	       images ? "" : ", and on, in a build without images");
 	return 0;
 }
