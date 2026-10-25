@@ -460,6 +460,32 @@ START_TEST(test_mode_xtrestore_not_margins)
 }
 END_TEST
 
+/* KAM, DECARM and DECNRCM have no effect, but SM and RM still toggle their
+ * flags in tsm_vte_get_flags, as upstream's API has them */
+START_TEST(test_mode_ignored_legacy_flags)
+{
+	ck_assert(!vte_flag(TSM_VTE_FLAG_KEYBOARD_ACTION_MODE));
+	ck_assert(vte_flag(TSM_VTE_FLAG_AUTO_REPEAT_MODE));
+	ck_assert(!vte_flag(TSM_VTE_FLAG_NATIONAL_CHARSET_MODE));
+
+	input("\e[2h\e[?8l\e[?42h");
+	ck_assert(vte_flag(TSM_VTE_FLAG_KEYBOARD_ACTION_MODE));
+	ck_assert(!vte_flag(TSM_VTE_FLAG_AUTO_REPEAT_MODE));
+	ck_assert(vte_flag(TSM_VTE_FLAG_NATIONAL_CHARSET_MODE));
+
+	input("\e[2l\e[?8h\e[?42l");
+	ck_assert(!vte_flag(TSM_VTE_FLAG_KEYBOARD_ACTION_MODE));
+	ck_assert(vte_flag(TSM_VTE_FLAG_AUTO_REPEAT_MODE));
+	ck_assert(!vte_flag(TSM_VTE_FLAG_NATIONAL_CHARSET_MODE));
+
+	/* and RIS restores them */
+	input("\e[2h\e[?8l\e[?42h\ec");
+	ck_assert(!vte_flag(TSM_VTE_FLAG_KEYBOARD_ACTION_MODE));
+	ck_assert(vte_flag(TSM_VTE_FLAG_AUTO_REPEAT_MODE));
+	ck_assert(!vte_flag(TSM_VTE_FLAG_NATIONAL_CHARSET_MODE));
+}
+END_TEST
+
 /* DECRQM and tsm_vte_get_mode (aaronsb/libtsm#31) */
 
 struct mode_reply {
@@ -615,6 +641,7 @@ TEST_DEFINE_CASE(dec)
 	TEST(test_mode_altbuf_1049)
 	TEST(test_mode_bracketed_paste)
 	TEST(test_mode_bracketed_paste_resets)
+	TEST(test_mode_ignored_legacy_flags)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(report)

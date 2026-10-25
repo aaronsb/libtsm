@@ -18,7 +18,9 @@
  *            PARTIAL: part of it; the spec column names the missing part's
  *              issue. Both reply 1 (set) or 2 (reset) to DECRQM.
  *            IGNORED: accepted with no effect; the spec column says why, or
- *              names the issue for an effect that is wanted
+ *              names the issue for an effect that is wanted. SM and RM
+ *              still toggle the row's legacy TSM_VTE_FLAG_* bit, if it has
+ *              one (MODE_FLAG_<name> in tsm-vte.c), for tsm_vte_get_flags
  *            REFUSED: deliberately not implemented, with the reason
  *              IGNORED and REFUSED reply dflt's fixed state to DECRQM: 3
  *              (permanently set) or 4 (permanently reset).

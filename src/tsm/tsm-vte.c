@@ -244,8 +244,18 @@ static void kitty_write(struct tsm_vte *vte, const char *u8, size_t len);
 #define MODE_ACCESSORS_REFUSED(...)
 #define MODE_SET_SUPPORTED(name) mode_##name##_set(vte, set)
 #define MODE_SET_PARTIAL(name) mode_##name##_set(vte, set)
-#define MODE_SET_IGNORED(name)
+/* an ignored row has no effect, but keeps its legacy flag for
+ * tsm_vte_get_flags, upstream's API; MODE_FLAG_<name> is 0 for one without */
+#define MODE_SET_IGNORED(name) set_reset_flag(vte, set, MODE_FLAG_##name)
 #define MODE_SET_REFUSED(name)
+#define MODE_FLAG_KAM TSM_VTE_FLAG_KEYBOARD_ACTION_MODE
+#define MODE_FLAG_DECCOLM 0
+#define MODE_FLAG_DECSCLM 0
+#define MODE_FLAG_DECARM TSM_VTE_FLAG_AUTO_REPEAT_MODE
+#define MODE_FLAG_CURBLINK 0
+#define MODE_FLAG_DECPFF 0
+#define MODE_FLAG_DECPEX 0
+#define MODE_FLAG_DECNRCM TSM_VTE_FLAG_NATIONAL_CHARSET_MODE
 /* a default the host configures */
 #define CONFIGURED(value) (value)
 
@@ -982,8 +992,8 @@ void tsm_vte_reset(struct tsm_vte *vte)
 		return;
 
 	/* the modes' flags start reset, and modes_reset sets those whose
-	 * default is set; AUTO_REPEAT stays set for tsm_vte_get_flags, as
-	 * DECARM is ignored (aaronsb/libtsm#57) */
+	 * default is set; DECARM is an ignored row with no setter, so its
+	 * legacy flag is set here */
 	vte->flags = TSM_VTE_FLAG_AUTO_REPEAT_MODE |
 		     TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE;
 	tsm_screen_reset(vte->con);
