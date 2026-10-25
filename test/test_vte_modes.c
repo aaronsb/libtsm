@@ -282,6 +282,8 @@ START_TEST(test_mode_mouse_x10)
 	ck_assert(!mouse_sends(1, 0, TSM_MOUSE_EVENT_RELEASED));
 	ck_assert(!mouse_sends(3, 32, TSM_MOUSE_EVENT_MOVED));
 	ck_assert(!mouse_sends(5, 0, TSM_MOUSE_EVENT_MOVED));
+	/* nor the wheel, which X10 has no code for */
+	ck_assert(!mouse_sends(1, TSM_MOUSE_BUTTON_WHEEL_UP, TSM_MOUSE_EVENT_PRESSED));
 
 	/* the same under the SGR encoding, set after it */
 	input("\e[?1006h");
@@ -298,6 +300,14 @@ START_TEST(test_mode_mouse_x10)
 	ck_assert_uint_eq(mouse_cb_mode, 0);
 	ck_assert(!mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
 	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1006), 1);
+
+	/* the host hears only of a change: an RM with nothing tracked, or an
+	 * SM of the mode already set, tells it nothing (kmscon drops the
+	 * selection when told) */
+	input("\e[?9l\e[?1003l\e[?1016l");
+	ck_assert_uint_eq(mouse_cb_calls, 3);
+	input("\e[?9h\e[?9h");
+	ck_assert_uint_eq(mouse_cb_calls, 4);
 }
 END_TEST
 
@@ -342,6 +352,19 @@ START_TEST(test_mode_mouse_btn_event)
 	ck_assert(!mouse_sends(5, 0, TSM_MOUSE_EVENT_MOVED));
 	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
 	ck_assert_str_eq(out, "\e[M \"#");
+
+	/* a cell is reported once, whatever reported it last: motion within
+	 * the cell of a press is not sent, and a drag back into the cell of
+	 * an earlier motion is, after a press elsewhere */
+	input("\e[?1006h");
+	ck_assert(mouse_sends(5, 0, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert(!mouse_sends(5, 32, TSM_MOUSE_EVENT_MOVED));
+	ck_assert(mouse_sends(6, 32, TSM_MOUSE_EVENT_MOVED));
+	ck_assert(mouse_sends(6, 0, TSM_MOUSE_EVENT_RELEASED));
+	ck_assert(mouse_sends(5, 0, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert(mouse_sends(6, 32, TSM_MOUSE_EVENT_MOVED));
+	ck_assert_str_eq(out, "\e[<32;7;3M");
+	input("\e[?1006l");
 
 	input("\e[?1002l");
 	ck_assert_uint_eq(tsm_vte_get_mouse_event(vte), 0);
@@ -400,6 +423,12 @@ START_TEST(test_mode_mouse_sgr)
 	input("\e[?1003h");
 	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_MOVED));
 	ck_assert_str_eq(out, "\e[<35;2;3M");
+
+	/* RM of the encoding that is not set leaves the one that is */
+	input("\e[?1016l");
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1006), 1);
+	ck_assert(mouse_sends(2, 0, TSM_MOUSE_EVENT_MOVED));
+	ck_assert_str_eq(out, "\e[<35;3;3M");
 }
 END_TEST
 
