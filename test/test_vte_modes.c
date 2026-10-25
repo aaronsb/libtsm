@@ -435,6 +435,20 @@ START_TEST(test_mode_bracketed_paste)
 }
 END_TEST
 
+/* RIS and DECSTR turn bracketed paste off (aaronsb/libtsm#44) */
+START_TEST(test_mode_bracketed_paste_resets)
+{
+	input("\e[?2004h\ec");
+	tsm_vte_paste(vte, "x");
+	ck_assert_str_eq(out, "x");
+
+	out_clear();
+	input("\e[?2004h\e[!p");
+	tsm_vte_paste(vte, "y");
+	ck_assert_str_eq(out, "y");
+}
+END_TEST
+
 /* DECRQM and tsm_vte_get_mode (aaronsb/libtsm#31) */
 
 struct mode_reply {
@@ -589,6 +603,7 @@ TEST_DEFINE_CASE(dec)
 	TEST(test_mode_save_cursor_1048)
 	TEST(test_mode_altbuf_1049)
 	TEST(test_mode_bracketed_paste)
+	TEST(test_mode_bracketed_paste_resets)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(report)
