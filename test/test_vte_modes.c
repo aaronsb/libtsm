@@ -650,6 +650,30 @@ START_TEST(test_mode_mouse_decrqm_matches_reports)
 }
 END_TEST
 
+/* RIS and DECSTR clear the mouse fields directly, telling the host
+ * nothing, as before the table: no getter sees 1003 set alone, so the
+ * table's reset would leave it to leak into a later 1006 */
+START_TEST(test_mode_mouse_resets)
+{
+	unsigned int calls;
+
+	input("\e[?1006h\e[?1003h");
+	calls = mouse_cb_calls;
+	input("\ec");
+	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 0);
+	ck_assert_uint_eq(tsm_vte_get_mouse_event(vte), 0);
+	ck_assert_uint_eq(mouse_cb_calls, calls);
+
+	input("\e[?1003h\ec\e[?1006h");
+	ck_assert(!mouse_sends(5, 3, TSM_MOUSE_EVENT_MOVED));
+	assert_decrqm(true, 1003, 2);
+
+	input("\ec\e[?1003h\e[!p\e[?1006h");
+	ck_assert(!mouse_sends(5, 3, TSM_MOUSE_EVENT_MOVED));
+	assert_decrqm(true, 1003, 2);
+}
+END_TEST
+
 /* mode 12 reports whether the cursor style blinks, as kmscon draws it: the
  * default and the odd DECSCUSR styles; SM and RM 12 do nothing yet
  * (aaronsb/libtsm#57) */
@@ -730,6 +754,7 @@ TEST_DEFINE_CASE(report)
 	TEST(test_mode_decrqm_set)
 	TEST(test_mode_decrqm_form)
 	TEST(test_mode_mouse_decrqm_matches_reports)
+	TEST(test_mode_mouse_resets)
 	TEST(test_mode_cursor_blink)
 	TEST(test_mode_xtrestore_not_margins)
 TEST_END_CASE
