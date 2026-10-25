@@ -28,6 +28,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include "libtsm.h"
@@ -250,8 +251,20 @@ START_TEST(test_mode_dectcem)
 }
 END_TEST
 
-/* Mouse modes: one field holds 9, 1000, 1006 and 1016, another 1002 and
- * 1003 (aaronsb/libtsm#30); these pin that as it is */
+/* Mouse modes: two sets, as ctlseqs has them (aaronsb/libtsm#30). The
+ * protocol, 9, 1000, 1002 or 1003, says which events are reported, and the
+ * encoding, 1006 or 1016 (X10 when neither), how. The sets are independent;
+ * within one, SM of a mode replaces the other and RM of any clears it. The
+ * reports below are at column 1, row 2, pixels 9 and 40. */
+
+/* sends the event at @col and row 2, pixels @col * 8 + 1 and 40, and
+ * returns whether anything was written */
+static bool mouse_sends(unsigned int col, unsigned int button, unsigned int event)
+{
+	out_clear();
+	tsm_vte_handle_mouse(vte, col, 2, col * 8 + 1, 40, button, event, 0);
+	return out_len > 0;
+}
 
 START_TEST(test_mode_mouse_x10)
 {
@@ -261,14 +274,40 @@ START_TEST(test_mode_mouse_x10)
 	ck_assert_uint_eq(mouse_cb_calls, 1);
 	ck_assert_uint_eq(mouse_cb_mode, 1002);
 
-	/* a press is reported, a release is not */
-	ck_assert(tsm_vte_handle_mouse(vte, 1, 2, 0, 0, 0, TSM_MOUSE_EVENT_PRESSED, 0));
+	/* a press is reported, without its modifiers; a release, a drag and
+	 * motion are not */
+	ck_assert(tsm_vte_handle_mouse(vte, 1, 2, 0, 0, 0, TSM_MOUSE_EVENT_PRESSED,
+				       TSM_MOUSE_MODIFIER_SHIFT));
 	ck_assert_str_eq(out, "\e[M \"#");
+	ck_assert(!mouse_sends(1, 0, TSM_MOUSE_EVENT_RELEASED));
+	ck_assert(!mouse_sends(3, 32, TSM_MOUSE_EVENT_MOVED));
+	ck_assert(!mouse_sends(5, 0, TSM_MOUSE_EVENT_MOVED));
+	/* nor the wheel, which X10 has no code for */
+	ck_assert(!mouse_sends(1, TSM_MOUSE_BUTTON_WHEEL_UP, TSM_MOUSE_EVENT_PRESSED));
 
+	/* the same under the SGR encoding, set after it */
+	input("\e[?1006h");
+	ck_assert_uint_eq(mouse_cb_calls, 2);
+	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert_str_eq(out, "\e[<0;2;3M");
+	ck_assert(!mouse_sends(1, 0, TSM_MOUSE_EVENT_RELEASED));
+
+	/* reset, nothing is reported, and the encoding stays */
 	input("\e[?9l");
 	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 0);
-	ck_assert_uint_eq(tsm_vte_get_mouse_event(vte), 1002);
-	ck_assert_uint_eq(mouse_cb_calls, 2);
+	ck_assert_uint_eq(tsm_vte_get_mouse_event(vte), 0);
+	ck_assert_uint_eq(mouse_cb_calls, 3);
+	ck_assert_uint_eq(mouse_cb_mode, 0);
+	ck_assert(!mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1006), 1);
+
+	/* the host hears only of a change: an RM with nothing tracked, or an
+	 * SM of the mode already set, tells it nothing (kmscon drops the
+	 * selection when told) */
+	input("\e[?9l\e[?1003l\e[?1016l");
+	ck_assert_uint_eq(mouse_cb_calls, 3);
+	input("\e[?9h\e[?9h");
+	ck_assert_uint_eq(mouse_cb_calls, 4);
 }
 END_TEST
 
@@ -279,62 +318,117 @@ START_TEST(test_mode_mouse_vt200)
 	ck_assert_uint_eq(tsm_vte_get_mouse_event(vte), 1002);
 	ck_assert_uint_eq(mouse_cb_calls, 1);
 
-	ck_assert(tsm_vte_handle_mouse(vte, 1, 2, 0, 0, 0, TSM_MOUSE_EVENT_RELEASED, 0));
+	/* presses with their modifiers and releases; no motion */
+	ck_assert(tsm_vte_handle_mouse(vte, 1, 2, 0, 0, 0, TSM_MOUSE_EVENT_PRESSED,
+				       TSM_MOUSE_MODIFIER_SHIFT));
+	ck_assert_str_eq(out, "\e[M$\"#");
+	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_RELEASED));
 	ck_assert_str_eq(out, "\e[M#\"#");
+	ck_assert(!mouse_sends(3, 32, TSM_MOUSE_EVENT_MOVED));
+	ck_assert(!mouse_sends(5, 0, TSM_MOUSE_EVENT_MOVED));
+
+	/* the wheel is a press of 64 or 65; its release is not reported */
+	ck_assert(mouse_sends(1, TSM_MOUSE_BUTTON_WHEEL_UP, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert_str_eq(out, "\e[M`\"#");
+	ck_assert(!mouse_sends(1, TSM_MOUSE_BUTTON_WHEEL_UP, TSM_MOUSE_EVENT_RELEASED));
 
 	input("\e[?1000l");
 	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 0);
 	ck_assert_uint_eq(mouse_cb_calls, 2);
+	ck_assert(!mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
 }
 END_TEST
 
 START_TEST(test_mode_mouse_btn_event)
 {
-	/* with SGR: 1002 is the event field */
-	input("\e[?1006h\e[?1002h");
+	/* in the X10 encoding: a drag is its button plus 32, once a cell */
+	input("\e[?1002h");
+	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 1000);
 	ck_assert_uint_eq(tsm_vte_get_mouse_event(vte), 1002);
 	ck_assert_uint_eq(mouse_cb_mode, 1002);
+	ck_assert(mouse_sends(3, 32, TSM_MOUSE_EVENT_MOVED));
+	ck_assert_str_eq(out, "\e[M@$#");
+	ck_assert(!mouse_sends(3, 32, TSM_MOUSE_EVENT_MOVED));
+	ck_assert(!mouse_sends(5, 0, TSM_MOUSE_EVENT_MOVED));
+	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert_str_eq(out, "\e[M \"#");
+
+	/* a cell is reported once, whatever reported it last: motion within
+	 * the cell of a press is not sent, and a drag back into the cell of
+	 * an earlier motion is, after a press elsewhere */
+	input("\e[?1006h");
+	ck_assert(mouse_sends(5, 0, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert(!mouse_sends(5, 32, TSM_MOUSE_EVENT_MOVED));
+	ck_assert(mouse_sends(6, 32, TSM_MOUSE_EVENT_MOVED));
+	ck_assert(mouse_sends(6, 0, TSM_MOUSE_EVENT_RELEASED));
+	ck_assert(mouse_sends(5, 0, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert(mouse_sends(6, 32, TSM_MOUSE_EVENT_MOVED));
+	ck_assert_str_eq(out, "\e[<32;7;3M");
+	input("\e[?1006l");
 
 	input("\e[?1002l");
 	ck_assert_uint_eq(tsm_vte_get_mouse_event(vte), 0);
-	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 1006);
-
-	/* with 1000, the event field stays 1002 whatever is asked */
-	input("\e[?1000h\e[?1002l");
-	ck_assert_uint_eq(tsm_vte_get_mouse_event(vte), 1002);
+	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 0);
+	ck_assert(!mouse_sends(4, 32, TSM_MOUSE_EVENT_MOVED));
 }
 END_TEST
 
 START_TEST(test_mode_mouse_any_event)
 {
-	input("\e[?1006h\e[?1003h");
+	/* in the X10 encoding: motion with no button is 35, with the
+	 * modifiers (aaronsb/libtsm#30 sent nothing) */
+	input("\e[?1003h");
 	ck_assert_uint_eq(tsm_vte_get_mouse_event(vte), 1003);
 	ck_assert_uint_eq(mouse_cb_mode, 1003);
-
-	/* motion with no button is reported */
-	ck_assert(tsm_vte_handle_mouse(vte, 1, 2, 0, 0, 3, TSM_MOUSE_EVENT_MOVED, 0));
+	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_MOVED));
+	ck_assert_str_eq(out, "\e[MC\"#");
+	out_clear();
+	ck_assert(tsm_vte_handle_mouse(vte, 2, 2, 0, 0, 0, TSM_MOUSE_EVENT_MOVED,
+				       TSM_MOUSE_MODIFIER_CTRL));
+	ck_assert_str_eq(out, "\e[MS##");
 
 	input("\e[?1003l");
 	ck_assert_uint_eq(tsm_vte_get_mouse_event(vte), 0);
-	out_clear();
-	ck_assert(!tsm_vte_handle_mouse(vte, 1, 2, 0, 0, 3, TSM_MOUSE_EVENT_MOVED, 0));
-	ck_assert_str_eq(out, "");
+	ck_assert(!mouse_sends(5, 0, TSM_MOUSE_EVENT_MOVED));
 }
 END_TEST
 
 START_TEST(test_mode_mouse_sgr)
 {
+	/* the encoding alone reports nothing and tells the host nothing */
 	input("\e[?1006h");
-	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 1006);
-	/* no event mode yet: the callback is not told */
-	ck_assert_uint_eq(mouse_cb_calls, 0);
-
-	ck_assert(tsm_vte_handle_mouse(vte, 1, 2, 0, 0, 0, TSM_MOUSE_EVENT_PRESSED, 0));
-	ck_assert_str_eq(out, "\e[<0;2;3M");
-
-	input("\e[?1006l");
 	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 0);
-	ck_assert_uint_eq(mouse_cb_calls, 1);
+	ck_assert_uint_eq(mouse_cb_calls, 0);
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1006), 1);
+	ck_assert(!mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
+
+	/* tracking set after it reports in it */
+	input("\e[?1000h");
+	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 1006);
+	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert_str_eq(out, "\e[<0;2;3M");
+	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_RELEASED));
+	ck_assert_str_eq(out, "\e[<0;2;3m");
+
+	/* reset, the X10 encoding is back and tracking stays */
+	input("\e[?1006l");
+	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 1000);
+	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert_str_eq(out, "\e[M \"#");
+
+	/* and resetting tracking keeps the encoding */
+	input("\e[?1006h\e[?1000l");
+	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 0);
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1006), 1);
+	input("\e[?1003h");
+	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_MOVED));
+	ck_assert_str_eq(out, "\e[<35;2;3M");
+
+	/* RM of the encoding that is not set leaves the one that is */
+	input("\e[?1016l");
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1006), 1);
+	ck_assert(mouse_sends(2, 0, TSM_MOUSE_EVENT_MOVED));
+	ck_assert_str_eq(out, "\e[<35;3;3M");
 }
 END_TEST
 
@@ -342,16 +436,96 @@ START_TEST(test_mode_mouse_pixel)
 {
 	input("\e[?1003h\e[?1016h");
 	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 1016);
-	ck_assert_uint_eq(mouse_cb_calls, 1);
+	ck_assert_uint_eq(mouse_cb_calls, 2);
 	ck_assert(mouse_cb_pixels);
-
 	ck_assert(tsm_vte_handle_mouse(vte, 1, 2, 17, 40, 0, TSM_MOUSE_EVENT_PRESSED, 0));
 	ck_assert_str_eq(out, "\e[<0;17;40M");
 
+	/* reset, cells in the X10 encoding, still tracking */
 	input("\e[?1016l");
-	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 0);
-	ck_assert_uint_eq(mouse_cb_calls, 2);
+	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 1000);
+	ck_assert_uint_eq(mouse_cb_calls, 3);
 	ck_assert(!mouse_cb_pixels);
+	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert_str_eq(out, "\e[M \"#");
+
+	input("\e[?1003l");
+	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 0);
+}
+END_TEST
+
+/* every protocol under every encoding: a press and a release at column 1,
+ * a drag to column 3, motion with no button to column 5 */
+struct mouse_case {
+	const char *track, *encoding;
+	const char *press, *release, *drag, *hover;
+};
+
+static const struct mouse_case mouse_cases[] = {
+	{ "9", "", "\e[M \"#", "", "", "" },
+	{ "9", "1006", "\e[<0;2;3M", "", "", "" },
+	{ "9", "1016", "\e[<0;9;40M", "", "", "" },
+	{ "1000", "", "\e[M \"#", "\e[M#\"#", "", "" },
+	{ "1000", "1006", "\e[<0;2;3M", "\e[<0;2;3m", "", "" },
+	{ "1000", "1016", "\e[<0;9;40M", "\e[<0;9;40m", "", "" },
+	{ "1002", "", "\e[M \"#", "\e[M#\"#", "\e[M@$#", "" },
+	{ "1002", "1006", "\e[<0;2;3M", "\e[<0;2;3m", "\e[<32;4;3M", "" },
+	{ "1002", "1016", "\e[<0;9;40M", "\e[<0;9;40m", "\e[<32;25;40M", "" },
+	{ "1003", "", "\e[M \"#", "\e[M#\"#", "\e[M@$#", "\e[MC&#" },
+	{ "1003", "1006", "\e[<0;2;3M", "\e[<0;2;3m", "\e[<32;4;3M", "\e[<35;6;3M" },
+	{ "1003", "1016", "\e[<0;9;40M", "\e[<0;9;40m", "\e[<32;25;40M", "\e[<35;41;40M" },
+};
+
+static void assert_mouse_sends(const char *state, unsigned int col, unsigned int button,
+			       unsigned int event, const char *want)
+{
+	mouse_sends(col, button, event);
+	ck_assert_msg(!strcmp(out, want), "%s: event %u at %u sent \"%s\", want \"%s\"",
+		      state, event, col, out + (out_len > 0), want + (*want != 0));
+}
+
+/* the order the two are set in does not matter, and a later SM in either
+ * set replaces the earlier (aaronsb/libtsm#30) */
+START_TEST(test_mode_mouse_order)
+{
+	static const unsigned int tracks[] = { 9, 1000, 1002, 1003 };
+	char state[64], track[16], encoding[16];
+	unsigned int i, order, t;
+
+	for (i = 0; i < sizeof(mouse_cases) / sizeof(*mouse_cases); ++i) {
+		const struct mouse_case *c = &mouse_cases[i];
+
+		snprintf(track, sizeof(track), "\e[?%sh", c->track);
+		snprintf(encoding, sizeof(encoding), *c->encoding ? "\e[?%sh" : "%s",
+			 c->encoding);
+		for (order = 0; order < 3; ++order) {
+			if (order == 0)
+				snprintf(state, sizeof(state), "%s%s", track, encoding);
+			else if (order == 1)
+				snprintf(state, sizeof(state), "%s%s", encoding, track);
+			else
+				snprintf(state, sizeof(state), "\e[?1003h%s%s%s",
+					 *c->encoding ? "\e[?1016h\e[?1006h" : "",
+					 encoding, track);
+			input("\ec");
+			input(state);
+			assert_mouse_sends(state + 1, 1, 0, TSM_MOUSE_EVENT_PRESSED, c->press);
+			assert_mouse_sends(state + 1, 1, 0, TSM_MOUSE_EVENT_RELEASED, c->release);
+			assert_mouse_sends(state + 1, 3, 32, TSM_MOUSE_EVENT_MOVED, c->drag);
+			assert_mouse_sends(state + 1, 5, 0, TSM_MOUSE_EVENT_MOVED, c->hover);
+
+			for (t = 0; t < sizeof(tracks) / sizeof(*tracks); ++t)
+				ck_assert_msg(tsm_vte_get_mode(vte, true, tracks[t]) ==
+					      (tracks[t] == (unsigned int)atoi(c->track) ? 1 : 2),
+					      "%s: DECRQM %u", state + 1, tracks[t]);
+			ck_assert_msg(tsm_vte_get_mode(vte, true, 1006) ==
+				      (!strcmp(c->encoding, "1006") ? 1 : 2), "%s: DECRQM 1006",
+				      state + 1);
+			ck_assert_msg(tsm_vte_get_mode(vte, true, 1016) ==
+				      (!strcmp(c->encoding, "1016") ? 1 : 2), "%s: DECRQM 1016",
+				      state + 1);
+		}
+	}
 }
 END_TEST
 
@@ -606,36 +780,35 @@ START_TEST(test_mode_decrqm_set)
 	assert_decrqm(true, 1049, 2);
 	assert_decrqm(true, 1048, 2);
 
-	/* the mouse rows answer what libtsm reports, whatever was asked
-	 * (aaronsb/libtsm#30): 1000 alone reports no motion, so 1002 is
-	 * reset; 1006 after it keeps presses and releases, so 1000 stays
-	 * set, and the event field 1000 left makes drags reported too */
+	/* the mouse rows: a protocol replaces the protocol, an encoding the
+	 * encoding, and neither touches the other set (aaronsb/libtsm#30) */
 	input("\e[?1000h");
 	assert_decrqm(true, 1000, 1);
 	assert_decrqm(true, 1002, 2);
 	input("\e[?1006h");
 	assert_decrqm(true, 1000, 1);
-	assert_decrqm(true, 1002, 1);
 	assert_decrqm(true, 1006, 1);
 	input("\e[?1003h");
 	assert_decrqm(true, 1003, 1);
-	assert_decrqm(true, 1002, 1);
+	assert_decrqm(true, 1000, 2);
+	assert_decrqm(true, 1006, 1);
 	input("\e[?1016h");
 	assert_decrqm(true, 1016, 1);
 	assert_decrqm(true, 1006, 2);
+	assert_decrqm(true, 1003, 1);
 	input("\e[?9h");
 	assert_decrqm(true, 9, 1);
-	assert_decrqm(true, 1000, 2);
 	assert_decrqm(true, 1003, 2);
-	assert_decrqm(true, 1016, 2);
+	assert_decrqm(true, 1016, 1);
 }
 END_TEST
 
 /*
  * The mouse rows' DECRQM against what tsm_vte_handle_mouse sends: 9 is set
- * when presses are reported and releases are not, 1000 when both are, 1002
- * when drags are, 1003 when motion with no button is; 1006 and 1016 when
- * the reports are SGR in cells or in pixels.
+ * when presses are reported and releases are not, 1000 when releases are and
+ * drags are not, 1002 when drags are and motion with no button is not, 1003
+ * when that is; 1006 and 1016 when the reports are SGR in cells or in pixels,
+ * seen with 1000 set where nothing tracks.
  */
 static const char *const mouse_states[] = {
 	"", "\e[?9h", "\e[?1000h", "\e[?1002h", "\e[?1003h", "\e[?1006h",
@@ -643,14 +816,8 @@ static const char *const mouse_states[] = {
 	"\e[?1006h\e[?1002h", "\e[?1006h\e[?1003h", "\e[?1003h\e[?1016h",
 	"\e[?1000h\e[?1003h", "\e[?1000h\e[?1000l", "\e[?1006h\e[?1003h\e[?1003l",
 	"\e[?1016h\e[?1002h\e[?1006h", "\e[?9h\e[?1006h\e[?9l",
+	"\e[?1003h\e[?1000l", "\e[?1006h\e[?1016l\e[?1000h", "\e[?1003h\e[?9h",
 };
-
-static bool mouse_sends(unsigned int col, unsigned int button, unsigned int event)
-{
-	out_clear();
-	tsm_vte_handle_mouse(vte, col, 2, col * 8 + 1, 40, button, event, 0);
-	return out_len > 0;
-}
 
 START_TEST(test_mode_mouse_decrqm_matches_reports)
 {
@@ -661,20 +828,29 @@ START_TEST(test_mode_mouse_decrqm_matches_reports)
 		input("\ec");
 		input(mouse_states[i]);
 		press = mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED);
-		sgr = press && !strcmp(out, "\e[<0;2;3M");
-		pixel = press && !strcmp(out, "\e[<0;9;40M");
 		release = mouse_sends(1, 0, TSM_MOUSE_EVENT_RELEASED);
 		drag = mouse_sends(3, 32, TSM_MOUSE_EVENT_MOVED);
 		hover = mouse_sends(5, 3, TSM_MOUSE_EVENT_MOVED);
 
 		ck_assert_msg(tsm_vte_get_mode(vte, true, 9) == (press && !release ? 1 : 2),
 			      "state %u: 9", i);
-		ck_assert_msg(tsm_vte_get_mode(vte, true, 1000) == (press && release ? 1 : 2),
+		ck_assert_msg(tsm_vte_get_mode(vte, true, 1000) == (release && !drag ? 1 : 2),
 			      "state %u: 1000", i);
-		ck_assert_msg(tsm_vte_get_mode(vte, true, 1002) == (drag ? 1 : 2),
+		ck_assert_msg(tsm_vte_get_mode(vte, true, 1002) == (drag && !hover ? 1 : 2),
 			      "state %u: 1002", i);
 		ck_assert_msg(tsm_vte_get_mode(vte, true, 1003) == (hover ? 1 : 2),
 			      "state %u: 1003", i);
+
+		if (!press) {
+			ck_assert_msg(!release && !drag && !hover, "state %u", i);
+			input("\e[?1000h");
+			ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
+		} else {
+			mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED);
+		}
+		sgr = !strcmp(out, "\e[<0;2;3M");
+		pixel = !strcmp(out, "\e[<0;9;40M");
+		ck_assert_msg(sgr || pixel || !strcmp(out, "\e[M \"#"), "state %u", i);
 		ck_assert_msg(tsm_vte_get_mode(vte, true, 1006) == (sgr ? 1 : 2),
 			      "state %u: 1006", i);
 		ck_assert_msg(tsm_vte_get_mode(vte, true, 1016) == (pixel ? 1 : 2),
@@ -683,9 +859,8 @@ START_TEST(test_mode_mouse_decrqm_matches_reports)
 }
 END_TEST
 
-/* RIS and DECSTR clear the mouse fields directly, telling the host
- * nothing, as before the table: no getter sees 1003 set alone, so the
- * table's reset would leave it to leak into a later 1006 */
+/* RIS and DECSTR clear both sets directly, telling the host nothing, as
+ * before the table */
 START_TEST(test_mode_mouse_resets)
 {
 	unsigned int calls;
@@ -704,6 +879,12 @@ START_TEST(test_mode_mouse_resets)
 	input("\ec\e[?1003h\e[!p\e[?1006h");
 	ck_assert(!mouse_sends(5, 3, TSM_MOUSE_EVENT_MOVED));
 	assert_decrqm(true, 1003, 2);
+
+	/* the encoding goes too */
+	input("\e[?1016h\e[!p\e[?1000h");
+	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert_str_eq(out, "\e[M \"#");
+	assert_decrqm(true, 1016, 2);
 }
 END_TEST
 
@@ -974,6 +1155,7 @@ TEST_DEFINE_CASE(dec)
 	TEST(test_mode_mouse_any_event)
 	TEST(test_mode_mouse_sgr)
 	TEST(test_mode_mouse_pixel)
+	TEST(test_mode_mouse_order)
 	TEST(test_mode_altbuf_47)
 	TEST(test_mode_altbuf_1047)
 	TEST(test_mode_save_cursor_1048)

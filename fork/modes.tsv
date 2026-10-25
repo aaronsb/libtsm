@@ -11,7 +11,7 @@ dec	5	DECSCNM	supported	2	1 2	reset	soft	none	flash	ctlseqs DECSCNM	test_mode_de
 dec	6	DECOM	supported	2	1 2	reset	soft	none		ctlseqs DECOM	test_mode_decom origin-mode
 dec	7	DECAWM	supported	1	1 2	set	soft	none		ctlseqs DECAWM	test_mode_decawm autowrap
 dec	8	DECARM	ignored	3	3	set	soft	none		ctlseqs DECARM; libtsm#57	
-dec	9	X10MOUSE	partial	2	1 2	reset	soft	input		ctlseqs, X10 mouse; DECRQM reports what is sent; libtsm#30	test_mode_mouse_x10 test_mouse_x10
+dec	9	X10MOUSE	supported	2	1 2	reset	soft	input		ctlseqs, X10 mouse	test_mode_mouse_x10 test_mouse_x10
 dec	12	CURBLINK	partial	1	1 2	host:vte->cursor_blink	none	none		ctlseqs, AT&T 610 cursor blink; reported from the DECSCUSR style and tsm_vte_set_cursor_blink; SM and RM do nothing yet, libtsm#57	test_mode_cursor_blink test_mode_cursor_blink_host
 dec	18	DECPFF	ignored	4	4	reset	none	none		ctlseqs DECPFF; a console has no printer	
 dec	19	DECPEX	ignored	4	4	reset	none	none		ctlseqs DECPEX; a console has no printer	
@@ -19,11 +19,11 @@ dec	25	DECTCEM	supported	1	1 2	set	soft	none	civis cnorm	ctlseqs DECTCEM	test_mo
 dec	42	DECNRCM	ignored	4	4	reset	soft	none		ctlseqs DECNRCM; libtsm#57	
 dec	47	ALTBUF	supported	2	1 2	reset	soft	none		ctlseqs, alternate screen buffer	test_mode_altbuf_47 img-alt-47
 dec	80	DECSDM	supported	2	1 2	reset	hard	none		ctlseqs DECSDM; ADR-103	test_sixel_display_mode
-dec	1000	VT200MOUSE	partial	2	1 2	reset	soft	input		ctlseqs, normal mouse tracking; DECRQM reports what is sent; libtsm#30	test_mode_mouse_vt200 test_mode_mouse_decrqm_matches_reports
-dec	1002	BTNMOUSE	partial	2	1 2	reset	soft	input		ctlseqs, button-event tracking; DECRQM reports what is sent; libtsm#30	test_mode_mouse_btn_event
-dec	1003	ANYMOUSE	partial	2	1 2	reset	soft	input		ctlseqs, any-event tracking; DECRQM reports what is sent; libtsm#30	test_mode_mouse_any_event
-dec	1006	SGRMOUSE	partial	2	1 2	reset	soft	input	XM	ctlseqs, SGR mouse mode; DECRQM reports what is sent; libtsm#30	test_mode_mouse_sgr
-dec	1016	PIXMOUSE	partial	2	1 2	reset	soft	input		ctlseqs, SGR-Pixels mouse mode; DECRQM reports what is sent; libtsm#30	test_mode_mouse_pixel
+dec	1000	VT200MOUSE	supported	2	1 2	reset	soft	input		ctlseqs, normal mouse tracking	test_mode_mouse_vt200 test_mode_mouse_decrqm_matches_reports
+dec	1002	BTNMOUSE	supported	2	1 2	reset	soft	input		ctlseqs, button-event tracking	test_mode_mouse_btn_event
+dec	1003	ANYMOUSE	supported	2	1 2	reset	soft	input		ctlseqs, any-event tracking	test_mode_mouse_any_event
+dec	1006	SGRMOUSE	supported	2	1 2	reset	soft	input	XM	ctlseqs, SGR mouse mode	test_mode_mouse_sgr
+dec	1016	PIXMOUSE	supported	2	1 2	reset	soft	input		ctlseqs, SGR-Pixels mouse mode	test_mode_mouse_pixel
 dec	1047	ALTBUF1047	supported	2	1 2	reset	soft	none		ctlseqs, alternate screen buffer	test_mode_altbuf_1047 img-alt-1047
 dec	1048	SAVECUR	supported	2	2	reset	none	none		ctlseqs, save cursor as in DECSC	test_mode_save_cursor_1048
 dec	1049	ALTBUF1049	supported	2	1 2	reset	soft	none	smcup rmcup	ctlseqs, alternate screen buffer	test_mode_altbuf_1049 alt-screen img-alt-1049

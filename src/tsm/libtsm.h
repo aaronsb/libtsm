@@ -1124,6 +1124,13 @@ void tsm_vte_get_def_attr(struct tsm_vte *vte, struct tsm_screen_attr *out);
  */
 unsigned int tsm_vte_get_flags(struct tsm_vte *vte);
 
+/*
+ * Mouse tracking as the host needs it: tsm_vte_get_mouse_mode is 0 while
+ * nothing is tracked, and otherwise the encoding (TSM_VTE_MOUSE_MODE_SGR or
+ * _PIXEL), or TSM_VTE_MOUSE_MODE_X10 or _VT200 in the X10 encoding;
+ * tsm_vte_get_mouse_event is 0, TSM_VTE_MOUSE_EVENT_ANY for any-event
+ * tracking, or TSM_VTE_MOUSE_EVENT_BTN. tsm_vte_get_mode reports each mode.
+ */
 unsigned int tsm_vte_get_mouse_mode(struct tsm_vte *vte);
 unsigned int tsm_vte_get_mouse_event(struct tsm_vte *vte);
 
