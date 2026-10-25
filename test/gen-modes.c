@@ -4,9 +4,10 @@
  *   gen-modes md     fork/modes.md, the reference page
  *   gen-modes tsv    fork/modes.tsv, the same rows for other tools
  *
- * Both come from src/tsm/tsm-modes.def; the DECRQM column is what a new vte
- * with libtsm's default settings answers. `make modes` rewrites both files,
- * and the modes-doc test fails when they differ from what this prints.
+ * Both come from src/tsm/tsm-modes.def. The DECRQM column is what a vte with
+ * libtsm's default settings answers: at start, and the values it gives in
+ * the states the probes below reach. `make modes` rewrites both files, and
+ * the modes-doc test fails when they differ from what this prints.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -50,6 +51,47 @@ static void write_cb(struct tsm_vte *vte, const char *u8, size_t len, void *data
 	(void)data;
 }
 
+/*
+ * The states a row's DECRQM is read in: each context, then nothing, the
+ * row's SM, or its SM and RM. The contexts reach what SM alone does not:
+ * the SGR mouse encoding, under which 1002 and 1003 report, and a steady
+ * cursor (DECSCUSR 2), which mode 12 reports.
+ */
+static const char *const contexts[] = { "", "\e[?1006h", "\e[2 q" };
+
+/* bit v set for each DECRQM value v the row gives in those states */
+static unsigned int probe(const struct mode_row *r)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	unsigned int seen = 0, c, step;
+	char seq[32];
+	int v;
+
+	for (c = 0; c < sizeof(contexts) / sizeof(*contexts); ++c) {
+		for (step = 0; step < 3; ++step) {
+			if (tsm_screen_new(&screen, NULL, NULL) ||
+			    tsm_vte_new(&vte, screen, write_cb, NULL, NULL, NULL))
+				return 0;
+			tsm_vte_input(vte, contexts[c], strlen(contexts[c]));
+			if (step >= 1) {
+				snprintf(seq, sizeof(seq), "\e[%s%uh", r->dec ? "?" : "", r->number);
+				tsm_vte_input(vte, seq, strlen(seq));
+			}
+			if (step >= 2) {
+				snprintf(seq, sizeof(seq), "\e[%s%ul", r->dec ? "?" : "", r->number);
+				tsm_vte_input(vte, seq, strlen(seq));
+			}
+			v = tsm_vte_get_mode(vte, r->dec, r->number);
+			if (v >= 0 && v < 8)
+				seen |= 1u << v;
+			tsm_vte_unref(vte);
+			tsm_screen_unref(screen);
+		}
+	}
+	return seen;
+}
+
 /* lower case, after the prefix: RESET_SOFT is "soft", HOST_INPUT "input" */
 static void print_lower(const char *s, const char *prefix)
 {
@@ -78,14 +120,9 @@ static void print_default(const char *dflt, bool md)
 	}
 }
 
-static bool settable(const struct mode_row *r)
+static void print_decrqm_md(int value, unsigned int seen)
 {
-	return !strcmp(r->status, "SUPPORTED") || !strcmp(r->status, "PARTIAL");
-}
-
-static void print_decrqm_md(const struct mode_row *r, int value)
-{
-	if (settable(r))
+	if (seen == (1u << 1 | 1u << 2))
 		printf("1 or 2; %d at start", value);
 	else if (value == 3)
 		fputs("3, permanently set", stdout);
@@ -119,7 +156,7 @@ static void print_tests_md(const char *tests)
 	}
 }
 
-static void print_table_md(bool dec, const int *values)
+static void print_table_md(bool dec, const int *values, const unsigned int *seen)
 {
 	size_t i;
 
@@ -133,7 +170,7 @@ static void print_table_md(bool dec, const int *values)
 		printf("| %s%u | %s | ", dec ? "?" : "", r->number, r->name);
 		print_lower(r->status, "");
 		fputs(" | ", stdout);
-		print_decrqm_md(r, values[i]);
+		print_decrqm_md(values[i], seen[i]);
 		fputs(" | ", stdout);
 		print_default(r->dflt, true);
 		fputs(" | ", stdout);
@@ -146,7 +183,7 @@ static void print_table_md(bool dec, const int *values)
 	}
 }
 
-static void print_md(const int *values)
+static void print_md(const int *values, const unsigned int *seen)
 {
 	static const char *const statuses[] = {
 		"SUPPORTED", "PARTIAL", "IGNORED", "REFUSED",
@@ -164,28 +201,36 @@ static void print_md(const int *values)
 	printf("%zu modes: %u supported, %u partial, %u ignored, %u refused.\n\n",
 	       ROW_COUNT, count[0], count[1], count[2], count[3]);
 	printf("- **Status.** Supported: set and reset do what the spec says. Partial: part of it, and the spec column names the issue for the rest. Ignored: accepted with no effect; the spec column says why, or names the issue for an effect that is wanted. Refused: deliberately not implemented.\n");
-	printf("- **DECRQM.** The reply to `CSI ? Ps $ p` (DEC) or `CSI Ps $ p` (ANSI), as `tsm_vte_get_mode` also gives it: 1 set, 2 reset, 3 permanently set, 4 permanently reset. \"At start\" is a new vte with libtsm's default settings. A number with no row replies 0, not recognised, and SM and RM log it at debug level.\n");
+	printf("- **DECRQM.** The reply to `CSI ? Ps $ p` (DEC) or `CSI Ps $ p` (ANSI), as `tsm_vte_get_mode` also gives it: 1 set, 2 reset, 3 permanently set, 4 permanently reset. \"At start\" is a new vte with libtsm's default settings; \"1 or 2\" means both were seen after the mode's SM and RM, under the SGR mouse encoding and under a steady cursor; a single value is the only one seen. A number with no row replies 0, not recognised, and SM and RM log it at debug level.\n");
 	printf("- **Reset.** Which resets restore the default: soft (DECSTR and RIS), hard (RIS only), or none.\n");
 	printf("- **Host.** What the program embedding libtsm must do for the mode to work: input (report pointer or focus events), paste (paste through `tsm_vte_paste`), draw (present frames by the mode), or none.\n");
 	printf("- **Terminfo.** The capabilities whose strings set or reset the mode.\n");
 	printf("- **Tests.** The unit tests (`START_TEST` names) and tier 1 cases that set and reset the mode.\n\n");
 	printf("## ANSI modes (SM, RM)\n\n");
-	print_table_md(false, values);
+	print_table_md(false, values, seen);
 	printf("\n## DEC private modes (DECSET, DECRST)\n\n");
-	print_table_md(true, values);
+	print_table_md(true, values, seen);
 }
 
-static void print_tsv(const int *values)
+static void print_tsv(const int *values, const unsigned int *seen)
 {
 	size_t i;
 
-	printf("kind\tnumber\tname\tstatus\tdecrqm_start\tdefault\treset\thost\tterminfo\tspec\ttests\n");
+	printf("kind\tnumber\tname\tstatus\tdecrqm_start\tdecrqm_seen\tdefault\treset\thost\tterminfo\tspec\ttests\n");
 	for (i = 0; i < ROW_COUNT; ++i) {
 		const struct mode_row *r = &rows[i];
+		unsigned int v;
+		bool first;
 
 		printf("%s\t%u\t%s\t", r->dec ? "dec" : "ansi", r->number, r->name);
 		print_lower(r->status, "");
 		printf("\t%d\t", values[i]);
+		for (v = 0, first = true; v < 8; ++v)
+			if (seen[i] & (1u << v)) {
+				printf("%s%u", first ? "" : " ", v);
+				first = false;
+			}
+		putchar('\t');
 		print_default(r->dflt, false);
 		putchar('\t');
 		print_lower(r->reset, "RESET_");
@@ -200,6 +245,7 @@ int main(int argc, char **argv)
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
 	int values[ROW_COUNT];
+	unsigned int seen[ROW_COUNT];
 	size_t i;
 
 	if (argc != 2 || (strcmp(argv[1], "md") && strcmp(argv[1], "tsv"))) {
@@ -216,10 +262,12 @@ int main(int argc, char **argv)
 		values[i] = tsm_vte_get_mode(vte, rows[i].dec, rows[i].number);
 	tsm_vte_unref(vte);
 	tsm_screen_unref(screen);
+	for (i = 0; i < ROW_COUNT; ++i)
+		seen[i] = probe(&rows[i]);
 
 	if (!strcmp(argv[1], "md"))
-		print_md(values);
+		print_md(values, seen);
 	else
-		print_tsv(values);
+		print_tsv(values, seen);
 	return 0;
 }

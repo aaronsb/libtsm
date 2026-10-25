@@ -499,7 +499,7 @@ static const struct mode_reply mode_defaults[] = {
 	{ false, 2, 4 }, { false, 4, 2 }, { false, 12, 1 }, { false, 20, 2 },
 	{ true, 1, 2 }, { true, 2, 3 }, { true, 3, 4 }, { true, 4, 4 },
 	{ true, 5, 2 }, { true, 6, 2 }, { true, 7, 1 }, { true, 8, 3 },
-	{ true, 9, 2 }, { true, 12, 4 }, { true, 18, 4 }, { true, 19, 4 },
+	{ true, 9, 2 }, { true, 12, 1 }, { true, 18, 4 }, { true, 19, 4 },
 	{ true, 25, 1 }, { true, 42, 4 }, { true, 47, 2 }, { true, 80, 2 },
 	{ true, 1000, 2 }, { true, 1002, 2 }, { true, 1003, 2 },
 	{ true, 1006, 2 }, { true, 1016, 2 }, { true, 1047, 2 },
@@ -561,7 +561,7 @@ START_TEST(test_mode_decrqm_set)
 	assert_decrqm(true, 2, 3);
 	assert_decrqm(true, 3, 4);
 	assert_decrqm(true, 8, 3);
-	assert_decrqm(true, 12, 4);
+	assert_decrqm(true, 12, 1);
 	assert_decrqm(true, 42, 4);
 
 	/* the alternate screen modes share one flag; 1048 holds no state */
@@ -573,22 +573,102 @@ START_TEST(test_mode_decrqm_set)
 	assert_decrqm(true, 1049, 2);
 	assert_decrqm(true, 1048, 2);
 
-	/* the mouse fields as they are held (aaronsb/libtsm#30): 1000 sets
-	 * the event field to 1002, and 1006 replaces 1000 */
+	/* the mouse rows answer what libtsm reports, whatever was asked
+	 * (aaronsb/libtsm#30): 1000 alone reports no motion, so 1002 is
+	 * reset; 1006 after it keeps presses and releases, so 1000 stays
+	 * set, and the event field 1000 left makes drags reported too */
 	input("\e[?1000h");
 	assert_decrqm(true, 1000, 1);
-	assert_decrqm(true, 1002, 1);
+	assert_decrqm(true, 1002, 2);
 	input("\e[?1006h");
-	assert_decrqm(true, 1000, 2);
+	assert_decrqm(true, 1000, 1);
+	assert_decrqm(true, 1002, 1);
 	assert_decrqm(true, 1006, 1);
 	input("\e[?1003h");
 	assert_decrqm(true, 1003, 1);
-	assert_decrqm(true, 1002, 2);
+	assert_decrqm(true, 1002, 1);
 	input("\e[?1016h");
 	assert_decrqm(true, 1016, 1);
 	assert_decrqm(true, 1006, 2);
 	input("\e[?9h");
 	assert_decrqm(true, 9, 1);
+	assert_decrqm(true, 1000, 2);
+	assert_decrqm(true, 1003, 2);
+	assert_decrqm(true, 1016, 2);
+}
+END_TEST
+
+/*
+ * The mouse rows' DECRQM against what tsm_vte_handle_mouse sends: 9 is set
+ * when presses are reported and releases are not, 1000 when both are, 1002
+ * when drags are, 1003 when motion with no button is; 1006 and 1016 when
+ * the reports are SGR in cells or in pixels.
+ */
+static const char *const mouse_states[] = {
+	"", "\e[?9h", "\e[?1000h", "\e[?1002h", "\e[?1003h", "\e[?1006h",
+	"\e[?1016h", "\e[?1000h\e[?1006h", "\e[?1006h\e[?1000h",
+	"\e[?1006h\e[?1002h", "\e[?1006h\e[?1003h", "\e[?1003h\e[?1016h",
+	"\e[?1000h\e[?1003h", "\e[?1000h\e[?1000l", "\e[?1006h\e[?1003h\e[?1003l",
+	"\e[?1016h\e[?1002h\e[?1006h", "\e[?9h\e[?1006h\e[?9l",
+};
+
+static bool mouse_sends(unsigned int col, unsigned int button, unsigned int event)
+{
+	out_clear();
+	tsm_vte_handle_mouse(vte, col, 2, col * 8 + 1, 40, button, event, 0);
+	return out_len > 0;
+}
+
+START_TEST(test_mode_mouse_decrqm_matches_reports)
+{
+	bool press, release, drag, hover, sgr, pixel;
+	unsigned int i;
+
+	for (i = 0; i < sizeof(mouse_states) / sizeof(*mouse_states); ++i) {
+		input("\ec");
+		input(mouse_states[i]);
+		press = mouse_sends(1, 0, TSM_MOUSE_EVENT_PRESSED);
+		sgr = press && !strcmp(out, "\e[<0;2;3M");
+		pixel = press && !strcmp(out, "\e[<0;9;40M");
+		release = mouse_sends(1, 0, TSM_MOUSE_EVENT_RELEASED);
+		drag = mouse_sends(3, 32, TSM_MOUSE_EVENT_MOVED);
+		hover = mouse_sends(5, 3, TSM_MOUSE_EVENT_MOVED);
+
+		ck_assert_msg(tsm_vte_get_mode(vte, true, 9) == (press && !release ? 1 : 2),
+			      "state %u: 9", i);
+		ck_assert_msg(tsm_vte_get_mode(vte, true, 1000) == (press && release ? 1 : 2),
+			      "state %u: 1000", i);
+		ck_assert_msg(tsm_vte_get_mode(vte, true, 1002) == (drag ? 1 : 2),
+			      "state %u: 1002", i);
+		ck_assert_msg(tsm_vte_get_mode(vte, true, 1003) == (hover ? 1 : 2),
+			      "state %u: 1003", i);
+		ck_assert_msg(tsm_vte_get_mode(vte, true, 1006) == (sgr ? 1 : 2),
+			      "state %u: 1006", i);
+		ck_assert_msg(tsm_vte_get_mode(vte, true, 1016) == (pixel ? 1 : 2),
+			      "state %u: 1016", i);
+	}
+}
+END_TEST
+
+/* mode 12 reports whether the cursor style blinks, as kmscon draws it: the
+ * default and the odd DECSCUSR styles; SM and RM 12 do nothing yet
+ * (aaronsb/libtsm#57) */
+START_TEST(test_mode_cursor_blink)
+{
+	assert_decrqm(true, 12, 1);
+	input("\e[2 q");
+	assert_decrqm(true, 12, 2);
+	input("\e[?12h");
+	assert_decrqm(true, 12, 2);
+	input("\e[5 q");
+	assert_decrqm(true, 12, 1);
+	input("\e[?12l");
+	assert_decrqm(true, 12, 1);
+	input("\e[6 q");
+	assert_decrqm(true, 12, 2);
+	input("\e[0 q");
+	assert_decrqm(true, 12, 1);
+	ck_assert_uint_eq(tsm_screen_get_cursor_style(screen), TSM_SCREEN_CURSOR_DEFAULT);
 }
 END_TEST
 
@@ -649,6 +729,8 @@ TEST_DEFINE_CASE(report)
 	TEST(test_mode_decrqm_defaults)
 	TEST(test_mode_decrqm_set)
 	TEST(test_mode_decrqm_form)
+	TEST(test_mode_mouse_decrqm_matches_reports)
+	TEST(test_mode_cursor_blink)
 	TEST(test_mode_xtrestore_not_margins)
 TEST_END_CASE
 

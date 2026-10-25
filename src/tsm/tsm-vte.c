@@ -252,7 +252,6 @@ static void kitty_write(struct tsm_vte *vte, const char *u8, size_t len);
 #define MODE_FLAG_DECCOLM 0
 #define MODE_FLAG_DECSCLM 0
 #define MODE_FLAG_DECARM TSM_VTE_FLAG_AUTO_REPEAT_MODE
-#define MODE_FLAG_CURBLINK 0
 #define MODE_FLAG_DECPFF 0
 #define MODE_FLAG_DECPEX 0
 #define MODE_FLAG_DECNRCM TSM_VTE_FLAG_NATIONAL_CHARSET_MODE
@@ -2097,8 +2096,19 @@ static bool mode_DECTCEM_get(struct tsm_vte *vte)
 /*
  * Mouse tracking. mouse_mode holds the last of 9, 1000, 1006 and 1016 set,
  * and mouse_event 1002 or 1003, where xterm keeps tracking and encoding apart
- * (aaronsb/libtsm#30); the getters report these fields as they are.
+ * (aaronsb/libtsm#30). So the getters answer what tsm_vte_handle_mouse
+ * sends for the events a host passes while tsm_vte_get_mouse_mode is not 0,
+ * as kmscon does, whatever the program asked for: 9 while presses are
+ * reported and releases are not, 1000 while both are, 1002 while drags are,
+ * 1003 while motion with no button is, 1006 and 1016 while the reports are
+ * SGR in cells or in pixels.
  */
+
+static bool mouse_sgr(struct tsm_vte *vte)
+{
+	return vte->mouse_mode == TSM_VTE_MOUSE_MODE_SGR ||
+	       vte->mouse_mode == TSM_VTE_MOUSE_MODE_PIXEL;
+}
 
 /* 9 and 1000 select button events, set or reset */
 static void mouse_tracking_set(struct tsm_vte *vte, unsigned int mode, bool set)
@@ -2128,7 +2138,7 @@ static void mode_VT200MOUSE_set(struct tsm_vte *vte, bool set)
 
 static bool mode_VT200MOUSE_get(struct tsm_vte *vte)
 {
-	return vte->mouse_mode == TSM_VTE_MOUSE_MODE_VT200;
+	return vte->mouse_mode == TSM_VTE_MOUSE_MODE_VT200 || mouse_sgr(vte);
 }
 
 /* 1002 and 1003; under 9 or 1000 the event stays button events */
@@ -2152,7 +2162,8 @@ static void mode_BTNMOUSE_set(struct tsm_vte *vte, bool set)
 
 static bool mode_BTNMOUSE_get(struct tsm_vte *vte)
 {
-	return vte->mouse_event == TSM_VTE_MOUSE_EVENT_BTN;
+	return mouse_sgr(vte) && (vte->mouse_event == TSM_VTE_MOUSE_EVENT_BTN ||
+				  vte->mouse_event == TSM_VTE_MOUSE_EVENT_ANY);
 }
 
 static void mode_ANYMOUSE_set(struct tsm_vte *vte, bool set)
@@ -2162,7 +2173,7 @@ static void mode_ANYMOUSE_set(struct tsm_vte *vte, bool set)
 
 static bool mode_ANYMOUSE_get(struct tsm_vte *vte)
 {
-	return vte->mouse_event == TSM_VTE_MOUSE_EVENT_ANY;
+	return mouse_sgr(vte) && vte->mouse_event == TSM_VTE_MOUSE_EVENT_ANY;
 }
 
 static void mode_SGRMOUSE_set(struct tsm_vte *vte, bool set)
@@ -2199,6 +2210,24 @@ static void mode_PIXMOUSE_set(struct tsm_vte *vte, bool set)
 static bool mode_PIXMOUSE_get(struct tsm_vte *vte)
 {
 	return vte->mouse_mode == TSM_VTE_MOUSE_MODE_PIXEL;
+}
+
+/*
+ * AT&T 610 cursor blink. DECRQM reports whether the cursor style blinks, as
+ * kmscon draws it: the default style and the odd DECSCUSR styles. SM and RM
+ * do nothing yet (aaronsb/libtsm#57).
+ */
+static void mode_CURBLINK_set(struct tsm_vte *vte, bool set)
+{
+	(void)vte;
+	(void)set;
+}
+
+static bool mode_CURBLINK_get(struct tsm_vte *vte)
+{
+	enum tsm_screen_cursor_style style = tsm_screen_get_cursor_style(vte->con);
+
+	return style == TSM_SCREEN_CURSOR_DEFAULT || (style & 1);
 }
 
 /*

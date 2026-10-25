@@ -23,7 +23,7 @@ import re
 import sys
 
 CONSTANT = re.compile(r"\bTSM_VTE_(?:MOUSE_MODE_\w+|MOUSE_EVENT_\w+|BRACKETED_PASTE)\b")
-ALLOWED = re.compile(r"^(?:mode_\w+_(?:set|get)|mouse_tracking_set|mouse_event_set|tsm_vte_handle_mouse)$")
+ALLOWED = re.compile(r"^(?:mode_\w+_(?:set|get)|mouse_tracking_set|mouse_event_set|mouse_sgr|tsm_vte_handle_mouse)$")
 
 
 def functions(src):
