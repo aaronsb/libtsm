@@ -7,8 +7,9 @@
  * Both come from src/tsm/tsm-modes.def. The DECRQM column is what a vte with
  * libtsm's default settings answers: at start, and the values it gives in
  * the states the probes below reach, then the values it gives with the
- * host's settings that offer a mode turned on (tsm_vte_set_sync). `make modes` rewrites both files, and
- * the modes-doc test fails when they differ from what this prints.
+ * host's settings that offer a mode turned on (tsm_vte_set_sync). `make
+ * modes` rewrites both files, and the modes-doc test fails when they differ
+ * from what this prints.
  *
  * SPDX-License-Identifier: MIT
  */
