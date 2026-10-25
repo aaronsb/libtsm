@@ -35,6 +35,11 @@ test_vte_mouse = executable(
     dependencies: test_deps,
 )
 test_vte = executable('test_vte', 'test_vte.c', dependencies: test_deps)
+test_vte_modes = executable(
+    'test_vte_modes',
+    'test_vte_modes.c',
+    dependencies: test_deps,
+)
 test_vte_sixel = executable(
     'test_vte_sixel',
     'test_vte_sixel.c',
@@ -58,6 +63,7 @@ test('valgrind', test_valgrind,
      should_fail: get_option('b_sanitize').contains('address'))
 test('vte_mouse', test_vte_mouse)
 test('vte', test_vte)
+test('vte_modes', test_vte_modes)
 test('vte_sixel', test_vte_sixel)
 test('vte_kitty', test_vte_kitty)
 

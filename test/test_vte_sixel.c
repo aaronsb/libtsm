@@ -489,6 +489,10 @@ START_TEST(test_sixel_registers)
 	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 0, false), 0);
 	input("\033c\033Pq#20;2;100;0;0#20~\033\\\033[1;3H\033Pq#20~\033\\");
 	ck_assert_uint_eq(pixel(placement(1), 0, 0), RED);
+
+	/* set: private again, whatever the host's setting */
+	input("\033[?1070h\033[1;5H\033Pq#20~\033\\");
+	ck_assert_uint_eq(pixel(placement(2), 0, 0), BLACK);
 	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 1, false), -EINVAL);
 	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 65536, false), -EINVAL);
 }
