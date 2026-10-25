@@ -46,10 +46,10 @@ EXPANSIONS = {
         "#include\"tsm-modes.def\"#undefMODE",
     ],
     "mode_report": [
-        "#defineMODE(kind,number,name,status,dflt,...)MODE_ONLY_ANSI_##kind(casenumber:"
-        "MODE_REPORT_##status(name,dflt))#include\"tsm-modes.def\"#undefMODE",
-        "#defineMODE(kind,number,name,status,dflt,...)MODE_ONLY_DEC_##kind(casenumber:"
-        "MODE_REPORT_##status(name,dflt))#include\"tsm-modes.def\"#undefMODE",
+        "#defineMODE(kind,number,name,status,dflt,reset,host,...)MODE_ONLY_ANSI_##kind(casenumber:"
+        "MODE_REPORT_##status(name,dflt,host))#include\"tsm-modes.def\"#undefMODE",
+        "#defineMODE(kind,number,name,status,dflt,reset,host,...)MODE_ONLY_DEC_##kind(casenumber:"
+        "MODE_REPORT_##status(name,dflt,host))#include\"tsm-modes.def\"#undefMODE",
     ],
 }
 

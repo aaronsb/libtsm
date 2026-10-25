@@ -222,6 +222,12 @@ struct tsm_vte {
 	bool kitty_enabled;
 	/* the host blinks the cursor in the styles that blink (mode 12) */
 	bool cursor_blink;
+	/* mode 2026: the host presents by it, a hold, the holds ended, and
+	 * whether this input call returns at an end */
+	bool sync_enabled;
+	bool sync;
+	uint64_t sync_frames;
+	bool sync_stop;
 	struct tsm_kitty *kitty;
 	bool apc_kitty;				/* the APC streams into it */
 	/* the image work tsm_vte_input_bounded has left in this call */
@@ -259,6 +265,13 @@ static void kitty_write(struct tsm_vte *vte, const char *u8, size_t len);
 #define MODE_FLAG_DECNRCM TSM_VTE_FLAG_NATIONAL_CHARSET_MODE
 /* a default the host configures */
 #define CONFIGURED(value) (value)
+
+enum mode_host {
+	HOST_NONE,
+	HOST_INPUT,
+	HOST_PASTE,
+	HOST_DRAW,
+};
 
 enum mode_reset {
 	RESET_NONE,
@@ -2379,6 +2392,33 @@ static bool mode_SIXRIGHT_get(struct tsm_vte *vte)
 	return vte->sixel_cursor_right;
 }
 
+/*
+ * Synchronized output: a hold starts at SM and ends at RM, RIS or DECSTR
+ * (the table's soft reset), or by the host; each end is counted, and stops
+ * tsm_vte_input_bounded after the byte that made it. SM does nothing while
+ * the host does not present by the mode.
+ */
+static void sync_end(struct tsm_vte *vte)
+{
+	if (!vte->sync)
+		return;
+	vte->sync = false;
+	++vte->sync_frames;
+}
+
+static void mode_SYNC_set(struct tsm_vte *vte, bool set)
+{
+	if (!set)
+		sync_end(vte);
+	else if (vte->sync_enabled)
+		vte->sync = true;
+}
+
+static bool mode_SYNC_get(struct tsm_vte *vte)
+{
+	return vte->sync;
+}
+
 /* SM and RM (DECSET and DECRST with '?'): each row's setter, in order */
 static void csi_mode(struct tsm_vte *vte, bool set)
 {
@@ -2421,17 +2461,30 @@ static void csi_mode(struct tsm_vte *vte, bool set)
  * permanently reset, 0 not recognised. IGNORED and REFUSED rows report their
  * default as permanent.
  */
-#define MODE_REPORT_SUPPORTED(name, dflt) return mode_##name##_get(vte) ? 1 : 2;
-#define MODE_REPORT_PARTIAL(name, dflt) return mode_##name##_get(vte) ? 1 : 2;
-#define MODE_REPORT_IGNORED(name, dflt) return (dflt) ? 3 : 4;
-#define MODE_REPORT_REFUSED(name, dflt) return (dflt) ? 3 : 4;
+#define MODE_REPORT_SUPPORTED(name, dflt, host) \
+	return !mode_offered(vte, host) ? MODE_FIXED(dflt) : mode_##name##_get(vte) ? 1 : 2;
+#define MODE_REPORT_PARTIAL(name, dflt, host) \
+	return !mode_offered(vte, host) ? MODE_FIXED(dflt) : mode_##name##_get(vte) ? 1 : 2;
+#define MODE_REPORT_IGNORED(name, dflt, host) return MODE_FIXED(dflt);
+#define MODE_REPORT_REFUSED(name, dflt, host) return MODE_FIXED(dflt);
+#define MODE_FIXED(dflt) ((dflt) ? 3 : 4)
+
+/*
+ * A mode the host presents frames by (HOST_DRAW, mode 2026) is offered only
+ * while the host says it does (tsm_vte_set_sync); until then it reports its
+ * fixed state, as an ignored row does, since nothing would honour it.
+ */
+static bool mode_offered(struct tsm_vte *vte, enum mode_host host)
+{
+	return host != HOST_DRAW || vte->sync_enabled;
+}
 
 static int mode_report(struct tsm_vte *vte, bool dec, unsigned int number)
 {
 	if (!dec) {
 		switch (number) {
-#define MODE(kind, number, name, status, dflt, ...) \
-	MODE_ONLY_ANSI_##kind(case number: MODE_REPORT_##status(name, dflt))
+#define MODE(kind, number, name, status, dflt, reset, host, ...) \
+	MODE_ONLY_ANSI_##kind(case number: MODE_REPORT_##status(name, dflt, host))
 #include "tsm-modes.def"
 #undef MODE
 		default:
@@ -2440,8 +2493,8 @@ static int mode_report(struct tsm_vte *vte, bool dec, unsigned int number)
 	}
 
 	switch (number) {
-#define MODE(kind, number, name, status, dflt, ...) \
-	MODE_ONLY_DEC_##kind(case number: MODE_REPORT_##status(name, dflt))
+#define MODE(kind, number, name, status, dflt, reset, host, ...) \
+	MODE_ONLY_DEC_##kind(case number: MODE_REPORT_##status(name, dflt, host))
 #include "tsm-modes.def"
 #undef MODE
 	default:
@@ -3583,10 +3636,11 @@ static size_t kitty_run(struct tsm_vte *vte, const char *u8, size_t len)
 	return n;
 }
 
-/* parses until @len bytes are read, the image work runs out, or a kitty
- * command is handed to the host hook */
+/* parses until @len bytes are read, the image work runs out, a kitty
+ * command is handed to the host hook, or, with sync_stop, a hold ends */
 static size_t vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 {
+	uint64_t frames = vte->sync_frames;
 	int state;
 	uint32_t ucs4;
 	size_t i;
@@ -3617,29 +3671,34 @@ static size_t vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 				parse_data(vte, ucs4);
 			}
 		}
-		if (!vte->work_left || tsm_kitty_paused(vte->kitty))
+		if (!vte->work_left || tsm_kitty_paused(vte->kitty) ||
+		    (vte->sync_stop && vte->sync_frames != frames))
 			break;
 	}
 	return i;
 }
 
 /*
- * runs vte_input with @work to spend, as one call; with @host_ok a kitty
- * command may go to the host hook, and the call ends there
+ * runs vte_input with @work to spend, as one call; with @bounded a kitty
+ * command may go to the host hook, and the call ends there or at the end of
+ * a hold (mode 2026)
  */
 static size_t vte_input_with(struct tsm_vte *vte, const char *u8, size_t len,
-			     uint64_t work, bool host_ok)
+			     uint64_t work, bool bounded)
 {
 	uint64_t saved = vte->work_left;
-	bool saved_host = tsm_kitty_set_host(vte->kitty, host_ok);
+	bool saved_stop = vte->sync_stop;
+	bool saved_host = tsm_kitty_set_host(vte->kitty, bounded);
 	size_t n;
 
 	++vte->parse_cnt;
 	vte->work_left = work;
+	vte->sync_stop = bounded;
 	n = vte_input(vte, u8, len);
 	/* what the call's cuts and scrolls owe the budget */
 	screen_images_settle(vte->con);
 	vte->work_left = saved;
+	vte->sync_stop = saved_stop;
 	tsm_kitty_set_host(vte->kitty, saved_host);
 	--vte->parse_cnt;
 	return n;
@@ -3749,6 +3808,35 @@ void tsm_vte_set_cursor_blink(struct tsm_vte *vte, bool enable)
 		return;
 
 	vte->cursor_blink = enable;
+}
+
+SHL_EXPORT
+void tsm_vte_set_sync(struct tsm_vte *vte, bool enable)
+{
+	if (!vte)
+		return;
+
+	vte->sync_enabled = enable;
+	if (!enable)
+		sync_end(vte);
+}
+
+SHL_EXPORT
+uint64_t tsm_vte_get_sync_frames(struct tsm_vte *vte)
+{
+	if (!vte)
+		return 0;
+
+	return vte->sync_frames;
+}
+
+SHL_EXPORT
+void tsm_vte_end_sync(struct tsm_vte *vte)
+{
+	if (!vte)
+		return;
+
+	sync_end(vte);
 }
 
 SHL_EXPORT
