@@ -134,6 +134,16 @@ if get_option('fuzz')
 endif
 
 
+# The mode table (ADR-201 in the kmscon fork): gen-modes prints fork/modes.md
+# and fork/modes.tsv from src/tsm/tsm-modes.def, and modes-doc fails when the
+# committed files differ (make modes rewrites them).
+gen_modes = executable('gen-modes', 'gen-modes.c', dependencies: [libtsm_test_dep])
+test(
+    'modes-doc',
+    find_program('python3'),
+    args: [files('modes-doc.py'), gen_modes, meson.project_source_root() / 'fork'],
+)
+
 # Conformance replay (ADR-301 tier 1 in the kmscon fork): every recorded
 # stream in conformance/ must reproduce its golden screen state.
 tsm_replay = executable(
