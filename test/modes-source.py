@@ -6,11 +6,11 @@ Usage:
 
 ADR-201 in aaronsb/kmscon. Checks, in the source:
 
-- csi_mode (SM and RM) and mode_report (DECRQM) each expand
-  tsm-modes.def once per kind, and hold no case label of their own: no
-  number and no constant;
-- the $p branch of do_csi calls csi_decrqm and nothing else, and
-  csi_decrqm answers from mode_report;
+- csi_mode (SM and RM) and mode_report (DECRQM) are, token for token, the
+  skeletons below: a loop or switch around one expansion of tsm-modes.def
+  per kind, so no case, if or other handling of their own;
+- do_csi's 'h' and 'l' cases only call csi_mode, its $p branch only calls
+  csi_decrqm, and csi_decrqm answers from mode_report;
 - the mode constants (TSM_VTE_MOUSE_MODE_*, TSM_VTE_MOUSE_EVENT_*,
   TSM_VTE_BRACKETED_PASTE) appear only in the accessors (mode_<name>_set,
   mode_<name>_get and the mouse helpers they share) and in
@@ -21,6 +21,37 @@ SPDX-License-Identifier: MIT
 
 import re
 import sys
+
+# The bodies, with comments and whitespace removed and each expansion of
+# the table (#define MODE ... #undef MODE) shown as <table>.
+SKELETON = {
+    "csi_mode": (
+        "unsignedinti;for(i=0;i<vte->csi_argc;++i){if(vte->csi_argv[i]<0)continue;"
+        "if(!(vte->csi_flags&CSI_WHAT)){switch(vte->csi_argv[i]){<table>"
+        "default:llog_debug(vte,\"unknownnon-DEC(Re)Set-Mode%d\",vte->csi_argv[i]);continue;}}"
+        "switch(vte->csi_argv[i]){<table>"
+        "default:llog_debug(vte,\"unknownDEC%set-Mode%d\",set?\"S\":\"Res\",vte->csi_argv[i]);"
+        "continue;}}"),
+    "mode_report": (
+        "if(!dec){switch(number){<table>default:return0;}}switch(number){<table>default:return0;}"),
+}
+# Each expansion, the same way, by function
+EXPANSIONS = {
+    "csi_mode": [
+        "#defineMODE(kind,number,name,status,...)MODE_ONLY_ANSI_##kind(casenumber:"
+        "MODE_TRACE(false,number);MODE_SET_##status(name);continue;)"
+        "#include\"tsm-modes.def\"#undefMODE",
+        "#defineMODE(kind,number,name,status,...)MODE_ONLY_DEC_##kind(casenumber:"
+        "MODE_TRACE(true,number);MODE_SET_##status(name);continue;)"
+        "#include\"tsm-modes.def\"#undefMODE",
+    ],
+    "mode_report": [
+        "#defineMODE(kind,number,name,status,dflt,...)MODE_ONLY_ANSI_##kind(casenumber:"
+        "MODE_REPORT_##status(name,dflt))#include\"tsm-modes.def\"#undefMODE",
+        "#defineMODE(kind,number,name,status,dflt,...)MODE_ONLY_DEC_##kind(casenumber:"
+        "MODE_REPORT_##status(name,dflt))#include\"tsm-modes.def\"#undefMODE",
+    ],
+}
 
 CONSTANT = re.compile(r"\bTSM_VTE_(?:MOUSE_MODE_\w+|MOUSE_EVENT_\w+|BRACKETED_PASTE)\b")
 ALLOWED = re.compile(r"^(?:mode_\w+_(?:set|get)|mouse_tracking_set|mouse_event_set|mouse_sgr|tsm_vte_handle_mouse)$")
@@ -47,6 +78,22 @@ def functions(src):
     return found
 
 
+def squeeze(text):
+    return re.sub(r"\s|\\\n", "", re.sub(r"/\*.*?\*/", "", text, flags=re.S))
+
+
+def skeleton(body):
+    """The body as SKELETON spells it, and its expansions in order."""
+    inner = body[body.index("{") + 1:body.rindex("}")]
+    found = []
+
+    def table(m):
+        found.append(squeeze(m.group(0)))
+        return "<table>"
+    inner = re.sub(r"#define MODE\(.*?#undef MODE", table, inner, flags=re.S)
+    return squeeze(inner), found
+
+
 def main():
     if len(sys.argv) != 2:
         print(__doc__, file=sys.stderr)
@@ -62,10 +109,24 @@ def main():
             errors.append(f"{name} not found")
             continue
         line, body = funcs[name]
-        if body.count('#include "tsm-modes.def"') != 2:
-            errors.append(f"{name} (line {line}) does not expand tsm-modes.def once per kind")
         for m in re.finditer(r"^\s*case\s+([^:]+):", body, re.M):
             errors.append(f"{name} (line {line}) has a case of its own: case {m.group(1).strip()}")
+        shape, found = skeleton(body)
+        if found != EXPANSIONS[name]:
+            errors.append(f"{name} (line {line}): its expansions of tsm-modes.def are not the table's")
+        if shape != SKELETON[name]:
+            want = SKELETON[name]
+            at = next((i for i, (a, b) in enumerate(zip(shape, want)) if a != b),
+                      min(len(shape), len(want)))
+            errors.append(f"{name} (line {line}) does more than expand the table, at "
+                          f"...{shape[max(0, at - 30):at + 50]}...")
+
+    for final, call in (("h", "csi_mode(vte,true);break;"), ("l", "csi_mode(vte,false);break;")):
+        m = re.search(r"\tcase '%s':(.*?)\n\tcase " % final, src, re.S)
+        if not m:
+            errors.append(f"do_csi's case '{final}' not found")
+        elif squeeze(m.group(1)) != call:
+            errors.append(f"do_csi's case '{final}' does more than {call}: {squeeze(m.group(1))}")
 
     if "csi_decrqm" not in funcs or "mode_report(" not in funcs["csi_decrqm"][1]:
         errors.append("csi_decrqm does not answer from mode_report")
