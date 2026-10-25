@@ -117,6 +117,7 @@ enum parser_action {
 #define CSI_POPEN	0x0200		/* CSI: ( */
 #define CSI_PCLOSE	0x0400		/* CSI: ) */
 #define CSI_HASH	0x0800		/* CSI: # */
+#define CSI_OTHER	0x1000		/* CSI: any other intermediate or marker */
 
 /* max CSI arguments */
 #define CSI_ARG_MAX 16
@@ -1477,6 +1478,9 @@ static void do_collect(struct tsm_vte *vte, uint32_t data)
 	case '#':
 		vte->csi_flags |= CSI_HASH;
 		break;
+	default:
+		vte->csi_flags |= CSI_OTHER;
+		break;
 	}
 }
 
@@ -2704,6 +2708,20 @@ static bool csi_has_subargs(struct tsm_vte *vte)
 	return false;
 }
 
+/*
+ * Whether the sequence carries a prefix or intermediate outside @allowed:
+ * then it is another sequence (ctlseqs has CSI # P, CSI > T, CSI # q and
+ * more), which libtsm does not implement, and it must not run as the plain
+ * one (aaronsb/libtsm#63).
+ */
+static bool csi_foreign(struct tsm_vte *vte, uint32_t data, unsigned int allowed)
+{
+	if (!(vte->csi_flags & ~allowed))
+		return false;
+	llog_debug(vte, "unhandled CSI %c with flags %x", data, vte->csi_flags);
+	return true;
+}
+
 static void do_csi(struct tsm_vte *vte, uint32_t data)
 {
 	int num, x, y, upper, lower;
@@ -2722,6 +2740,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 
 	switch (data) {
 	case 'A': /* CUU */
+		if (csi_foreign(vte, data, 0))
+			break;
 		/* move cursor up */
 		num = vte->csi_argv[0];
 		if (num <= 0)
@@ -2784,6 +2804,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		break;
 	case 'H': /* CUP */
 	case 'f': /* HVP */
+		if (csi_foreign(vte, data, 0))
+			break;
 		/* position cursor */
 		x = vte->csi_argv[0];
 		if (x <= 0)
@@ -2866,12 +2888,10 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		} else if (vte->csi_flags & CSI_CASH) {
 			/* DECRQM: Request Mode */
 			csi_decrqm(vte);
-		} else if (!(vte->csi_flags & ~CSI_DQUOTE)) {
+		} else if (!csi_foreign(vte, data, CSI_DQUOTE)) {
 			/* DECSCL: Compatibility Level */
 			/* Sometimes CSI_DQUOTE is set here, too */
 			csi_compat_mode(vte);
-		} else {
-			llog_debug(vte, "unhandled CSI p, flags %x", vte->csi_flags);
 		}
 		break;
 	case 'h': /* SM: Set Mode */
@@ -2888,6 +2908,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			llog_debug(vte, "XTRESTORE ignored");
 			break;
 		}
+		if (csi_foreign(vte, data, 0))
+			break;
 
 		/* DECSTBM: set margin size */
 		upper = vte->csi_argv[0];
@@ -2917,6 +2939,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		tsm_screen_delete_lines(vte->con, num);
 		break;
 	case 'g': /* TBC */
+		if (csi_foreign(vte, data, 0))
+			break;
 		/* tabulation clear */
 		num = vte->csi_argv[0];
 		if (num <= 0)
@@ -2927,6 +2951,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			llog_debug(vte, "invalid parameter %d to TBC CSI", num);
 		break;
 	case '@': /* ICH */
+		if (csi_foreign(vte, data, 0))
+			break;
 		/* insert characters */
 		num = vte->csi_argv[0];
 		if (num <= 0)
@@ -2934,6 +2960,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		tsm_screen_insert_chars(vte->con, num);
 		break;
 	case 'P': /* DCH */
+		if (csi_foreign(vte, data, 0))
+			break;
 		/* delete characters */
 		num = vte->csi_argv[0];
 		if (num <= 0)
@@ -2955,7 +2983,10 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		tsm_screen_tab_right(vte->con, num);
 		break;
 	case 'n': /* DSR */
-		/* device status reports */
+		/* device status reports; DECXCPR (CSI ? 6 n) gets the plain
+		 * CPR, as it always has */
+		if (csi_foreign(vte, data, CSI_WHAT))
+			break;
 		csi_dsr(vte);
 		break;
 	case 'S':
@@ -2963,6 +2994,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			csi_xtsmgraphics(vte);
 			break;
 		}
+		if (csi_foreign(vte, data, 0))
+			break;
 		/* SU: scroll up */
 		num = vte->csi_argv[0];
 		if (num <= 0)
@@ -2970,6 +3003,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		tsm_screen_scroll_up(vte->con, num);
 		break;
 	case 'T': /* SD */
+		if (csi_foreign(vte, data, 0))
+			break;
 		/* scroll down */
 		num = vte->csi_argv[0];
 		if (num <= 0)
@@ -2977,6 +3012,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		tsm_screen_scroll_down(vte->con, num);
 		break;
 	case 't': /* XTWINOPS */
+		if (csi_foreign(vte, data, 0))
+			break;
 		if (vte->csi_argv[0] == 18 || vte->csi_argv[0] == 19)
 			csi_report_window_size(vte);
 		else if (vte->csi_argv[0] == 14 || vte->csi_argv[0] == 16)
@@ -2996,7 +3033,7 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			if (num < 0)
 				num = 0;
 			tsm_screen_set_cursor_style(vte->con, num);
-		} else {
+		} else if (!csi_foreign(vte, data, 0)) {
 			num = vte->csi_argv[0];
 			if (num <= 0) {
 				vte->led_state = 0;

@@ -29,6 +29,7 @@
 
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <stdio.h>
+#include <string.h>
 
 static void log_cb(void *data, const char *file, int line, const char *func, const char *subs,
 				   unsigned int sev, const char *format, va_list args)
@@ -2630,6 +2631,268 @@ START_TEST(test_vte_max_sb_while_viewed)
 }
 END_TEST
 
+/*
+ * A CSI final under a prefix or intermediate it does not take is another
+ * xterm sequence (ctlseqs), which libtsm does not implement: none may run
+ * as the plain command (aaronsb/libtsm#63). Each test sends the foreign
+ * forms, expects the screen, cursor, host replies and LEDs untouched, then
+ * sends the plain form and sees it act.
+ */
+static struct tsm_screen *pfx_screen;
+static struct tsm_vte *pfx_vte;
+static char pfx_out[128];
+static size_t pfx_len;
+static unsigned int pfx_led_calls;
+
+static void pfx_write(struct tsm_vte *vte, const char *u8, size_t len, void *data)
+{
+	UNUSED(vte);
+	UNUSED(data);
+	ck_assert_uint_lt(pfx_len + len, sizeof(pfx_out));
+	memcpy(pfx_out + pfx_len, u8, len);
+	pfx_len += len;
+	pfx_out[pfx_len] = 0;
+}
+
+static void pfx_led(struct tsm_vte *vte, unsigned int leds, void *data)
+{
+	UNUSED(vte);
+	UNUSED(leds);
+	UNUSED(data);
+	++pfx_led_calls;
+}
+
+static void pfx_input(const char *s)
+{
+	tsm_vte_input(pfx_vte, s, strlen(s));
+}
+
+static uint64_t pfx_cell(unsigned int x, unsigned int y)
+{
+	return tsm_frame_cell_at(tsm_screen_frame(pfx_screen), x, y)->key;
+}
+
+/* "abcdef" over "123456", the cursor on the 'c' of the second row */
+static void pfx_setup(void)
+{
+	ck_assert_int_eq(tsm_screen_new(&pfx_screen, log_cb, NULL), 0);
+	ck_assert_int_eq(tsm_screen_resize(pfx_screen, 10, 5), 0);
+	ck_assert_int_eq(tsm_vte_new(&pfx_vte, pfx_screen, pfx_write, NULL, log_cb, NULL), 0);
+	tsm_vte_set_led_cb(pfx_vte, pfx_led, NULL);
+	pfx_input("\e[2;1Habcdef\r\n123456\e[3;3H");
+	pfx_len = 0;
+	pfx_out[0] = 0;
+	pfx_led_calls = 0;
+}
+
+static void pfx_teardown(void)
+{
+	tsm_vte_unref(pfx_vte);
+	tsm_screen_unref(pfx_screen);
+}
+
+static void pfx_assert_untouched(const char *seq)
+{
+	unsigned int i;
+
+	for (i = 0; i < 6; ++i) {
+		ck_assert_msg(pfx_cell(i, 1) == (uint64_t)"abcdef"[i], "%s: row 1", seq + 1);
+		ck_assert_msg(pfx_cell(i, 2) == (uint64_t)"123456"[i], "%s: row 2", seq + 1);
+	}
+	ck_assert_msg(pfx_cell(0, 0) == 0, "%s: row 0", seq + 1);
+	ck_assert_msg(tsm_screen_get_cursor_x(pfx_screen) == 2 &&
+		      tsm_screen_get_cursor_y(pfx_screen) == 2, "%s: cursor moved", seq + 1);
+	ck_assert_msg(pfx_len == 0, "%s: replied \"%s\"", seq + 1, pfx_out + 1);
+	ck_assert_msg(pfx_led_calls == 0, "%s: set the LEDs", seq + 1);
+}
+
+static void pfx_assert_foreign(const char *const *seqs)
+{
+	for (; *seqs; ++seqs) {
+		pfx_input(*seqs);
+		pfx_assert_untouched(*seqs);
+	}
+}
+
+/* SL (CSI Ps SP @) is not ICH */
+START_TEST(test_vte_csi_sl_not_ich)
+{
+	static const char *const seqs[] = { "\e[2 @", NULL };
+
+	pfx_assert_foreign(seqs);
+	pfx_input("\e[2@");
+	ck_assert_uint_eq(pfx_cell(2, 2), 0);
+	ck_assert_uint_eq(pfx_cell(4, 2), '3');
+}
+END_TEST
+
+/* SR (CSI Ps SP A) is not CUU */
+START_TEST(test_vte_csi_sr_not_cuu)
+{
+	static const char *const seqs[] = { "\e[1 A", NULL };
+
+	pfx_assert_foreign(seqs);
+	pfx_input("\e[A");
+	ck_assert_uint_eq(tsm_screen_get_cursor_y(pfx_screen), 1);
+}
+END_TEST
+
+/* XTPUSHCOLORS (CSI Pm # P) is not DCH */
+START_TEST(test_vte_csi_xtpushcolors_not_dch)
+{
+	static const char *const seqs[] = { "\e[#P", "\e[1;2#P", NULL };
+
+	pfx_assert_foreign(seqs);
+	pfx_input("\e[P");
+	ck_assert_uint_eq(pfx_cell(2, 2), '4');
+}
+END_TEST
+
+/* XTTITLEPOS (CSI # S) is not SU */
+START_TEST(test_vte_csi_xttitlepos_not_su)
+{
+	static const char *const seqs[] = { "\e[#S", "\e[1#S", NULL };
+
+	pfx_assert_foreign(seqs);
+	pfx_input("\e[S");
+	ck_assert_uint_eq(pfx_cell(0, 0), 'a');
+}
+END_TEST
+
+/* XTRMTITLE (CSI > Pm T) is not SD */
+START_TEST(test_vte_csi_xtrmtitle_not_sd)
+{
+	static const char *const seqs[] = { "\e[>T", "\e[>0;1T", NULL };
+
+	pfx_assert_foreign(seqs);
+	pfx_input("\e[T");
+	ck_assert_uint_eq(pfx_cell(0, 2), 'a');
+}
+END_TEST
+
+/* XTPOPSGR (CSI # q), DECSCA (CSI Ps " q) and XTVERSION (CSI > Ps q) are
+ * not DECLL; DECSCUSR (CSI Ps SP q) is its own */
+START_TEST(test_vte_csi_q_not_decll)
+{
+	static const char *const seqs[] = { "\e[#q", "\e[1\"q", "\e[>q", "\e[>0q", "\e[2 q", NULL };
+
+	pfx_assert_foreign(seqs);
+	ck_assert_int_eq(tsm_screen_get_cursor_style(pfx_screen), 2);
+	pfx_input("\e[1q");
+	ck_assert_uint_eq(pfx_led_calls, 1);
+}
+END_TEST
+
+/* XTFMTKEYS (CSI > Pp ; Pv f) is not HVP */
+START_TEST(test_vte_csi_xtfmtkeys_not_hvp)
+{
+	static const char *const seqs[] = { "\e[>1;2f", "\e[>4f", NULL };
+
+	pfx_assert_foreign(seqs);
+	pfx_input("\e[1;2f");
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(pfx_screen), 1);
+	ck_assert_uint_eq(tsm_screen_get_cursor_y(pfx_screen), 0);
+}
+END_TEST
+
+/* XTQFMTKEYS (CSI ? Pp g) is not TBC */
+START_TEST(test_vte_csi_xtqfmtkeys_not_tbc)
+{
+	static const char *const seqs[] = { "\e[?3g", "\e[?g", NULL };
+
+	pfx_assert_foreign(seqs);
+	/* the tab stop at column 8 stays */
+	pfx_input("\r\t");
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(pfx_screen), 8);
+	pfx_input("\e[3g\r\t");
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(pfx_screen), 9);
+}
+END_TEST
+
+/* DECCARA (CSI Pt ; Pl ; Pb ; Pr ; Ps $ r) is not DECSTBM */
+START_TEST(test_vte_csi_deccara_not_decstbm)
+{
+	static const char *const seqs[] = { "\e[2;3;4;5;1$r", NULL };
+	unsigned int top = pfx_screen->margin_top, bottom = pfx_screen->margin_bottom;
+
+	pfx_assert_foreign(seqs);
+	ck_assert_uint_eq(pfx_screen->margin_top, top);
+	ck_assert_uint_eq(pfx_screen->margin_bottom, bottom);
+	pfx_input("\e[2;3r");
+	ck_assert_uint_eq(pfx_screen->margin_top, 1);
+	ck_assert_uint_eq(pfx_screen->margin_bottom, 2);
+}
+END_TEST
+
+/* DECRARA (CSI Pt ; Pl ; Pb ; Pr ; Ps $ t), XTSMTITLE (CSI > Pm t) and
+ * DECSWBV (CSI Ps SP t) are not XTWINOPS, and send no size report */
+START_TEST(test_vte_csi_t_not_xtwinops)
+{
+	static const char *const seqs[] = { "\e[18;1;3;4;1$t", "\e[>18t", "\e[18 t", "\e[>14t", NULL };
+
+	pfx_assert_foreign(seqs);
+	pfx_input("\e[18t");
+	ck_assert_str_eq(pfx_out, "\e[8;5;10t");
+}
+END_TEST
+
+/* XTMODKEYS-disable (CSI > Ps n) is not DSR; DECXCPR (CSI ? 6 n) keeps
+ * the plain CPR it has always had */
+START_TEST(test_vte_csi_xtmodkeys_not_dsr)
+{
+	static const char *const seqs[] = { "\e[>6n", "\e[>5n", "\e[>n", NULL };
+
+	pfx_assert_foreign(seqs);
+	pfx_input("\e[?6n");
+	ck_assert_str_eq(pfx_out, "\e[3;3R");
+	pfx_len = 0;
+	pfx_input("\e[6n");
+	ck_assert_str_eq(pfx_out, "\e[3;3R");
+}
+END_TEST
+
+/* ESC - H and ESC - M designate 96-character sets into G1 (Hebrew,
+ * Latin-5), which libtsm does not have; they are not HTS and RI */
+START_TEST(test_vte_esc_96_set_not_hts_ri)
+{
+	static const char *const seqs[] = { "\e-H", "\e-M", "\e.A", "\e/A", NULL };
+
+	/* ESC - H sets no tab stop at column 2: a tab from column 0 reaches 8 */
+	pfx_input("\e-H\r\t");
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(pfx_screen), 8);
+	pfx_input("\e[3;3H");
+	pfx_assert_foreign(seqs);
+	pfx_input("\r\t");
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(pfx_screen), 8);
+	/* a designation libtsm has still works */
+	pfx_input("\e(0q\e(B");
+	ck_assert_uint_eq(pfx_cell(8, 2), 0x2500);
+}
+END_TEST
+
+/* intermediates and markers do_collect has no name for are still
+ * recorded: CSI = 1 p, CSI < 1 p and DECLTOD (CSI Ps ; Ps , p) are not
+ * DECSCL, and DA3 (CSI = c) is not DA1 */
+START_TEST(test_vte_csi_other_intermediates)
+{
+	static const char *const seqs[] = {
+		"\e[=1p", "\e[<1p", "\e[1;2,p", "\e[1%p", "\e[1&p", "\e[1-p", "\e[1.p",
+		"\e[1/p", "\e[=c", "\e[=0c", NULL
+	};
+	const char *const *seq;
+
+	pfx_input("\e[?1h");
+	for (seq = seqs; *seq; ++seq) {
+		pfx_input(*seq);
+		pfx_assert_untouched(*seq);
+		ck_assert_msg(tsm_vte_get_flags(pfx_vte) & TSM_VTE_FLAG_CURSOR_KEY_MODE,
+			      "%s: soft reset", *seq + 1);
+	}
+	pfx_input("\e[c");
+	ck_assert_uint_gt(pfx_len, 0);
+}
+END_TEST
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -2776,6 +3039,23 @@ START_TEST(test_vte_led_data)
 }
 END_TEST
 
+TEST_DEFINE_CASE(prefixes)
+	CHECKED_FIXTURE(pfx_setup, pfx_teardown)
+	TEST(test_vte_csi_sl_not_ich)
+	TEST(test_vte_csi_sr_not_cuu)
+	TEST(test_vte_csi_xtpushcolors_not_dch)
+	TEST(test_vte_csi_xttitlepos_not_su)
+	TEST(test_vte_csi_xtrmtitle_not_sd)
+	TEST(test_vte_csi_q_not_decll)
+	TEST(test_vte_csi_xtfmtkeys_not_hvp)
+	TEST(test_vte_csi_xtqfmtkeys_not_tbc)
+	TEST(test_vte_csi_deccara_not_decstbm)
+	TEST(test_vte_csi_t_not_xtwinops)
+	TEST(test_vte_csi_xtmodkeys_not_dsr)
+	TEST(test_vte_esc_96_set_not_hts_ri)
+	TEST(test_vte_csi_other_intermediates)
+TEST_END_CASE
+
 TEST_DEFINE_CASE(led)
 	TEST(test_vte_led_decll)
 	TEST(test_vte_led_no_cb)
@@ -2788,6 +3068,7 @@ TEST_DEFINE(
 		TEST_CASE(misc),
 		TEST_CASE(bell),
 		TEST_CASE(led),
+		TEST_CASE(prefixes),
 		TEST_END
 	)
 )
