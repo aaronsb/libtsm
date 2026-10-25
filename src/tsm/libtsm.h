@@ -1140,8 +1140,9 @@ unsigned int tsm_vte_get_mouse_event(struct tsm_vte *vte);
  * permanently reset, 0 not recognised. Defined when tsm_vte_get_mode exists.
  * It reports what the terminal does: KAM, DECARM and DECNRCM, which have no
  * effect, report their fixed state here while their legacy bits in
- * tsm_vte_get_flags still follow SM and RM, and so do sixel's modes, 80,
- * 1070 and 8452, while sixel is off (TSM_VTE_SIXEL).
+ * tsm_vte_get_flags still follow SM and RM. Sixel's modes, 80, 1070 and
+ * 8452, also report their fixed state while sixel is off (TSM_VTE_SIXEL); SM
+ * and RM still store them.
  *
  * @retval -EINVAL if vte is NULL.
  */
@@ -1205,8 +1206,8 @@ int tsm_vte_set_graphic_max_size(struct tsm_vte *vte, unsigned int width,
  * private-color-registers, the state mode 1070 starts in and returns to on
  * RIS: set, each picture starts from the default colours; reset, pictures
  * share their registers until RIS. Both apply at once, as after RIS. Returns
- * 0 or -EINVAL; 0 without images (TSM_VTE_SIXEL), where mode 1070 stays at
- * its default, set.
+ * 0 or -EINVAL; 0 without images (TSM_VTE_SIXEL), where private-color-registers
+ * still sets mode 1070's default, which its fixed state reports.
  */
 int tsm_vte_set_sixel_registers(struct tsm_vte *vte, unsigned int count,
 				bool private_registers);

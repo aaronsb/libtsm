@@ -25,7 +25,8 @@ golden/<name>.txt.
 --no-images is for a tsm-replay built against a libtsm with -Dimages=false
 (ADR-103 in aaronsb/kmscon): the cases DIR/images-cases.list names need
 images and are left out, and each must differ from its golden there, so the
-list names no case that does not need them. Every name in that list must be
+list names no case that does not need them. A case listed with "replies"
+differs only in its replies: its other lines are compared with the golden's. Every name in that list must be
 in cases.list, with or without the flag; --update does not read the list.
 
 --update is for producing goldens from a reference build (make-golden.sh);
@@ -79,16 +80,24 @@ def load_cases(root):
 
 
 def load_image_cases(root, cases):
-    names = set()
+    """{name: how}: "skip", or "replies" for a case compared without them."""
+    names = {}
     for line in (root / "images-cases.list").read_text().splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line:
-            names.add(line)
-    unknown = names - {name for name, _, _ in cases}
+        fields = line.split("#", 1)[0].split()
+        if not fields:
+            continue
+        if len(fields) > 2 or (len(fields) == 2 and fields[1] != "replies"):
+            raise SystemExit(f"conformance: images-cases.list: want NAME [replies], not {line!r}")
+        names[fields[0]] = fields[1] if len(fields) == 2 else "skip"
+    unknown = set(names) - {name for name, _, _ in cases}
     if unknown:
         raise SystemExit(f"conformance: images-cases.list names cases not in cases.list: "
                          f"{', '.join(sorted(unknown))}")
     return names
+
+
+def without_replies(text):
+    return "".join(l for l in text.splitlines(keepends=True) if not l.startswith("reply "))
 
 
 def replay(tool, root, name, cols, rows, view=None):
@@ -124,7 +133,7 @@ def main():
     if no_images and update:
         sys.exit("conformance: goldens come from a build with images; --update with --no-images refused")
     # make-golden.sh's --update reads the cases from a copy without the list
-    image_cases = set() if update else load_image_cases(root, cases)
+    image_cases = {} if update else load_image_cases(root, cases)
 
     golden_dir = root / (f"golden-{view}" if view else "golden")
     label = f"conformance-{view}" if view else "conformance"
@@ -133,9 +142,26 @@ def main():
         got = replay(tool, root, name, cols, rows, view)
         golden = golden_dir / f"{name}.txt"
         if no_images and name in image_cases:
-            skipped.append(name)
             if golden.exists() and golden.read_text() == got:
                 stale.append(name)
+            if image_cases[name] == "skip":
+                skipped.append(name)
+                continue
+            # the replies differ; the rest must not
+            got = without_replies(got)
+            if golden.exists():
+                golden_text = without_replies(golden.read_text())
+                results.append({"name": name, "cols": int(cols), "rows": int(rows),
+                                "status": "pass" if got == golden_text else "fail",
+                                "golden": golden_text, "actual": got})
+                if got != golden_text:
+                    failed.append(name)
+                    sys.stdout.writelines(difflib.unified_diff(
+                        golden_text.splitlines(keepends=True), got.splitlines(keepends=True),
+                        fromfile=f"{golden_dir.name}/{name}.txt (no replies)",
+                        tofile=f"replay/{name} (no replies)"))
+            else:
+                missing.append(name)
             continue
         if update:
             golden_dir.mkdir(exist_ok=True)
@@ -168,8 +194,9 @@ def main():
         print(f"{label}: {name}: in images-cases.list, but matches its golden without images")
     passed = len(cases) - len(failed) - len(missing) - len(skipped)
     print(f"{label}: {passed}/{len(cases) - len(skipped)} match"
-          + (f" ({len(skipped)} cases that need images left out, a build without images)"
-             if no_images else "")
+          + (f" ({len(skipped)} cases that need images left out, and "
+             f"{sum(1 for h in image_cases.values() if h == 'replies')} compared without "
+             f"their replies, a build without images)" if no_images else "")
           + (f"; differ: {', '.join(failed)}" if failed else "")
           + (f"; missing golden: {', '.join(missing)}" if missing else ""))
     return 1 if failed or missing or stale else 0

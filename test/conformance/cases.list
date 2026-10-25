@@ -44,6 +44,7 @@ vs16-insert-mode 8 2
 insert-wide-one-column 1 3
 alt-screen 20 4
 replies 80 24
+replies-da1 80 24
 dec-graphics 80 24
 osc-sequences 80 24
 dcs-sixel 80 24

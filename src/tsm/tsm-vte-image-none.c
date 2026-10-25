@@ -13,12 +13,14 @@
  * never on: DA1 omits attribute 4, XTSMGRAPHICS answers status 1, and DECRQM
  * of 80, 1070 and 8452 answers their fixed state. The public image calls
  * accept their arguments and do nothing, returning 0 where they return a
- * value (libtsm.h).
+ * value (libtsm.h), but for private-color-registers, which sets mode 1070's
+ * default as it does with images.
  */
 
 #include <stdio.h>
 #include "libtsm.h"
 #include "libtsm-int.h"
+#include "tsm-sixel.h"
 #include "tsm-vte-int.h"
 
 /* mode 1070's default, which its fixed state reports */
@@ -136,9 +138,18 @@ void tsm_vte_set_kitty_graphics(struct tsm_vte *vte, bool enable)
 {
 }
 
+/* private-color-registers still sets mode 1070's default, which its fixed
+ * state reports, so 1070 answers as an images build under --no-sixel does; a
+ * count an images build refuses changes nothing here either */
 SHL_EXPORT
 int tsm_vte_set_sixel_registers(struct tsm_vte *vte, unsigned int count,
 				bool private_registers)
 {
+	if (!vte || (count && (count < TSM_SIXEL_REGISTERS_MIN ||
+			       count > TSM_SIXEL_REGISTERS_MAX)))
+		return 0;
+
+	vte->sixel_private_default = private_registers;
+	vte_modes_reset_hard(vte);
 	return 0;
 }

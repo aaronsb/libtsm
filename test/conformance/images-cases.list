@@ -2,8 +2,10 @@
 # commands, or their replies say sixel is on (DA1 attribute 4). A libtsm built
 # with -Dimages=false (ADR-103 in aaronsb/kmscon, libtsm's images option) has
 # neither, so check.py --no-images leaves these out; every other case in
-# cases.list replays against the same golden in both builds.
-replies
+# cases.list replays against the same golden in both builds. A name followed
+# by "replies" differs only in its replies: check.py --no-images compares its
+# other lines (size, cursor, flags, rows, checkpoints) with the golden.
+replies-da1
 apc-kitty-graphics
 img-print
 img-sixel-over
@@ -100,4 +102,4 @@ kit-host-errors-nohook
 kit-host-requests-nohook
 kit-host-outcomes-nohook
 kit-host-lengths-nohook
-prog-tmux
+prog-tmux replies

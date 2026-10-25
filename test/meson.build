@@ -119,47 +119,49 @@ if images
             link_args: ['-fsanitize=fuzzer'],
         )
     endif
+endif
 
-    # Sixel through the vte (fuzz/fuzz-vte-sixel.c): the parser, decoder, budget
-    # and placements together, built the same two ways.
-    fuzz_vte_sixel_replay = executable(
-        'fuzz-vte-sixel-replay',
+# The vte fuzz targets compile against either glue: without images the seed
+# corpora go through the parser that skips sixel and kitty commands.
+# Sixel through the vte (fuzz/fuzz-vte-sixel.c): the parser, decoder, budget
+# and placements together, built the same two ways.
+fuzz_vte_sixel_replay = executable(
+    'fuzz-vte-sixel-replay',
+    'fuzz/fuzz-vte-sixel.c',
+    dependencies: [libtsm_test_dep],
+    c_args: ['-DFUZZ_REPLAY'],
+)
+test('fuzz-vte-sixel-seeds', fuzz_vte_sixel_replay,
+     args: [meson.current_source_dir() / 'fuzz' / 'vte-sixel-seeds'])
+if get_option('fuzz')
+    executable(
+        'fuzz-vte-sixel',
         'fuzz/fuzz-vte-sixel.c',
         dependencies: [libtsm_test_dep],
-        c_args: ['-DFUZZ_REPLAY'],
+        c_args: ['-fsanitize=fuzzer'],
+        link_args: ['-fsanitize=fuzzer'],
     )
-    test('fuzz-vte-sixel-seeds', fuzz_vte_sixel_replay,
-         args: [meson.current_source_dir() / 'fuzz' / 'vte-sixel-seeds'])
-    if get_option('fuzz')
-        executable(
-            'fuzz-vte-sixel',
-            'fuzz/fuzz-vte-sixel.c',
-            dependencies: [libtsm_test_dep],
-            c_args: ['-fsanitize=fuzzer'],
-            link_args: ['-fsanitize=fuzzer'],
-        )
-    endif
+endif
 
-    # The kitty graphics protocol through the vte (fuzz/fuzz-vte-kitty.c): the
-    # APC parser, uploads, deletes, the budget and placements together, built
-    # the same two ways.
-    fuzz_vte_kitty_replay = executable(
-        'fuzz-vte-kitty-replay',
+# The kitty graphics protocol through the vte (fuzz/fuzz-vte-kitty.c): the
+# APC parser, uploads, deletes, the budget and placements together, built
+# the same two ways.
+fuzz_vte_kitty_replay = executable(
+    'fuzz-vte-kitty-replay',
+    'fuzz/fuzz-vte-kitty.c',
+    dependencies: [libtsm_test_dep],
+    c_args: ['-DFUZZ_REPLAY'],
+)
+test('fuzz-vte-kitty-seeds', fuzz_vte_kitty_replay,
+     args: [meson.current_source_dir() / 'fuzz' / 'vte-kitty-seeds'])
+if get_option('fuzz')
+    executable(
+        'fuzz-vte-kitty',
         'fuzz/fuzz-vte-kitty.c',
         dependencies: [libtsm_test_dep],
-        c_args: ['-DFUZZ_REPLAY'],
+        c_args: ['-fsanitize=fuzzer'],
+        link_args: ['-fsanitize=fuzzer'],
     )
-    test('fuzz-vte-kitty-seeds', fuzz_vte_kitty_replay,
-         args: [meson.current_source_dir() / 'fuzz' / 'vte-kitty-seeds'])
-    if get_option('fuzz')
-        executable(
-            'fuzz-vte-kitty',
-            'fuzz/fuzz-vte-kitty.c',
-            dependencies: [libtsm_test_dep],
-            c_args: ['-fsanitize=fuzzer'],
-            link_args: ['-fsanitize=fuzzer'],
-        )
-    endif
 endif
 
 # The mode table (ADR-201 in the kmscon fork): gen-modes prints fork/modes.md

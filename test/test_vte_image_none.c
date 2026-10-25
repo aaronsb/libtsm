@@ -118,12 +118,22 @@ START_TEST(test_image_none_calls)
 	size_t len;
 
 	ck_assert_int_eq(tsm_vte_set_graphic_max_size(vte, 1, 1), 0);
-	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 16, false), 0);
-	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 1, false), 0);
 	ck_assert_int_eq(tsm_vte_image_reply(vte, 1, NULL), 0);
 	tsm_vte_set_image_cb(vte, NULL, NULL);
-	/* 1070's fixed state stays its default, set */
+
+	/* 1070's fixed state follows private-color-registers, as with images
+	 * under --no-sixel */
 	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1070), 3);
+	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 16, false), 0);
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1070), 4);
+	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 0, true), 0);
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1070), 3);
+	/* a count an images build refuses changes nothing */
+	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 1, false), 0);
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1070), 3);
+	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 16, false), 0);
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1070), 4);
+	ck_assert_int_eq(tsm_vte_set_sixel_registers(NULL, 16, false), 0);
 
 	/* a bounded call has no image work to bound: it takes a long sixel
 	 * string whole */
