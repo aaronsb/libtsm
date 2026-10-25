@@ -109,6 +109,7 @@
  *   graphic-max;w=;h=         tsm_vte_set_graphic_max_size (TSM_VTE_SIXEL)
  *   registers;n=[;private=0]  tsm_vte_set_sixel_registers (TSM_VTE_SIXEL)
  *   host;on=0|1               remove or install the fixture host (below)
+ *   sync;on=0|1               tsm_vte_set_sync (TSM_VTE_SYNC), on by default
  *
  * Against a libtsm that declares TSM_VTE_IMAGE_HOST, tsm-replay installs a
  * fixture host as the kitty host hook (ADR-103, the Notes of 2026-10-24),
@@ -609,6 +610,10 @@ static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
 	} else if (!strcmp(argv[0], "registers")) {
 		r = tsm_vte_set_sixel_registers(vte, test_arg(argv, argc, "n", 0),
 						test_arg(argv, argc, "private", 1));
+#endif
+#ifdef TSM_VTE_SYNC
+	} else if (!strcmp(argv[0], "sync")) {
+		tsm_vte_set_sync(vte, test_arg(argv, argc, "on", 1));
 #endif
 #ifdef TSM_VTE_IMAGE_HOST
 	} else if (!strcmp(argv[0], "host")) {
@@ -1265,6 +1270,10 @@ int main(int argc, char **argv)
 #endif
 #ifdef TSM_VTE_KITTY_GRAPHICS
 	tsm_vte_set_kitty_graphics(vte, true);
+#endif
+#ifdef TSM_VTE_SYNC
+	/* a host that presents by mode 2026 */
+	tsm_vte_set_sync(vte, true);
 #endif
 #ifdef TSM_VTE_IMAGE_HOST
 	/* the fixtures beside the stream: cases/<case>.files/ */

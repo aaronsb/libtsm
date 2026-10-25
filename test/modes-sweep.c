@@ -5,7 +5,8 @@
  * For every DEC private mode 0 to 65535 and every ANSI mode 0 to 255:
  * DECRQM replies 0 exactly when tsm-modes.def has no row for it, and for a
  * number with no row, SM and then RM change nothing: not the screen's flags,
- * margins, cursor, age or width method, not the vte's flags or mouse fields,
+ * margins, cursor, age or width method, not the vte's flags, mouse fields or
+ * count of synchronized frames,
  * no row's DECRQM value, and nothing is written to the host. A handler added
  * outside the table changes one of these and fails here.
  *
@@ -59,6 +60,7 @@ struct state {
 	enum tsm_width_method width_method;
 	unsigned int vte_flags;
 	unsigned int mouse_mode, mouse_event;
+	uint64_t sync_frames;
 	int reports[ROW_COUNT];
 	unsigned long writes;
 };
@@ -78,6 +80,7 @@ static void snapshot(struct tsm_vte *vte, struct tsm_screen *con, struct state *
 	s->vte_flags = tsm_vte_get_flags(vte);
 	s->mouse_mode = tsm_vte_get_mouse_mode(vte);
 	s->mouse_event = tsm_vte_get_mouse_event(vte);
+	s->sync_frames = tsm_vte_get_sync_frames(vte);
 	for (i = 0; i < ROW_COUNT; ++i)
 		s->reports[i] = tsm_vte_get_mode(vte, rows[i].dec, rows[i].number);
 	s->writes = writes;
@@ -112,8 +115,10 @@ int main(void)
 		fprintf(stderr, "modes-sweep: cannot make a vte\n");
 		return 1;
 	}
-	/* some state for a stray handler to disturb */
-	input(vte, "ab\r\ncd\e[2;3r\e[3;2H");
+	/* some state for a stray handler to disturb, with mode 2026 offered
+	 * and held, so a stray end is seen as well */
+	tsm_vte_set_sync(vte, true);
+	input(vte, "ab\r\ncd\e[2;3r\e[3;2H\e[?2026h");
 
 	for (kind = 0; kind < 2; ++kind) {
 		dec = kind;

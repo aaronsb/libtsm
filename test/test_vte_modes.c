@@ -504,12 +504,12 @@ static const struct mode_reply mode_defaults[] = {
 	{ true, 1000, 2 }, { true, 1002, 2 }, { true, 1003, 2 },
 	{ true, 1006, 2 }, { true, 1016, 2 }, { true, 1047, 2 },
 	{ true, 1048, 2 }, { true, 1049, 2 }, { true, 1070, 1 },
-	{ true, 2004, 2 }, { true, 2027, 1 }, { true, 8452, 2 },
+	{ true, 2004, 2 }, { true, 2026, 4 }, { true, 2027, 1 },
+	{ true, 8452, 2 },
 	/* not recognised */
 	{ false, 0, 0 }, { false, 1, 0 }, { false, 3, 0 }, { false, 25, 0 },
 	{ false, 2004, 0 }, { true, 0, 0 }, { true, 10, 0 }, { true, 1004, 0 },
-	{ true, 1005, 0 }, { true, 1015, 0 }, { true, 2026, 0 },
-	{ true, 65535, 0 },
+	{ true, 1005, 0 }, { true, 1015, 0 }, { true, 65535, 0 },
 };
 
 static void assert_decrqm(bool dec, unsigned int number, unsigned int value)
@@ -737,6 +737,190 @@ START_TEST(test_mode_cursor_blink_host)
 }
 END_TEST
 
+/*
+ * Mode 2026, synchronized output (contour's synchronized-output spec): SM
+ * starts a hold and RM ends it, while libtsm keeps parsing and replying.
+ * The host learns of each end by tsm_vte_get_sync_frames, which counts the
+ * holds that ended, once each.
+ */
+START_TEST(test_mode_sync)
+{
+	uint64_t frames;
+
+	tsm_vte_set_sync(vte, true);
+	frames = tsm_vte_get_sync_frames(vte);
+	assert_decrqm(true, 2026, 2);
+
+	input("\e[?2026h");
+	assert_decrqm(true, 2026, 1);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), frames);
+
+	/* the screen and the replies go on during a hold */
+	out_clear();
+	input("ab\e[5n");
+	ck_assert_uint_eq(cell(0, 0), 'a');
+	ck_assert_uint_eq(cell(1, 0), 'b');
+	ck_assert_str_eq(out, "\e[0n");
+
+	/* a set during a hold changes nothing */
+	input("\e[?2026h");
+	assert_decrqm(true, 2026, 1);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), frames);
+
+	input("\e[?2026l");
+	assert_decrqm(true, 2026, 2);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), frames + 1);
+
+	/* a reset with no hold ends nothing */
+	input("\e[?2026l");
+	assert_decrqm(true, 2026, 2);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), frames + 1);
+
+	/* two frames in one call are two ends */
+	input("\e[?2026hc\e[?2026l\e[?2026hd\e[?2026l");
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), frames + 3);
+	ck_assert_uint_eq(cell(3, 0), 'd');
+}
+END_TEST
+
+/*
+ * A host that does not present by mode 2026 leaves it off, the default:
+ * DECRQM replies 4 (permanently reset), which the spec reads as not
+ * supported, and SM changes nothing, so no program is told its frames are
+ * held when they are not.
+ */
+START_TEST(test_mode_sync_host)
+{
+	assert_decrqm(true, 2026, 4);
+	input("\e[?2026h");
+	assert_decrqm(true, 2026, 4);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 0);
+
+	/* the SM before it was turned on left no hold behind */
+	tsm_vte_set_sync(vte, true);
+	assert_decrqm(true, 2026, 2);
+
+	/* turning it off ends a hold, and counts as its end */
+	input("\e[?2026h");
+	tsm_vte_set_sync(vte, false);
+	assert_decrqm(true, 2026, 4);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 1);
+	input("\e[?2026l");
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 1);
+	tsm_vte_set_sync(vte, true);
+	assert_decrqm(true, 2026, 2);
+
+	tsm_vte_set_sync(NULL, true);
+	tsm_vte_end_sync(NULL);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(NULL), 0);
+}
+END_TEST
+
+/*
+ * RIS, DECSTR, a host's tsm_vte_reset and tsm_vte_end_sync end a hold, each
+ * counted once; the alternate screen does not, since the spec ties the hold
+ * to nothing but its own SM and RM.
+ */
+START_TEST(test_mode_sync_resets)
+{
+	tsm_vte_set_sync(vte, true);
+
+	input("\e[?2026h\e[!p");
+	assert_decrqm(true, 2026, 2);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 1);
+
+	input("\e[?2026h\ec");
+	assert_decrqm(true, 2026, 2);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 2);
+
+	input("\e[?2026h");
+	tsm_vte_reset(vte);
+	assert_decrqm(true, 2026, 2);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 3);
+
+	input("\e[?2026h");
+	tsm_vte_end_sync(vte);
+	assert_decrqm(true, 2026, 2);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 4);
+
+	/* with no hold, none of them counts */
+	tsm_vte_end_sync(vte);
+	input("\e[!p\ec");
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 4);
+
+	/* the host's setting survives both resets */
+	assert_decrqm(true, 2026, 2);
+
+	input("\e[?2026h\e[?1049h");
+	assert_decrqm(true, 2026, 1);
+	input("\e[?1049l\e[?47h\e[?47l");
+	assert_decrqm(true, 2026, 1);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 4);
+}
+END_TEST
+
+static size_t input_bounded(const char *s, size_t len)
+{
+	return tsm_vte_input_bounded(vte, s, len);
+}
+
+/*
+ * tsm_vte_input_bounded returns right after the byte that ends a hold, so
+ * the host sees each completed frame before any byte of the next;
+ * tsm_vte_input parses through.
+ */
+START_TEST(test_mode_sync_bounded)
+{
+	static const char frames[] = "a\e[?2026hbc\e[?2026ld\e[?2026hef\e[?2026lg";
+	const char *end1 = strstr(frames, "l") + 1;
+	const char *end2 = strrchr(frames, 'l') + 1;
+	size_t len = sizeof(frames) - 1, n;
+
+	tsm_vte_set_sync(vte, true);
+	n = input_bounded(frames, len);
+	ck_assert_uint_eq(n, (size_t)(end1 - frames));
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 1);
+	ck_assert_uint_eq(cell(2, 0), 'c');
+	ck_assert_uint_eq(cell(3, 0), 0);
+
+	n += input_bounded(frames + n, len - n);
+	ck_assert_uint_eq(n, (size_t)(end2 - frames));
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 2);
+	ck_assert_uint_eq(cell(5, 0), 'f');
+	ck_assert_uint_eq(cell(6, 0), 0);
+
+	n += input_bounded(frames + n, len - n);
+	ck_assert_uint_eq(n, len);
+	ck_assert_uint_eq(cell(6, 0), 'g');
+
+	/* a frame end split across calls stops at its last byte */
+	input("\e[?2026h");
+	ck_assert_uint_eq(input_bounded("\e[?20", 5), 5);
+	ck_assert_uint_eq(input_bounded("26lxy", 5), 3);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 3);
+
+	/* RIS and DECSTR end a frame too */
+	ck_assert_uint_eq(input_bounded("\e[?2026hz\ecz", 12), 11);
+	ck_assert_uint_eq(input_bounded("\e[?2026hz\e[!pz", 14), 13);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 5);
+
+	/* a start alone does not stop it */
+	ck_assert_uint_eq(input_bounded("\e[?2026hzz", 10), 10);
+	assert_decrqm(true, 2026, 1);
+
+	/* tsm_vte_input takes every frame in one call */
+	input("\ec");
+	input(frames);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 8);
+	ck_assert_uint_eq(cell(6, 0), 'g');
+
+	/* off, a frame end is not one, and nothing stops */
+	tsm_vte_set_sync(vte, false);
+	ck_assert_uint_eq(input_bounded(frames, len), len);
+	ck_assert_uint_eq(tsm_vte_get_sync_frames(vte), 8);
+}
+END_TEST
+
 TEST_DEFINE_CASE(ansi)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_mode_irm)
@@ -776,6 +960,10 @@ TEST_DEFINE_CASE(report)
 	TEST(test_mode_cursor_blink)
 	TEST(test_mode_cursor_blink_host)
 	TEST(test_mode_xtrestore_not_margins)
+	TEST(test_mode_sync)
+	TEST(test_mode_sync_host)
+	TEST(test_mode_sync_resets)
+	TEST(test_mode_sync_bounded)
 TEST_END_CASE
 
 // clang-format off

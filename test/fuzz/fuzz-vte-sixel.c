@@ -13,6 +13,9 @@
  *    exactly the bytes the screen reports after every input call;
  *  - tsm_vte_input_bounded consumes at least one byte and at most what it
  *    was given;
+ *  - with mode 2026 offered, each bounded call ends at most one hold, and
+ *    after one that ended a hold the mode reads 2 (the call stopped at the
+ *    end); with it not offered, no hold ever ends;
  *  - every placement a frame lists names an image the screen still has;
  *  - no store holds more than TSM_SCREEN_IMAGES_PER_STORE images or
  *    TSM_SCREEN_PLACEMENTS_PER_STORE placements, and every image pays its
@@ -20,10 +23,10 @@
  *  - freeing the vte and the screen gives every byte back.
  *
  * Input: byte 0 picks the screen size, cell size, scrollback and budget,
- * byte 1 the
- * max-graphic-size, the register settings, and how the stream is fed
- * (whole, or in chunks through tsm_vte_input_bounded); the rest is the
- * stream.
+ * byte 1 the max-graphic-size, the register settings, how the stream is fed
+ * (whole, or in chunks through tsm_vte_input_bounded), whether mode 2026 is
+ * offered (bit 6) and whether the host ends a hold every third bounded call
+ * (bit 7, tsm_vte_end_sync); the rest is the stream.
  *
  * Built two ways, as fuzz-sixel is: with libFuzzer (meson -Dfuzz=true under
  * clang, make fuzz FUZZ_TARGET=vte-sixel), and with -DFUZZ_REPLAY as a
@@ -116,6 +119,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
 	size_t chunk, pos, n, used;
+	uint64_t frames;
+	unsigned int calls;
 	uint8_t a, b;
 
 	if (size < 2)
@@ -138,20 +143,33 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 	check(tsm_vte_set_graphic_max_size(vte, graphic[b & 3].w,
 					   graphic[b & 3].h) == 0);
 	check(tsm_vte_set_sixel_registers(vte, b & 4 ? 2 : 0, !(b & 8)) == 0);
+	if (b & 0x40)
+		tsm_vte_set_sync(vte, true);
 
 	chunk = chunks[b >> 4 & 3];
 	if (!chunk) {
 		tsm_vte_input(vte, (const char *)data, size);
 		check_frame(screen);
 	} else {
-		for (pos = 0; pos < size; pos += used) {
+		for (pos = 0, calls = 0; pos < size; pos += used, ++calls) {
 			n = size - pos < chunk ? size - pos : chunk;
+			frames = tsm_vte_get_sync_frames(vte);
 			used = tsm_vte_input_bounded(vte, (const char *)data + pos, n);
 			check(used >= 1 && used <= n);
 			check(tsm_screen_get_image_bytes(screen) == held);
+			/* at most one end per bounded call, and the call stopped
+			 * there, so no later hold has begun */
+			check(tsm_vte_get_sync_frames(vte) - frames <= 1);
+			if (tsm_vte_get_sync_frames(vte) != frames)
+				check(tsm_vte_get_mode(vte, true, 2026) == 2);
+			if ((b & 0x80) && calls % 3 == 2)
+				tsm_vte_end_sync(vte);
 		}
 		check_frame(screen);
 	}
+	/* not offered, the mode never holds, so nothing ever ends */
+	if (!(b & 0x40))
+		check(tsm_vte_get_sync_frames(vte) == 0);
 
 	/* a picture still streaming gives its bytes back with the vte */
 	tsm_vte_unref(vte);

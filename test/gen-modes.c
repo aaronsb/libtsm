@@ -6,8 +6,10 @@
  *
  * Both come from src/tsm/tsm-modes.def. The DECRQM column is what a vte with
  * libtsm's default settings answers: at start, and the values it gives in
- * the states the probes below reach. `make modes` rewrites both files, and
- * the modes-doc test fails when they differ from what this prints.
+ * the states the probes below reach, then the values it gives with the
+ * host's settings that offer a mode turned on (tsm_vte_set_sync). `make
+ * modes` rewrites both files, and the modes-doc test fails when they differ
+ * from what this prints.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -59,8 +61,9 @@ static void write_cb(struct tsm_vte *vte, const char *u8, size_t len, void *data
  */
 static const char *const contexts[] = { "", "\e[?1006h", "\e[2 q" };
 
-/* bit v set for each DECRQM value v the row gives in those states */
-static unsigned int probe(const struct mode_row *r)
+/* bit v set for each DECRQM value v the row gives in those states, with
+ * the host's offering settings on when @host */
+static unsigned int probe(const struct mode_row *r, bool host)
 {
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
@@ -73,6 +76,8 @@ static unsigned int probe(const struct mode_row *r)
 			if (tsm_screen_new(&screen, NULL, NULL) ||
 			    tsm_vte_new(&vte, screen, write_cb, NULL, NULL, NULL))
 				return 0;
+			if (host)
+				tsm_vte_set_sync(vte, true);
 			tsm_vte_input(vte, contexts[c], strlen(contexts[c]));
 			if (step >= 1) {
 				snprintf(seq, sizeof(seq), "\e[%s%uh", r->dec ? "?" : "", r->number);
@@ -120,9 +125,11 @@ static void print_default(const char *dflt, bool md)
 	}
 }
 
-static void print_decrqm_md(int value, unsigned int seen)
+static void print_decrqm_md(int value, unsigned int seen, unsigned int hosted)
 {
-	if (seen == (1u << 1 | 1u << 2))
+	if (seen != hosted && hosted == (1u << 1 | 1u << 2))
+		printf("1 or 2 once the host offers it; %d before, and at start", value);
+	else if (seen == (1u << 1 | 1u << 2))
 		printf("1 or 2; %d at start", value);
 	else if (value == 3)
 		fputs("3, permanently set", stdout);
@@ -156,7 +163,8 @@ static void print_tests_md(const char *tests)
 	}
 }
 
-static void print_table_md(bool dec, const int *values, const unsigned int *seen)
+static void print_table_md(bool dec, const int *values, const unsigned int *seen,
+			   const unsigned int *hosted)
 {
 	size_t i;
 
@@ -170,7 +178,7 @@ static void print_table_md(bool dec, const int *values, const unsigned int *seen
 		printf("| %s%u | %s | ", dec ? "?" : "", r->number, r->name);
 		print_lower(r->status, "");
 		fputs(" | ", stdout);
-		print_decrqm_md(values[i], seen[i]);
+		print_decrqm_md(values[i], seen[i], hosted[i]);
 		fputs(" | ", stdout);
 		print_default(r->dflt, true);
 		fputs(" | ", stdout);
@@ -183,7 +191,8 @@ static void print_table_md(bool dec, const int *values, const unsigned int *seen
 	}
 }
 
-static void print_md(const int *values, const unsigned int *seen)
+static void print_md(const int *values, const unsigned int *seen,
+		     const unsigned int *hosted)
 {
 	static const char *const statuses[] = {
 		"SUPPORTED", "PARTIAL", "IGNORED", "REFUSED",
@@ -201,18 +210,20 @@ static void print_md(const int *values, const unsigned int *seen)
 	printf("%zu modes: %u supported, %u partial, %u ignored, %u refused.\n\n",
 	       ROW_COUNT, count[0], count[1], count[2], count[3]);
 	printf("- **Status.** Supported: set and reset do what the spec says. Partial: part of it, and the spec column names the issue for the rest. Ignored: accepted with no effect; the spec column says why, or names the issue for an effect that is wanted. Refused: deliberately not implemented.\n");
-	printf("- **DECRQM.** The reply to `CSI ? Ps $ p` (DEC) or `CSI Ps $ p` (ANSI), as `tsm_vte_get_mode` also gives it: 1 set, 2 reset, 3 permanently set, 4 permanently reset. \"At start\" is a new vte with libtsm's default settings; \"1 or 2\" means both were seen after the mode's SM and RM, under the SGR mouse encoding and under a steady cursor; a single value is the only one seen. A number with no row replies 0, not recognised, and SM and RM log it at debug level.\n");
+	printf("- **DECRQM.** The reply to `CSI ? Ps $ p` (DEC) or `CSI Ps $ p` (ANSI), as `tsm_vte_get_mode` also gives it: 1 set, 2 reset, 3 permanently set, 4 permanently reset. \"At start\" is a new vte with libtsm's default settings; \"1 or 2\" means both were seen after the mode's SM and RM, under the SGR mouse encoding and under a steady cursor; a single value is the only one seen. \"Once the host offers it\": the host's setting that says it does what the mode needs is on, `tsm_vte_set_sync` for mode 2026; until then the mode replies its fixed state and SM does nothing. A number with no row replies 0, not recognised, and SM and RM log it at debug level.\n");
 	printf("- **Reset.** Which resets restore the default: soft (DECSTR and RIS), hard (RIS only), or none. For an ignored row, which resets restore its legacy bit in `tsm_vte_get_flags`.\n");
 	printf("- **Host.** What the program embedding libtsm must do for the mode to work: input (report pointer or focus events), paste (paste through `tsm_vte_paste`), draw (present frames by the mode), or none.\n");
 	printf("- **Terminfo.** The capabilities whose strings set or reset the mode.\n");
 	printf("- **Tests.** The unit tests (`START_TEST` names) and tier 1 cases that set and reset the mode.\n\n");
 	printf("## ANSI modes (SM, RM)\n\n");
-	print_table_md(false, values, seen);
+	print_table_md(false, values, seen, hosted);
 	printf("\n## DEC private modes (DECSET, DECRST)\n\n");
-	print_table_md(true, values, seen);
+	print_table_md(true, values, seen, hosted);
 }
 
-static void print_tsv(const int *values, const unsigned int *seen)
+/* decrqm_seen: the values seen with and without the host's settings */
+static void print_tsv(const int *values, const unsigned int *seen,
+		      const unsigned int *hosted)
 {
 	size_t i;
 
@@ -226,7 +237,7 @@ static void print_tsv(const int *values, const unsigned int *seen)
 		print_lower(r->status, "");
 		printf("\t%d\t", values[i]);
 		for (v = 0, first = true; v < 8; ++v)
-			if (seen[i] & (1u << v)) {
+			if ((seen[i] | hosted[i]) & (1u << v)) {
 				printf("%s%u", first ? "" : " ", v);
 				first = false;
 			}
@@ -245,7 +256,7 @@ int main(int argc, char **argv)
 	struct tsm_screen *screen;
 	struct tsm_vte *vte;
 	int values[ROW_COUNT];
-	unsigned int seen[ROW_COUNT];
+	unsigned int seen[ROW_COUNT], hosted[ROW_COUNT];
 	size_t i;
 
 	if (argc != 2 || (strcmp(argv[1], "md") && strcmp(argv[1], "tsv"))) {
@@ -262,12 +273,14 @@ int main(int argc, char **argv)
 		values[i] = tsm_vte_get_mode(vte, rows[i].dec, rows[i].number);
 	tsm_vte_unref(vte);
 	tsm_screen_unref(screen);
-	for (i = 0; i < ROW_COUNT; ++i)
-		seen[i] = probe(&rows[i]);
+	for (i = 0; i < ROW_COUNT; ++i) {
+		seen[i] = probe(&rows[i], false);
+		hosted[i] = probe(&rows[i], true);
+	}
 
 	if (!strcmp(argv[1], "md"))
-		print_md(values, seen);
+		print_md(values, seen, hosted);
 	else
-		print_tsv(values, seen);
+		print_tsv(values, seen, hosted);
 	return 0;
 }

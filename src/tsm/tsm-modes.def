@@ -33,7 +33,11 @@
  *  host      what the embedding program must do for the mode to work:
  *            HOST_NONE, HOST_INPUT (it reports pointer or focus events),
  *            HOST_PASTE (it pastes through tsm_vte_paste), HOST_DRAW (it
- *            presents frames by the mode)
+ *            presents frames by the mode; until the host says it does, SM
+ *            does nothing and DECRQM replies the row's fixed state, as for
+ *            an IGNORED row). Every HOST_DRAW row is offered by one
+ *            setting, tsm_vte_set_sync (sync_enabled, mode_offered in
+ *            tsm-vte.c); mode 2026 is the only such row today.
  *  terminfo  the capabilities whose strings set or reset the mode
  *  spec      the reference
  *  tests     the tests that set and reset the mode: a START_TEST in a
@@ -71,5 +75,6 @@ MODE(DEC,  1048, SAVECUR,    SUPPORTED, false, RESET_NONE, HOST_NONE,  "",      
 MODE(DEC,  1049, ALTBUF1049, SUPPORTED, false, RESET_SOFT, HOST_NONE,  "smcup rmcup", "ctlseqs, alternate screen buffer",               "test_mode_altbuf_1049 alt-screen img-alt-1049")
 MODE(DEC,  1070, SIXPRIV,    SUPPORTED, CONFIGURED(vte->sixel_private_default), RESET_HARD, HOST_NONE, "", "ctlseqs, private sixel registers; ADR-103", "test_sixel_registers")
 MODE(DEC,  2004, BRPASTE,    SUPPORTED, false, RESET_SOFT, HOST_PASTE, "BD BE PS PE", "ctlseqs, bracketed paste",                       "test_mode_bracketed_paste test_mode_bracketed_paste_resets")
+MODE(DEC,  2026, SYNC,       SUPPORTED, false, RESET_SOFT, HOST_DRAW,  "Sync",        "contour synchronized-output; offered while the host presents by it, tsm_vte_set_sync", "test_mode_sync test_mode_sync_resets test_mode_sync_bounded mode-2026")
 MODE(DEC,  2027, GRAPHEME,   SUPPORTED, CONFIGURED(vte->width_method == TSM_WIDTH_UNICODE), RESET_SOFT, HOST_NONE, "", "terminal-unicode-core; ADR-102", "test_vte_width_method_resets mode-2027-decrqm")
 MODE(DEC,  8452, SIXRIGHT,   SUPPORTED, false, RESET_HARD, HOST_NONE,  "",            "ctlseqs, sixel cursor right; ADR-103",           "test_sixel_cursor_right")

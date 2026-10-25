@@ -1155,6 +1155,9 @@ void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len);
  * It also stops after the byte that ends a kitty command it hands to the
  * host hook (TSM_VTE_IMAGE_HOST), and returns 0, consuming nothing, until
  * tsm_vte_image_reply answers it. Only this call hands out requests.
+ *
+ * With tsm_vte_set_sync on (TSM_VTE_SYNC), it also stops after the byte
+ * that ends a hold of mode 2026.
  */
 size_t tsm_vte_input_bounded(struct tsm_vte *vte, const char *u8, size_t len);
 
@@ -1217,6 +1220,43 @@ void tsm_vte_set_kitty_graphics(struct tsm_vte *vte, bool enable);
  */
 #define TSM_VTE_SET_CURSOR_BLINK 1
 void tsm_vte_set_cursor_blink(struct tsm_vte *vte, bool enable);
+
+/*
+ * Synchronized output, DEC private mode 2026 (ADR-201 in aaronsb/kmscon;
+ * contour-terminal/vt-extensions synchronized-output.md). A program brackets
+ * a frame in CSI ? 2026 h and CSI ? 2026 l; between the two, the hold,
+ * libtsm keeps parsing and replying, and the host goes on presenting the
+ * last screen it presented. Defined when the calls below exist.
+ *
+ * Off until the host turns it on with tsm_vte_set_sync, saying that it
+ * presents by the mode. While off, SM and RM 2026 change nothing and DECRQM
+ * replies 4 (permanently reset), which the spec reads as not supported. On,
+ * DECRQM and tsm_vte_get_mode(vte, true, 2026) give 1 during a hold and 2
+ * otherwise. The setting survives RIS and DECSTR; turning it off ends a
+ * hold.
+ *
+ * A hold ends at RM 2026, RIS, DECSTR, tsm_vte_reset, tsm_vte_hard_reset,
+ * tsm_vte_end_sync or tsm_vte_set_sync(vte, false); SM during a hold, and
+ * the alternate screen, change nothing. tsm_vte_input_bounded returns right
+ * after the byte that ends a hold, so the host can present the completed
+ * frame before it feeds any byte of the next; tsm_vte_input parses through.
+ * A host learns of each end from tsm_vte_get_sync_frames, the number of
+ * holds that have ended, which advances once per end, whatever ended it:
+ * compared across a call, a change means a frame ended in it. After
+ * tsm_vte_input_bounded the mode then reads 2. After tsm_vte_input, which
+ * parses through, the count can change while a later hold is already in
+ * force (tsm_vte_get_mode(vte, true, 2026) reads 1); the screen then holds
+ * part of that frame, and a host presents only once the mode reads 2. The
+ * ends a host causes itself (tsm_vte_end_sync, tsm_vte_set_sync(vte,
+ * false), tsm_vte_reset, tsm_vte_hard_reset) move the count between input
+ * calls; the host presents then, and the count already includes that end.
+ * A hold has no time limit in libtsm; a host that bounds it calls
+ * tsm_vte_end_sync when its timer expires, after which DECRQM replies 2.
+ */
+#define TSM_VTE_SYNC 1
+void tsm_vte_set_sync(struct tsm_vte *vte, bool enable);
+uint64_t tsm_vte_get_sync_frames(struct tsm_vte *vte);
+void tsm_vte_end_sync(struct tsm_vte *vte);
 
 /*
  * The kitty graphics protocol's host hook (ADR-103 in aaronsb/kmscon, the
