@@ -276,6 +276,7 @@ enum mode_host {
 	HOST_INPUT,
 	HOST_PASTE,
 	HOST_DRAW,
+	HOST_SIXEL,
 };
 
 enum mode_reset {
@@ -2504,12 +2505,21 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 
 /*
  * A mode the host presents frames by (HOST_DRAW, mode 2026) is offered only
- * while the host says it does (tsm_vte_set_sync); until then it reports its
- * fixed state, as an ignored row does, since nothing would honour it.
+ * while the host says it does (tsm_vte_set_sync), and a mode of sixel's
+ * (HOST_SIXEL: 80, 1070, 8452) only while sixel is on, turned on and with a
+ * budget (sixel_on). Until then it reports its fixed state, as an ignored
+ * row does, since nothing would honour it.
  */
 static bool mode_offered(struct tsm_vte *vte, enum mode_host host)
 {
-	return host != HOST_DRAW || vte->sync_enabled;
+	switch (host) {
+	case HOST_DRAW:
+		return vte->sync_enabled;
+	case HOST_SIXEL:
+		return sixel_on(vte);
+	default:
+		return true;
+	}
 }
 
 static int mode_report(struct tsm_vte *vte, bool dec, unsigned int number)

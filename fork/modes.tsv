@@ -18,7 +18,7 @@ dec	19	DECPEX	ignored	4	4	reset	none	none		ctlseqs DECPEX; a console has no prin
 dec	25	DECTCEM	supported	1	1 2	set	soft	none	civis cnorm	ctlseqs DECTCEM	test_mode_dectcem
 dec	42	DECNRCM	ignored	4	4	reset	soft	none		ctlseqs DECNRCM; libtsm#57	
 dec	47	ALTBUF	supported	2	1 2	reset	soft	none		ctlseqs, alternate screen buffer	test_mode_altbuf_47 img-alt-47
-dec	80	DECSDM	supported	2	1 2	reset	hard	none		ctlseqs DECSDM; ADR-103	test_sixel_display_mode
+dec	80	DECSDM	supported	4	1 2 4	reset	hard	sixel		ctlseqs DECSDM; ADR-103; offered while sixel is on	test_sixel_display_mode
 dec	1000	VT200MOUSE	supported	2	1 2	reset	soft	input		ctlseqs, normal mouse tracking	test_mode_mouse_vt200 test_mode_mouse_decrqm_matches_reports
 dec	1002	BTNMOUSE	supported	2	1 2	reset	soft	input		ctlseqs, button-event tracking	test_mode_mouse_btn_event
 dec	1003	ANYMOUSE	supported	2	1 2	reset	soft	input		ctlseqs, any-event tracking	test_mode_mouse_any_event
@@ -27,8 +27,8 @@ dec	1016	PIXMOUSE	supported	2	1 2	reset	soft	input		ctlseqs, SGR-Pixels mouse mo
 dec	1047	ALTBUF1047	supported	2	1 2	reset	soft	none		ctlseqs, alternate screen buffer	test_mode_altbuf_1047 img-alt-1047
 dec	1048	SAVECUR	supported	2	2	reset	none	none		ctlseqs, save cursor as in DECSC	test_mode_save_cursor_1048
 dec	1049	ALTBUF1049	supported	2	1 2	reset	soft	none	smcup rmcup	ctlseqs, alternate screen buffer	test_mode_altbuf_1049 alt-screen img-alt-1049
-dec	1070	SIXPRIV	supported	1	1 2	host:vte->sixel_private_default	hard	none		ctlseqs, private sixel registers; ADR-103	test_sixel_registers
+dec	1070	SIXPRIV	supported	3	1 2 3	host:vte->sixel_private_default	hard	sixel		ctlseqs, private sixel registers; ADR-103; offered while sixel is on	test_sixel_registers
 dec	2004	BRPASTE	supported	2	1 2	reset	soft	paste	BD BE PS PE	ctlseqs, bracketed paste	test_mode_bracketed_paste test_mode_bracketed_paste_resets
 dec	2026	SYNC	supported	4	1 2 4	reset	soft	draw	Sync	contour synchronized-output; offered while the host presents by it, tsm_vte_set_sync	test_mode_sync test_mode_sync_resets test_mode_sync_bounded mode-2026
 dec	2027	GRAPHEME	supported	1	1 2	host:vte->width_method == TSM_WIDTH_UNICODE	soft	none		terminal-unicode-core; ADR-102	test_vte_width_method_resets mode-2027-decrqm
-dec	8452	SIXRIGHT	supported	2	1 2	reset	hard	none		ctlseqs, sixel cursor right; ADR-103	test_sixel_cursor_right
+dec	8452	SIXRIGHT	supported	4	1 2 4	reset	hard	sixel		ctlseqs, sixel cursor right; ADR-103; offered while sixel is on	test_sixel_cursor_right
