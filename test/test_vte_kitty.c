@@ -235,6 +235,205 @@ START_TEST(test_kitty_split)
 }
 END_TEST
 
+/* the payload tests' picture: f=24, as wide as a run of quads is long */
+#define PW 40
+#define PH 8
+#define PLEN (PW * PH * 3)
+
+/* @n bytes that repeat neither every 3 bytes nor every 4, so a byte or a
+ * quad out of place shows */
+static void pattern(uint8_t *out, size_t n)
+{
+	size_t i;
+
+	for (i = 0; i < n; ++i)
+		out[i] = i * 151 + i / 7;
+}
+
+/* a command with @keys and the @n bytes at @data as its payload, in a
+ * buffer of room to spare the caller frees */
+static char *data_command(const char *keys, const uint8_t *data, size_t n)
+{
+	char *out = malloc(strlen(keys) + n * 2 + 16);
+	size_t len;
+
+	ck_assert_ptr_ne(out, NULL);
+	len = sprintf(out, "\033_G%s;", keys);
+	b64(out + len, data, n);
+	strcat(out, "\033\\");
+	return out;
+}
+
+/* the image placed first is the PW x PH f=24 picture of @data, and was
+ * answered OK; @at names the case on failure */
+static void assert_picture(const uint8_t *data, const char *at, size_t pos)
+{
+	struct tsm_frame_image img;
+	const uint32_t *row;
+	const uint8_t *p;
+	unsigned int x, y;
+
+	ck_assert_msg(!strcmp(reply, "\033_Gi=1;OK\033\\"), "%s %zu: answered %s", at,
+		      pos, reply + 1);
+	ck_assert_msg(placements() == 1, "%s %zu: %u placements", at, pos, placements());
+	ck_assert_int_eq(tsm_screen_frame_image(screen, placement(0)->image_key, &img), 0);
+	ck_assert_uint_eq(img.width, PW);
+	ck_assert_uint_eq(img.height, PH);
+	for (y = 0; y < PH; ++y) {
+		row = (const uint32_t *)((const char *)img.pixels + y * img.stride);
+		for (x = 0; x < PW; ++x) {
+			p = data + (y * PW + x) * 3;
+			ck_assert_msg(row[x] == (0xff000000u | p[0] << 16 | p[1] << 8 | p[2]),
+				      "%s %zu: pixel %u,%u", at, pos, x, y);
+		}
+	}
+}
+
+/*
+ * Input split in two at every offset, and in three around a short middle
+ * read, ends and starts runs at every place in a quad; each decodes as
+ * whole input does
+ */
+START_TEST(test_kitty_run_split)
+{
+	uint8_t data[PLEN];
+	char *cmd;
+	size_t len, i, k;
+
+	pattern(data, sizeof(data));
+	cmd = data_command("a=T,f=24,s=40,v=8,i=1,C=1", data, PLEN);
+	len = strlen(cmd);
+	for (i = 1; i < len; ++i) {
+		teardown();
+		setup();
+		tsm_vte_input(vte, cmd, i);
+		tsm_vte_input(vte, cmd + i, len - i);
+		assert_picture(data, "split at", i);
+	}
+	for (i = 1; i + 6 < len; ++i) {
+		for (k = 1; k <= 5; ++k) {
+			teardown();
+			setup();
+			tsm_vte_input(vte, cmd, i);
+			tsm_vte_input(vte, cmd + i, k);
+			tsm_vte_input(vte, cmd + i + k, len - i - k);
+			assert_picture(data, "three reads at", i * 8 + k);
+		}
+	}
+	free(cmd);
+}
+END_TEST
+
+/*
+ * A chunk ends its quad as a pad does, as libtsm has always read it: data
+ * cut at every byte and sent as two chunks, each encoded on its own, padded
+ * or not, decodes whole
+ */
+START_TEST(test_kitty_chunk_split)
+{
+	uint8_t data[PLEN];
+	char *cmd = malloc(PLEN * 2 + 128), *pad;
+	size_t c, len;
+	unsigned int strip;
+
+	ck_assert_ptr_ne(cmd, NULL);
+	pattern(data, sizeof(data));
+	for (c = 1; c < PLEN; ++c) {
+		for (strip = 0; strip < 2; ++strip) {
+			teardown();
+			setup();
+			len = sprintf(cmd, "\033_Ga=T,f=24,s=40,v=8,i=1,C=1,m=1;");
+			b64(cmd + len, data, c);
+			pad = strchr(cmd + len, '=');
+			if (strip && pad)
+				*pad = 0;
+			strcat(cmd, "\033\\\033_Gm=0;");
+			len = strlen(cmd);
+			b64(cmd + len, data + c, PLEN - c);
+			strcat(cmd, "\033\\");
+			input(cmd);
+			assert_picture(data, strip ? "unpadded chunk of" : "chunk of", c);
+		}
+	}
+	free(cmd);
+}
+END_TEST
+
+/* a pad ends its quad anywhere in a payload: data encoded in two parts,
+ * cut at every byte, decodes whole */
+START_TEST(test_kitty_pad_split)
+{
+	uint8_t data[PLEN];
+	char *cmd = malloc(PLEN * 2 + 128);
+	size_t c, len;
+
+	ck_assert_ptr_ne(cmd, NULL);
+	pattern(data, sizeof(data));
+	for (c = 1; c < PLEN; ++c) {
+		teardown();
+		setup();
+		len = sprintf(cmd, "\033_Ga=T,f=24,s=40,v=8,i=1,C=1;");
+		b64(cmd + len, data, c);
+		len = strlen(cmd);
+		b64(cmd + len, data + c, PLEN - c);
+		strcat(cmd, "\033\\");
+		input(cmd);
+		assert_picture(data, "pad after byte", c);
+	}
+	free(cmd);
+}
+END_TEST
+
+/*
+ * A byte outside base64 anywhere in the payload, past s x v x 3 too, and a
+ * quad of one sextet, at a pad or a chunk's end, answer EINVAL and give
+ * the image's bytes back
+ */
+START_TEST(test_kitty_payload_invalid)
+{
+	static const char *const bad[] = { "*", "-", " ", "\xc3\xa9" };
+	static const char *const lone[] = {
+		"\033_Ga=T,f=24,s=1,v=1,i=1;/wAAA=\033\\",
+		"\033_Ga=T,f=24,s=1,v=1,i=1;/wAAA\033\\",
+		"\033_Ga=T,f=24,s=1,v=1,i=1,m=1;/wAAA\033\\\033_Gm=0;AAAA\033\\",
+	};
+	uint8_t data[PLEN + 12];
+	char *cmd, *in = malloc(PLEN * 2 + 128);
+	size_t start, len, p, b;
+
+	ck_assert_ptr_ne(in, NULL);
+	pattern(data, sizeof(data));
+	cmd = data_command("a=T,f=24,s=40,v=8,i=1,C=1", data, sizeof(data));
+	start = strchr(cmd, ';') + 1 - cmd;
+	len = strlen(cmd) - 2;
+	for (p = start; p < len; ++p) {
+		for (b = 0; b < sizeof(bad) / sizeof(*bad); ++b) {
+			teardown();
+			setup();
+			memcpy(in, cmd, p);
+			strcpy(in + p, bad[b]);
+			strcat(in, cmd + p + 1);
+			input(in);
+			ck_assert_msg(!strcmp(reply, "\033_Gi=1;EINVAL:invalid argument\033\\"),
+				      "byte %zu of %zu, bad %zu: answered %s", p, len, b,
+				      reply + 1);
+			ck_assert_uint_eq(placements(), 0);
+			ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+		}
+	}
+	for (b = 0; b < sizeof(lone) / sizeof(*lone); ++b) {
+		teardown();
+		setup();
+		input(lone[b]);
+		ck_assert_msg(!strcmp(reply, "\033_Gi=1;EINVAL:invalid argument\033\\"),
+			      "lone sextet %zu: answered %s", b, reply + 1);
+		ck_assert_uint_eq(tsm_screen_get_image_bytes(screen), 0);
+	}
+	free(in);
+	free(cmd);
+}
+END_TEST
+
 /*
  * Raw data past s x v x bytes per pixel is ignored, as kitty ignores it, in a
  * transmission and in a=q alike; data short of it is refused
@@ -1420,6 +1619,10 @@ TEST_DEFINE_CASE(kitty)
 	TEST(test_kitty_pixels)
 	TEST(test_kitty_excess)
 	TEST(test_kitty_split)
+	TEST(test_kitty_run_split)
+	TEST(test_kitty_chunk_split)
+	TEST(test_kitty_pad_split)
+	TEST(test_kitty_payload_invalid)
 	TEST(test_kitty_c1)
 	TEST(test_kitty_bounded)
 	TEST(test_kitty_upload_bytes)
