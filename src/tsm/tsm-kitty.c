@@ -901,20 +901,29 @@ static bool is_continuation(struct tsm_kitty *k, const struct kitty_cmd *cmd)
  * Payload
  */
 
-static int b64_value(unsigned char c)
-{
-	if (c >= 'A' && c <= 'Z')
-		return c - 'A';
-	if (c >= 'a' && c <= 'z')
-		return c - 'a' + 26;
-	if (c >= '0' && c <= '9')
-		return c - '0' + 52;
-	if (c == '+')
-		return 62;
-	if (c == '/')
-		return 63;
-	return -1;
-}
+/* each base64 character's sextet (RFC 4648, section 4); B64_BAD for any
+ * other byte, the pad included */
+#define B64_BAD 0xff
+#define XX B64_BAD
+static const uint8_t b64_sextet[256] = {
+	XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX,
+	XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX,
+	XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, 62, XX, XX, XX, 63,
+	52, 53, 54, 55, 56, 57, 58, 59, 60, 61, XX, XX, XX, XX, XX, XX,
+	XX,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
+	15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, XX, XX, XX, XX, XX,
+	XX, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+	41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, XX, XX, XX, XX, XX,
+	XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX,
+	XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX,
+	XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX,
+	XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX,
+	XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX,
+	XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX,
+	XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX,
+	XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX, XX,
+};
+#undef XX
 
 /* @n decoded bytes for the APC's target */
 static void emit(struct tsm_kitty *k, const uint8_t *data, size_t n)
@@ -975,19 +984,89 @@ static void b64_flush(struct tsm_kitty *k, struct b64 *st)
 	st->n = 0;
 }
 
-/* base64 decoding, a quad at a time; a pad ends the quad it is in */
+/*
+ * Up to @quads whole quads at @s into @out, 3 bytes each, stopping at the
+ * first quad that holds a byte outside base64; returns the quads decoded
+ */
+static size_t b64_quads(uint8_t *out, const unsigned char *s, size_t quads)
+{
+	uint32_t a, b, c, d, v;
+	size_t i;
+
+	for (i = 0; i < quads; ++i, s += 4, out += 3) {
+		a = b64_sextet[s[0]];
+		b = b64_sextet[s[1]];
+		c = b64_sextet[s[2]];
+		d = b64_sextet[s[3]];
+		/* B64_BAD has bits no sextet has */
+		if ((a | b | c | d) > 63)
+			break;
+		v = a << 18 | b << 12 | c << 6 | d;
+		out[0] = v >> 16;
+		out[1] = v >> 8;
+		out[2] = v;
+	}
+	return i;
+}
+
+/*
+ * The whole quads in @len bytes at @s, up to the first that holds a byte
+ * outside base64, for the APC's target: straight into a raw upload's pixels
+ * while s x v x bytes per pixel has room for them, the rest through emit a
+ * block at a time. Returns the bytes taken.
+ */
+static size_t payload_quads(struct tsm_kitty *k, const unsigned char *s, size_t len)
+{
+	struct kitty_upload *up = &k->up;
+	uint8_t block[3 * 1024];
+	size_t quads = len / 4, done = 0, n, got;
+
+	if (k->target == TARGET_UPLOAD && up->mode == UPLOAD_RAW) {
+		n = (up->want - up->len) / 3;
+		if (n > quads)
+			n = quads;
+		done = b64_quads(up->buf + up->len, s, n);
+		up->len += done * 3;
+		if (done < n)
+			return done * 4;
+	}
+	while (done < quads && target_open(k)) {
+		n = quads - done;
+		if (n > sizeof(block) / 3)
+			n = sizeof(block) / 3;
+		got = b64_quads(block, s + done * 4, n);
+		if (got)
+			emit(k, block, got * 3);
+		done += got;
+		if (got < n)
+			break;
+	}
+	return done * 4;
+}
+
+/*
+ * base64 decoding: whole quads a block at a time, and a byte at a time
+ * where a quad is split across runs or holds a byte outside base64; a pad
+ * ends the quad it is in
+ */
 static void payload(struct tsm_kitty *k, const unsigned char *s, size_t len)
 {
 	struct b64 *st = target_b64(k);
+	const unsigned char *end = s + len;
 	uint8_t out[3];
-	size_t i;
-	int v;
+	unsigned int c, v;
 
 	k->work += len;
-	for (i = 0; i < len && target_open(k); ++i) {
-		v = b64_value(s[i]);
-		if (v < 0) {
-			if (s[i] == '=')
+	while (s < end && target_open(k)) {
+		if (!st->n && end - s >= 4) {
+			s += payload_quads(k, s, end - s);
+			if (s == end || !target_open(k))
+				break;
+		}
+		c = *s++;
+		v = b64_sextet[c];
+		if (v == B64_BAD) {
+			if (c == '=')
 				b64_flush(k, st);
 			else
 				payload_error(k);
