@@ -326,21 +326,22 @@ static void mode_trace(bool dec, unsigned int number, bool set)
  */
 size_t tsm_vte_test_state(struct tsm_vte *vte, void *buf, size_t len)
 {
-	struct tsm_vte *copy = buf;
+	struct tsm_vte copy;
 
-	if (len < sizeof(*vte))
+	if (len < sizeof(copy))
 		return 0;
-	memcpy(copy, vte, sizeof(*vte));
-	copy->state = 0;
-	copy->csi_argc = 0;
-	memset(copy->csi_argv, 0, sizeof(copy->csi_argv));
-	memset(copy->csi_subargc, 0, sizeof(copy->csi_subargc));
-	memset(copy->csi_subargv, 0, sizeof(copy->csi_subargv));
-	copy->csi_subarg_drop = false;
-	copy->csi_flags = 0;
-	copy->osc_len = 0;
-	memset(copy->osc_arg, 0, sizeof(copy->osc_arg));
-	return sizeof(*vte);
+	memcpy(&copy, vte, sizeof(copy));
+	copy.state = 0;
+	copy.csi_argc = 0;
+	memset(copy.csi_argv, 0, sizeof(copy.csi_argv));
+	memset(copy.csi_subargc, 0, sizeof(copy.csi_subargc));
+	memset(copy.csi_subargv, 0, sizeof(copy.csi_subargv));
+	copy.csi_subarg_drop = false;
+	copy.csi_flags = 0;
+	copy.osc_len = 0;
+	memset(copy.osc_arg, 0, sizeof(copy.osc_arg));
+	memcpy(buf, &copy, sizeof(copy));
+	return sizeof(copy);
 }
 #else
 #define MODE_TRACE(dec, number)

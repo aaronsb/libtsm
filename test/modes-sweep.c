@@ -75,19 +75,32 @@ static void snapshot(struct tsm_vte *vte, struct tsm_screen *con, struct state *
 	s->writes = writes;
 }
 
+/* the first byte at which @a and @b differ, or -1 */
+static long first_change(const void *a, const void *b, size_t len)
+{
+	const unsigned char *x = a, *y = b;
+	size_t i;
+
+	for (i = 0; i < len; ++i)
+		if (x[i] != y[i])
+			return i;
+	return -1;
+}
+
 /* what differs between @a and @b, or NULL */
 static const char *changed(const struct state *a, const struct state *b)
 {
 	static char what[64];
-	size_t i;
+	long at;
 
-	if (memcmp(&a->screen, &b->screen, sizeof(a->screen)))
-		return "struct tsm_screen";
-	for (i = 0; i < sizeof(a->vte); ++i)
-		if (a->vte[i] != b->vte[i]) {
-			snprintf(what, sizeof(what), "struct tsm_vte at byte %zu", i);
-			return what;
-		}
+	if ((at = first_change(&a->screen, &b->screen, sizeof(a->screen))) >= 0) {
+		snprintf(what, sizeof(what), "struct tsm_screen at byte %ld", at);
+		return what;
+	}
+	if ((at = first_change(a->vte, b->vte, sizeof(a->vte))) >= 0) {
+		snprintf(what, sizeof(what), "struct tsm_vte at byte %ld", at);
+		return what;
+	}
 	if (memcmp(a->reports, b->reports, sizeof(a->reports)))
 		return "a row's DECRQM value";
 	if (a->writes != b->writes)
