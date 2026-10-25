@@ -9,6 +9,7 @@ libtsm_srcs = [
     'tsm-sixel.c',
     'tsm-unicode.c',
     'tsm-vte-charsets.c',
+    'tsm-vte-image.c',
     'tsm-vte.c',
 ]
 
