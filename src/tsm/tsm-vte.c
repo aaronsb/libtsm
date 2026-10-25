@@ -317,6 +317,32 @@ static void mode_trace(bool dec, unsigned int number, bool set)
 	fclose(f);
 }
 #define MODE_TRACE(dec, number) mode_trace(dec, number, set)
+
+/*
+ * Test builds only: struct tsm_vte copied into @buf with the parser's
+ * scratch zeroed (the sequence being parsed, which every sequence
+ * rewrites), so modes-sweep compares every other field whole, a field
+ * added later included. Returns the size copied, or 0 when @len is short.
+ */
+size_t tsm_vte_test_state(struct tsm_vte *vte, void *buf, size_t len)
+{
+	struct tsm_vte copy;
+
+	if (len < sizeof(copy))
+		return 0;
+	memcpy(&copy, vte, sizeof(copy));
+	copy.state = 0;
+	copy.csi_argc = 0;
+	memset(copy.csi_argv, 0, sizeof(copy.csi_argv));
+	memset(copy.csi_subargc, 0, sizeof(copy.csi_subargc));
+	memset(copy.csi_subargv, 0, sizeof(copy.csi_subargv));
+	copy.csi_subarg_drop = false;
+	copy.csi_flags = 0;
+	copy.osc_len = 0;
+	memset(copy.osc_arg, 0, sizeof(copy.osc_arg));
+	memcpy(buf, &copy, sizeof(copy));
+	return sizeof(copy);
+}
 #else
 #define MODE_TRACE(dec, number)
 #endif

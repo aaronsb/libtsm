@@ -563,6 +563,8 @@ extern tsm_vte_charset tsm_vte_dec_special_graphics;
 #ifdef TSM_MODE_TRACE
 /* test builds: names the running test in the mode trace (tsm-vte.c) */
 void tsm_mode_trace_test(const char *name);
+/* test builds: struct tsm_vte without the parser's scratch (tsm-vte.c) */
+size_t tsm_vte_test_state(struct tsm_vte *vte, void *buf, size_t len);
 #endif
 
 #endif /* TSM_LIBTSM_INT_H */
