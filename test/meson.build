@@ -138,6 +138,13 @@ endif
 # and fork/modes.tsv from src/tsm/tsm-modes.def, and modes-doc fails when the
 # committed files differ (make modes rewrites them).
 gen_modes = executable('gen-modes', 'gen-modes.c', dependencies: [libtsm_test_dep])
+# SM, RM and DECRQM consist of the table's expansions, and the mode constants
+# stay in the accessors.
+test(
+    'modes-source',
+    find_program('python3'),
+    args: [files('modes-source.py'), meson.project_source_root() / 'src' / 'tsm' / 'tsm-vte.c'],
+)
 test(
     'modes-doc',
     find_program('python3'),
