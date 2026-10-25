@@ -1035,7 +1035,8 @@ static size_t payload_quads(struct tsm_kitty *k, const unsigned char *s, size_t 
 		if (n > sizeof(block) / 3)
 			n = sizeof(block) / 3;
 		got = b64_quads(block, s + done * 4, n);
-		emit(k, block, got * 3);
+		if (got)
+			emit(k, block, got * 3);
 		done += got;
 		if (got < n)
 			break;
