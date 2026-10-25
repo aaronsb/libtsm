@@ -9,7 +9,9 @@ test_sixel.c, so fuzzing starts from every construct the tests know.
 Each fuzz-vte-sixel seed is two header bytes (screen and cell size; limits,
 registers and feeding) and a terminal stream: the six-* and img-* streams of
 the conformance corpus, so fuzzing starts from every sixel case tier 1
-judges. Each fuzz-vte-kitty seed is the same two header bytes and a kit-*
+judges, and a stream of sixel frames in mode 2026, fed whole and in bounded
+chunks, with the mode offered (the host ending holds in one) and not. Each
+fuzz-vte-kitty seed is the same two header bytes and a kit-*
 stream, every kitty graphics case tier 1 judges.
 """
 import os
@@ -23,6 +25,17 @@ CASES_DIR = os.path.join(HERE, "..", "conformance", "cases")
 # header bytes for the streams: 12x4 screen of 8x16 cells, defaults, fed
 # whole; and the same fed in 7-byte bounded chunks with shared registers
 VTE_HEADERS = (bytes([0x00, 0x30]), bytes([0x10, 0x18]))
+# mode 2026 offered (bit 6): fed whole; in 7-byte bounded chunks with the
+# host ending a hold every third call (bit 7); in 4096-byte bounded chunks,
+# where one call could reach past a frame end; and in those chunks with the
+# mode not offered
+SYNC_HEADERS = (bytes([0x00, 0x70]), bytes([0x10, 0xd8]),
+                bytes([0x00, 0x68]), bytes([0x00, 0x20]))
+SYNC_STREAM = (b"\x1b[?2026h\x1bP0;0q#1!8~-!8~\x1b\\\x1b[?2026l"
+               b"\x1b[?2026h\x1b[?2026h\x1bP0;0q#2!4@\x1b\\x\x1b[?2026l\x1b[?2026l"
+               b"\x1b[?2026h\x1bP0;0q#1~\x1b\\\x1bc"
+               b"\x1b[?2026hy\x1b[!p\x1b[?2026h\x1b[?1049hz\x1b[?1049l"
+               b"\x1b[?2026$p\x1b[?2026;25l\x1b[?2026h\x1bP0;0q#1!3~")
 
 # P1 byte: value + 1 (0 is omitted); P2 byte: value + 1; flags: limits in
 # bits 0-1, chunk size in bits 2-4, two registers in bit 6, shared in bit 7
@@ -66,6 +79,9 @@ def main():
     with open(os.path.join(VTE_OUT, "owed-evicted"), "wb") as f:
         f.write(bytes([0x30, 0x30]) + b"\x1b[1;1H\x1bP0;0q!24~\x1b\\"
                 b"\x1b[1;2HX\x1b[4;1H\n\n\n\n\n")
+    for i, header in enumerate(SYNC_HEADERS):
+        with open(os.path.join(VTE_OUT, f"sync-frames-{i}"), "wb") as f:
+            f.write(header + SYNC_STREAM)
     for case in sorted(os.listdir(CASES_DIR)):
         if not case.startswith(("six-", "img-")) or not case.endswith(".bin"):
             continue
