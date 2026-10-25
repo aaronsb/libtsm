@@ -1,7 +1,7 @@
 size 80x24
 cursor 6,2
 flags AUTO_WRAP
-reply 1b5b3f36303b313b343b363b393b3135631b5b3e313b313b30631b5b306e1b5b333b3752
+reply 1b5b3e313b313b30631b5b306e1b5b333b3752
 palette legacy fg=#e5e5e5 bg=#000000
 row 0 |q|
 row 1 ||
