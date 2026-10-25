@@ -4,11 +4,12 @@
  *
  * For every DEC private mode 0 to 65535 and every ANSI mode 0 to 255:
  * DECRQM replies 0 exactly when tsm-modes.def has no row for it, and for a
- * number with no row, SM and then RM change nothing: not the screen's flags,
- * margins, cursor, age or width method, not the vte's flags, mouse fields or
- * count of synchronized frames,
- * no row's DECRQM value, and nothing is written to the host. A handler added
- * outside the table changes one of these and fails here.
+ * number with no row, SM and then RM change nothing: no field of struct
+ * tsm_screen, no field of struct tsm_vte but the parser's scratch
+ * (tsm_vte_test_state), no row's DECRQM value, and nothing is written to the
+ * host. A handler added outside the table, anywhere on the parse path,
+ * changes one of these and fails here, unless all it changes is held behind
+ * a pointer (cell contents, the tab ruler, image state).
  *
  * SPDX-License-Identifier: MIT
  */
@@ -53,14 +54,8 @@ static void write_cb(struct tsm_vte *vte, const char *u8, size_t len, void *data
 }
 
 struct state {
-	unsigned int screen_flags;
-	unsigned int margin_top, margin_bottom;
-	unsigned int cursor_x, cursor_y;
-	tsm_age_t age;
-	enum tsm_width_method width_method;
-	unsigned int vte_flags;
-	unsigned int mouse_mode, mouse_event;
-	uint64_t sync_frames;
+	struct tsm_screen screen;
+	unsigned char vte[4096];
 	int reports[ROW_COUNT];
 	unsigned long writes;
 };
@@ -70,20 +65,34 @@ static void snapshot(struct tsm_vte *vte, struct tsm_screen *con, struct state *
 	size_t i;
 
 	memset(s, 0, sizeof(*s));
-	s->screen_flags = tsm_screen_get_flags(con);
-	s->margin_top = con->margin_top;
-	s->margin_bottom = con->margin_bottom;
-	s->cursor_x = tsm_screen_get_cursor_x(con);
-	s->cursor_y = tsm_screen_get_cursor_y(con);
-	s->age = con->age_cnt;
-	s->width_method = con->width_method;
-	s->vte_flags = tsm_vte_get_flags(vte);
-	s->mouse_mode = tsm_vte_get_mouse_mode(vte);
-	s->mouse_event = tsm_vte_get_mouse_event(vte);
-	s->sync_frames = tsm_vte_get_sync_frames(vte);
+	memcpy(&s->screen, con, sizeof(*con));
+	if (!tsm_vte_test_state(vte, s->vte, sizeof(s->vte))) {
+		fprintf(stderr, "modes-sweep: struct tsm_vte outgrew the snapshot\n");
+		exit(1);
+	}
 	for (i = 0; i < ROW_COUNT; ++i)
 		s->reports[i] = tsm_vte_get_mode(vte, rows[i].dec, rows[i].number);
 	s->writes = writes;
+}
+
+/* what differs between @a and @b, or NULL */
+static const char *changed(const struct state *a, const struct state *b)
+{
+	static char what[64];
+	size_t i;
+
+	if (memcmp(&a->screen, &b->screen, sizeof(a->screen)))
+		return "struct tsm_screen";
+	for (i = 0; i < sizeof(a->vte); ++i)
+		if (a->vte[i] != b->vte[i]) {
+			snprintf(what, sizeof(what), "struct tsm_vte at byte %zu", i);
+			return what;
+		}
+	if (memcmp(a->reports, b->reports, sizeof(a->reports)))
+		return "a row's DECRQM value";
+	if (a->writes != b->writes)
+		return "what is written to the host";
+	return NULL;
 }
 
 static bool has_row(bool dec, unsigned int number)
@@ -108,6 +117,7 @@ int main(void)
 	struct state base, now;
 	unsigned int failures = 0, rows_seen = 0, unknown = 0, number, kind;
 	char seq[32], want[32];
+	const char *what;
 	bool dec, row;
 
 	if (tsm_screen_new(&con, NULL, NULL) || tsm_screen_resize(con, 8, 4) ||
@@ -145,17 +155,17 @@ int main(void)
 			snprintf(seq, sizeof(seq), "\e[%s%uh", dec ? "?" : "", number);
 			input(vte, seq);
 			snapshot(vte, con, &now);
-			if (memcmp(&base, &now, sizeof(base))) {
-				printf("modes-sweep: %s %u has no row, and SM changed state\n",
-				       dec ? "DEC" : "ANSI", number);
+			if ((what = changed(&base, &now))) {
+				printf("modes-sweep: %s %u has no row, and SM changed %s\n",
+				       dec ? "DEC" : "ANSI", number, what);
 				++failures;
 			}
 			snprintf(seq, sizeof(seq), "\e[%s%ul", dec ? "?" : "", number);
 			input(vte, seq);
 			snapshot(vte, con, &now);
-			if (memcmp(&base, &now, sizeof(base))) {
-				printf("modes-sweep: %s %u has no row, and RM changed state\n",
-				       dec ? "DEC" : "ANSI", number);
+			if ((what = changed(&base, &now))) {
+				printf("modes-sweep: %s %u has no row, and RM changed %s\n",
+				       dec ? "DEC" : "ANSI", number, what);
 				++failures;
 			}
 			if (failures > 20) {
