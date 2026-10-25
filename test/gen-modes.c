@@ -55,11 +55,10 @@ static void write_cb(struct tsm_vte *vte, const char *u8, size_t len, void *data
 
 /*
  * The states a row's DECRQM is read in: each context, then nothing, the
- * row's SM, or its SM and RM. The contexts reach what SM alone does not:
- * the SGR mouse encoding, under which 1002 and 1003 report, and a steady
- * cursor (DECSCUSR 2), which mode 12 reports.
+ * row's SM, or its SM and RM. The context reaches what SM alone does not: a
+ * steady cursor (DECSCUSR 2), which mode 12 reports.
  */
-static const char *const contexts[] = { "", "\e[?1006h", "\e[2 q" };
+static const char *const contexts[] = { "", "\e[2 q" };
 
 /* bit v set for each DECRQM value v the row gives in those states, with
  * the host's offering settings on when @host */
@@ -210,7 +209,7 @@ static void print_md(const int *values, const unsigned int *seen,
 	printf("%zu modes: %u supported, %u partial, %u ignored, %u refused.\n\n",
 	       ROW_COUNT, count[0], count[1], count[2], count[3]);
 	printf("- **Status.** Supported: set and reset do what the spec says. Partial: part of it, and the spec column names the issue for the rest. Ignored: accepted with no effect; the spec column says why, or names the issue for an effect that is wanted. Refused: deliberately not implemented.\n");
-	printf("- **DECRQM.** The reply to `CSI ? Ps $ p` (DEC) or `CSI Ps $ p` (ANSI), as `tsm_vte_get_mode` also gives it: 1 set, 2 reset, 3 permanently set, 4 permanently reset. \"At start\" is a new vte with libtsm's default settings; \"1 or 2\" means both were seen after the mode's SM and RM, under the SGR mouse encoding and under a steady cursor; a single value is the only one seen. \"Once the host offers it\": the host's setting that says it does what the mode needs is on, `tsm_vte_set_sync` for mode 2026; until then the mode replies its fixed state and SM does nothing. A number with no row replies 0, not recognised, and SM and RM log it at debug level.\n");
+	printf("- **DECRQM.** The reply to `CSI ? Ps $ p` (DEC) or `CSI Ps $ p` (ANSI), as `tsm_vte_get_mode` also gives it: 1 set, 2 reset, 3 permanently set, 4 permanently reset. \"At start\" is a new vte with libtsm's default settings; \"1 or 2\" means both were seen after the mode's SM and RM, and under a steady cursor; a single value is the only one seen. \"Once the host offers it\": the host's setting that says it does what the mode needs is on, `tsm_vte_set_sync` for mode 2026; until then the mode replies its fixed state and SM does nothing. A number with no row replies 0, not recognised, and SM and RM log it at debug level.\n");
 	printf("- **Reset.** Which resets restore the default: soft (DECSTR and RIS), hard (RIS only), or none. For an ignored row, which resets restore its legacy bit in `tsm_vte_get_flags`.\n");
 	printf("- **Host.** What the program embedding libtsm must do for the mode to work: input (report pointer or focus events), paste (paste through `tsm_vte_paste`), draw (present frames by the mode), or none.\n");
 	printf("- **Terminfo.** The capabilities whose strings set or reset the mode.\n");

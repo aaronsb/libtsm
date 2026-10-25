@@ -13,8 +13,10 @@ ADR-201 in aaronsb/kmscon. Checks, in the source:
   csi_decrqm, and csi_decrqm answers from mode_report;
 - the mode constants (TSM_VTE_MOUSE_MODE_*, TSM_VTE_MOUSE_EVENT_*,
   TSM_VTE_BRACKETED_PASTE) appear only in the accessors (mode_<name>_set,
-  mode_<name>_get and the mouse helpers they share) and in
-  tsm_vte_handle_mouse, which reads the mouse fields to encode reports.
+  mode_<name>_get and the mouse helpers they share), in
+  tsm_vte_handle_mouse, which reads the mouse fields to encode reports, and
+  in tsm_vte_get_mouse_mode and tsm_vte_get_mouse_event, which give them to
+  the host.
 
 SPDX-License-Identifier: MIT
 """
@@ -54,7 +56,8 @@ EXPANSIONS = {
 }
 
 CONSTANT = re.compile(r"\bTSM_VTE_(?:MOUSE_MODE_\w+|MOUSE_EVENT_\w+|BRACKETED_PASTE)\b")
-ALLOWED = re.compile(r"^(?:mode_\w+_(?:set|get)|mouse_tracking_set|mouse_event_set|mouse_sgr|tsm_vte_handle_mouse)$")
+ALLOWED = re.compile(r"^(?:mode_\w+_(?:set|get)|mouse_notify|mouse_tracking_set|mouse_encoding_set|"
+                     r"tsm_vte_handle_mouse|tsm_vte_get_mouse_(?:mode|event))$")
 
 
 def functions(src):

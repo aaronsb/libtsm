@@ -359,6 +359,7 @@ START_TEST(test_mode_mouse_any_event)
 	ck_assert_uint_eq(mouse_cb_mode, 1003);
 	ck_assert(mouse_sends(1, 0, TSM_MOUSE_EVENT_MOVED));
 	ck_assert_str_eq(out, "\e[MC\"#");
+	out_clear();
 	ck_assert(tsm_vte_handle_mouse(vte, 2, 2, 0, 0, 0, TSM_MOUSE_EVENT_MOVED,
 				       TSM_MOUSE_MODIFIER_CTRL));
 	ck_assert_str_eq(out, "\e[MS##");
