@@ -108,6 +108,18 @@ static void input(const char *s)
 	tsm_vte_input(vte, s, strlen(s));
 }
 
+/* DECRQM of DEC mode @number replies @value */
+static void assert_decrqm(unsigned int number, unsigned int value)
+{
+	char query[32], expect[32];
+
+	snprintf(query, sizeof(query), "\033[?%u$p", number);
+	snprintf(expect, sizeof(expect), "\033[?%u;%u$y", number, value);
+	reply_clear();
+	input(query);
+	ck_assert_str_eq(reply, expect);
+}
+
 /*
  * A DCS for a @w x @h picture of register @reg, all opaque (P2 0), written
  * band by band into @buf.
@@ -853,6 +865,50 @@ START_TEST(test_sixel_xtwinops)
 }
 END_TEST
 
+/*
+ * Modes 80, 1070 and 8452 reply 1 or 2 while sixel is on, and their fixed
+ * state while it is off (HOST_SIXEL, ADR-103 Replies stay truthful): turned
+ * off, or with the budget gone. SM and RM made meanwhile show when it comes
+ * back, and 1070's fixed state follows private-color-registers.
+ */
+START_TEST(test_sixel_decrqm)
+{
+	input("\033[?80;8452h\033[?1070l");
+	assert_decrqm(80, 1);
+	assert_decrqm(1070, 2);
+	assert_decrqm(8452, 1);
+	input("\033[?80;8452l\033[?1070h");
+	assert_decrqm(80, 2);
+	assert_decrqm(1070, 1);
+	assert_decrqm(8452, 2);
+
+	tsm_vte_set_sixel(vte, false);
+	assert_decrqm(80, 4);
+	assert_decrqm(1070, 3);
+	assert_decrqm(8452, 4);
+	input("\033[?80;8452h\033[?1070l");
+	assert_decrqm(80, 4);
+	assert_decrqm(1070, 3);
+	assert_decrqm(8452, 4);
+
+	tsm_vte_set_sixel(vte, true);
+	assert_decrqm(80, 1);
+	assert_decrqm(1070, 2);
+	assert_decrqm(8452, 1);
+
+	tsm_screen_set_image_limit(screen, 0);
+	assert_decrqm(80, 4);
+	assert_decrqm(1070, 3);
+	assert_decrqm(8452, 4);
+	tsm_screen_set_image_limit(screen, 64 << 20);
+
+	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 0, false), 0);
+	assert_decrqm(1070, 2);
+	tsm_vte_set_sixel(vte, false);
+	assert_decrqm(1070, 4);
+}
+END_TEST
+
 TEST_DEFINE_CASE(off)
 	TEST(test_sixel_off)
 TEST_END_CASE
@@ -889,6 +945,7 @@ TEST_DEFINE_CASE(replies)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_sixel_xtsmgraphics)
 	TEST(test_sixel_xtwinops)
+	TEST(test_sixel_decrqm)
 TEST_END_CASE
 
 TEST_DEFINE(
