@@ -605,6 +605,39 @@ START_TEST(test_mode_xtrestore_not_margins)
 }
 END_TEST
 
+/* XTSMPOINTER (CSI > Ps p) sets when xterm hides the pointer; it is not
+ * DECSTR, and neither is a p final under another prefix or intermediate
+ * (aaronsb/libtsm#59) */
+START_TEST(test_mode_xtsmpointer_not_reset)
+{
+	input("\e[?1h\e[?2004h\e[2;4r");
+	input("\e[>1p\e[>0p\e[>p\e[>2;3p\e[?1p\e[1 p\e[1+p\e[1*p\e[1'p");
+	/* XTPUSHSGR's alias, CSI Pm # p */
+	input("\e[#p\e[1;2#p");
+	ck_assert(vte_flag(TSM_VTE_FLAG_CURSOR_KEY_MODE));
+	tsm_vte_paste(vte, "x");
+	ck_assert_str_eq(out, "\e[200~x\e[201~");
+	/* rows 2 to 4 still scroll: a line feed on row 4 stays on row 4 */
+	input("\e[4;1H\n");
+	assert_cursor(0, 3);
+
+	/* DECSTR still resets */
+	out_clear();
+	input("\e[!p");
+	ck_assert(!vte_flag(TSM_VTE_FLAG_CURSOR_KEY_MODE));
+	tsm_vte_paste(vte, "y");
+	ck_assert_str_eq(out, "y");
+	input("\e[4;1H\n");
+	assert_cursor(0, 4);
+
+	/* and so does DECSCL, with its " or without it, as upstream takes it */
+	input("\e[?1h\e[62;1\"p");
+	ck_assert(!vte_flag(TSM_VTE_FLAG_CURSOR_KEY_MODE));
+	input("\e[?1h\e[62p");
+	ck_assert(!vte_flag(TSM_VTE_FLAG_CURSOR_KEY_MODE));
+}
+END_TEST
+
 /* KAM, DECARM and DECNRCM have no effect, but SM and RM still toggle their
  * flags in tsm_vte_get_flags, as upstream's API has them */
 START_TEST(test_mode_ignored_legacy_flags)
@@ -1113,6 +1146,7 @@ TEST_DEFINE_CASE(report)
 	TEST(test_mode_cursor_blink)
 	TEST(test_mode_cursor_blink_host)
 	TEST(test_mode_xtrestore_not_margins)
+	TEST(test_mode_xtsmpointer_not_reset)
 	TEST(test_mode_sync)
 	TEST(test_mode_sync_host)
 	TEST(test_mode_sync_resets)
