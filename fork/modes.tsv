@@ -29,6 +29,6 @@ dec	1048	SAVECUR	supported	2	2	reset	none	none		ctlseqs, save cursor as in DECSC
 dec	1049	ALTBUF1049	supported	2	1 2	reset	soft	none	smcup rmcup	ctlseqs, alternate screen buffer	test_mode_altbuf_1049 alt-screen img-alt-1049
 dec	1070	SIXPRIV	supported	1	1 2	host:vte->sixel_private_default	hard	none		ctlseqs, private sixel registers; ADR-103	test_sixel_registers
 dec	2004	BRPASTE	supported	2	1 2	reset	soft	paste	BD BE PS PE	ctlseqs, bracketed paste	test_mode_bracketed_paste test_mode_bracketed_paste_resets
-dec	2026	SYNC	supported	4	1 2 4	reset	soft	draw	Sync	contour synchronized-output; offered while the host presents by it, tsm_vte_set_sync	test_mode_sync test_mode_sync_resets test_mode_sync_bounded
+dec	2026	SYNC	supported	4	1 2 4	reset	soft	draw	Sync	contour synchronized-output; offered while the host presents by it, tsm_vte_set_sync	test_mode_sync test_mode_sync_resets test_mode_sync_bounded mode-2026
 dec	2027	GRAPHEME	supported	1	1 2	host:vte->width_method == TSM_WIDTH_UNICODE	soft	none		terminal-unicode-core; ADR-102	test_vte_width_method_resets mode-2027-decrqm
 dec	8452	SIXRIGHT	supported	2	1 2	reset	hard	none		ctlseqs, sixel cursor right; ADR-103	test_sixel_cursor_right

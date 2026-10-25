@@ -35,6 +35,7 @@ vs15-width 80 24
 width-methods 80 24
 mode-2027-decrqm 80 24
 mode-2027-resets 80 24
+mode-2026 80 24
 combining-after-move 80 24
 cluster-reuse-erase 80 24
 cluster-max 80 24

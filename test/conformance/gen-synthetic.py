@@ -339,6 +339,20 @@ def _():
             CSI + "?2027l" + CSI + "!p" + q + THUMBS_TONE)
 
 
+@case("mode-2026")
+def _():
+    # Mode 2026, synchronized output, with the host presenting by it as
+    # tsm-replay's does: DECRQM replies 2, then 1 inside a frame, answered
+    # there and not at the frame's end, and 2 after RM, RIS and DECSTR each
+    # end one. With the host's setting off it replies 4 and SM does nothing.
+    q = CSI + "?2026$p"
+    bsu, esu = CSI + "?2026h", CSI + "?2026l"
+    return (q + bsu + "frame" + q + esu + q + "\r\n" +
+            bsu + "a" + ESC + "c" + q +
+            bsu + "b" + CSI + "!p" + q + esu +
+            tt("sync", on=0) + q + bsu + q + tt("sync", on=1) + q)
+
+
 @case("combining-after-move")
 def _():
     # After the cursor moves, a combining mark joins the cell before the
