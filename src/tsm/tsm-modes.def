@@ -37,8 +37,7 @@
  *            does nothing and DECRQM replies the row's fixed state, as for
  *            an IGNORED row). Every HOST_DRAW row is offered by one
  *            setting, tsm_vte_set_sync (sync_enabled, mode_offered in
- *            tsm-vte.c); mode 2026 is the only such row today
-
+ *            tsm-vte.c); mode 2026 is the only such row today.
  *  terminfo  the capabilities whose strings set or reset the mode
  *  spec      the reference
  *  tests     the tests that set and reset the mode: a START_TEST in a
