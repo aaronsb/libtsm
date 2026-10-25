@@ -11,6 +11,9 @@ ADR-201 in aaronsb/kmscon. Checks, in the source:
   per kind, so no case, if or other handling of their own;
 - do_csi's 'h' and 'l' cases only call csi_mode, its $p branch only calls
   csi_decrqm, and csi_decrqm answers from mode_report;
+- do_csi outside its switch is the preamble below, so nothing on the way to
+  the 'h' and 'l' cases handles a mode either (modes-sweep sees a stray
+  handler for a number with no row wherever it is, but not one for a row);
 - the mode constants (TSM_VTE_MOUSE_MODE_*, TSM_VTE_MOUSE_EVENT_*,
   TSM_VTE_BRACKETED_PASTE) appear only in the accessors (mode_<name>_set,
   mode_<name>_get and the mouse helpers they share) and in
@@ -35,6 +38,13 @@ SKELETON = {
     "mode_report": (
         "if(!dec){switch(number){<table>default:return0;}}switch(number){<table>default:return0;}"),
 }
+# do_csi up to its switch on the final byte, squeezed the same way, and
+# what follows the switch (nothing)
+DO_CSI_PREAMBLE = (
+    "intnum,x,y,upper,lower;boolprotect;"
+    "if(vte->csi_argc<CSI_ARG_MAX)vte->csi_argc++;"
+    "if(data!='m'&&csi_has_subargs(vte)){"
+    "llog_debug(vte,\"CSI%cwithsub-parametersignored\",data);return;}")
 # Each expansion, the same way, by function
 EXPANSIONS = {
     "csi_mode": [
@@ -82,6 +92,22 @@ def squeeze(text):
     return re.sub(r"\s|\\\n", "", re.sub(r"/\*.*?\*/", "", text, flags=re.S))
 
 
+def closing(text, at):
+    """The index of the brace that closes the one at @at, or -1; braces in
+    comments, strings and character literals do not count."""
+    blank = re.sub(r"/\*.*?\*/|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'",
+                   lambda m: " " * len(m.group(0)), text, flags=re.S)
+    depth = 0
+    for i in range(at, len(blank)):
+        if blank[i] == "{":
+            depth += 1
+        elif blank[i] == "}":
+            depth -= 1
+            if not depth:
+                return i
+    return -1
+
+
 def skeleton(body):
     """The body as SKELETON spells it, and its expansions in order."""
     inner = body[body.index("{") + 1:body.rindex("}")]
@@ -120,6 +146,23 @@ def main():
                       min(len(shape), len(want)))
             errors.append(f"{name} (line {line}) does more than expand the table, at "
                           f"...{shape[max(0, at - 30):at + 50]}...")
+
+    if "do_csi" not in funcs:
+        errors.append("do_csi not found")
+    else:
+        line, body = funcs["do_csi"]
+        start = body.find("\n\tswitch (data) {")
+        end = closing(body, body.find("{", start)) if start >= 0 else -1
+        if end < 0:
+            errors.append(f"do_csi (line {line}): its switch (data) not found")
+        else:
+            before = squeeze(body[body.index("{") + 1:start])
+            after = squeeze(body[end + 1:body.rindex("}")])
+            if before != DO_CSI_PREAMBLE:
+                errors.append(f"do_csi (line {line}) does more before its switch than "
+                              f"the preamble: {before}")
+            if after:
+                errors.append(f"do_csi (line {line}) does more after its switch: {after}")
 
     for final, call in (("h", "csi_mode(vte,true);break;"), ("l", "csi_mode(vte,false);break;")):
         m = re.search(r"\tcase '%s':(.*?)\n\tcase " % final, src, re.S)

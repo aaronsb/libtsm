@@ -139,11 +139,12 @@ endif
 # committed files differ (make modes rewrites them).
 gen_modes = executable('gen-modes', 'gen-modes.c', dependencies: [libtsm_test_dep])
 # Every DEC number 0-65535 and ANSI number 0-255: DECRQM replies 0 exactly
-# for the numbers with no row, and SM and RM of those change nothing.
+# for the numbers with no row, and SM and RM of those change no field of the
+# screen or the vte.
 modes_sweep = executable('modes-sweep', 'modes-sweep.c', dependencies: [libtsm_test_dep])
 test('modes-sweep', modes_sweep, timeout: 120)
-# SM, RM and DECRQM consist of the table's expansions, and the mode constants
-# stay in the accessors.
+# SM, RM and DECRQM consist of the table's expansions, do_csi does nothing
+# else on their way, and the mode constants stay in the accessors.
 test(
     'modes-source',
     find_program('python3'),
