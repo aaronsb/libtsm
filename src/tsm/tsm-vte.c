@@ -2958,7 +2958,10 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		tsm_screen_tab_right(vte->con, num);
 		break;
 	case 'n': /* DSR */
-		/* device status reports */
+		/* device status reports; DECXCPR (CSI ? 6 n) gets the plain
+		 * CPR, as it always has */
+		if (csi_foreign(vte, data, CSI_WHAT))
+			break;
 		csi_dsr(vte);
 		break;
 	case 'S':
