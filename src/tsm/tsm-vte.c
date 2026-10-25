@@ -2716,8 +2716,16 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 	case 'l': /* RM: Reset Mode */
 		csi_mode(vte, false);
 		break;
-	case 'r': /* DECSTBM */
-		/* set margin size */
+	case 'r':
+		/* XTRESTORE, CSI ? Pm r, which restores saved DEC private
+		 * modes, is not implemented (ADR-201); it must not set the
+		 * margins from its mode numbers */
+		if (vte->csi_flags & CSI_WHAT) {
+			llog_debug(vte, "XTRESTORE ignored");
+			break;
+		}
+
+		/* DECSTBM: set margin size */
 		upper = vte->csi_argv[0];
 		if (upper < 0)
 			upper = 0;

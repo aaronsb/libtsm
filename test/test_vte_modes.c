@@ -449,6 +449,17 @@ START_TEST(test_mode_bracketed_paste_resets)
 }
 END_TEST
 
+/* XTRESTORE (CSI ? Pm r) is not DECSTBM: the scroll region stays
+ * (aaronsb/libtsm#44) */
+START_TEST(test_mode_xtrestore_not_margins)
+{
+	/* rows 2 to 4 scroll: a line feed on row 4 stays on row 4 */
+	input("\e[2;4r\e[?1049;2004r\e[?r\e[4;1H\n");
+	assert_cursor(0, 3);
+	ck_assert(!screen_flag(TSM_SCREEN_ALTERNATE));
+}
+END_TEST
+
 /* DECRQM and tsm_vte_get_mode (aaronsb/libtsm#31) */
 
 struct mode_reply {
@@ -611,6 +622,7 @@ TEST_DEFINE_CASE(report)
 	TEST(test_mode_decrqm_defaults)
 	TEST(test_mode_decrqm_set)
 	TEST(test_mode_decrqm_form)
+	TEST(test_mode_xtrestore_not_margins)
 TEST_END_CASE
 
 // clang-format off
