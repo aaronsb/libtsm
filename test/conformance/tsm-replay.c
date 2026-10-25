@@ -155,6 +155,11 @@
 
 #include "libtsm.h"
 
+#ifdef TSM_MODE_TRACE
+/* the fork's test builds: names the case in the mode trace (ADR-201) */
+void tsm_mode_trace_test(const char *name);
+#endif
+
 #define MAX_CP 32
 
 struct cell {
@@ -1206,6 +1211,11 @@ int main(int argc, char **argv)
 	size_t len, pos = 0, ncuts = 0, i;
 	size_t *cuts = NULL;
 	enum view view = VIEW_DRAW;
+
+#ifdef TSM_MODE_TRACE
+	if (getenv("TSM_MODE_TRACE_TEST"))
+		tsm_mode_trace_test(getenv("TSM_MODE_TRACE_TEST"));
+#endif
 
 	if (argc > 1 && !strcmp(argv[1], "--draw2")) {
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR

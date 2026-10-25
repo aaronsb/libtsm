@@ -107,6 +107,29 @@ static inline int test_run_suite(Suite *s)
 		return test_run_suite(_suite); \
 	}
 
+/*
+ * In builds with the mode trace (libtsm_test_dep), each test names itself in
+ * it as it starts, so the modes-tests check can tell which test set and reset
+ * which mode. This repeats check's START_TEST of check 0.13 and later.
+ */
+#if defined(TSM_MODE_TRACE) && defined(CHECK_MAJOR_VERSION) && \
+	(CHECK_MAJOR_VERSION > 0 || CHECK_MINOR_VERSION >= 13)
+void tsm_mode_trace_test(const char *name);
+#undef START_TEST
+#define START_TEST(__testname)						\
+	static void __testname##_body(int _i);				\
+	static void __testname##_fn(int _i CK_ATTRIBUTE_UNUSED)		\
+	{								\
+		tsm_mode_trace_test(#__testname);			\
+		__testname##_body(_i);					\
+	}								\
+	static const TTest __testname##_ttest = {			\
+		"" #__testname, __testname##_fn, __FILE__, __LINE__	\
+	};								\
+	static const TTest *__testname = &__testname##_ttest;		\
+	static void __testname##_body(int _i CK_ATTRIBUTE_UNUSED)
+#endif
+
 #ifndef ck_assert_mem_eq
 #include <string.h>
 #define ck_assert_mem_eq(_x, _y, _len) \

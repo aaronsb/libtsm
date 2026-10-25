@@ -171,3 +171,14 @@ test(
     args: [files('conformance/check.py'), tsm_replay, meson.current_source_dir() / 'conformance',
            '--frame'],
 )
+
+# Every supported mode is set and reset by a test its row names, and every
+# test a row names exists (ADR-201); the test build's mode trace shows which.
+test(
+    'modes-tests',
+    find_program('python3'),
+    args: [files('modes-tests.py'), gen_modes, meson.current_source_dir(), tsm_replay,
+           meson.current_source_dir() / 'conformance', test_vte, test_vte_modes,
+           test_vte_mouse, test_vte_sixel, test_vte_kitty, test_screen],
+    timeout: 120,
+)

@@ -264,6 +264,38 @@ enum mode_reset {
 
 static int mode_report(struct tsm_vte *vte, bool dec, unsigned int number);
 
+#ifdef TSM_MODE_TRACE
+/*
+ * Test builds only (libtsm_test_dep): with TSM_MODE_TRACE naming a file,
+ * each SM and RM of a row is appended to it with the running test's name,
+ * for the modes-tests check.
+ */
+static const char *mode_trace_name;
+
+void tsm_mode_trace_test(const char *name)
+{
+	mode_trace_name = name;
+}
+
+static void mode_trace(bool dec, unsigned int number, bool set)
+{
+	const char *path = getenv("TSM_MODE_TRACE");
+	FILE *f;
+
+	if (!path || !mode_trace_name)
+		return;
+	f = fopen(path, "a");
+	if (!f)
+		return;
+	fprintf(f, "%s\t%s\t%u\t%s\n", mode_trace_name, dec ? "dec" : "ansi",
+		number, set ? "set" : "reset");
+	fclose(f);
+}
+#define MODE_TRACE(dec, number) mode_trace(dec, number, set)
+#else
+#define MODE_TRACE(dec, number)
+#endif
+
 static uint8_t color_palette_legacy[TSM_COLOR_NUM][3] = {
 	[TSM_COLOR_BLACK]         = {   0,   0,   0 }, /* black */
 	[TSM_COLOR_RED]           = { 205,   0,   0 }, /* red */
@@ -2316,7 +2348,8 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 		if (!(vte->csi_flags & CSI_WHAT)) {
 			switch (vte->csi_argv[i]) {
 #define MODE(kind, number, name, status, ...) \
-	MODE_ONLY_ANSI_##kind(case number: MODE_SET_##status(name); continue;)
+	MODE_ONLY_ANSI_##kind(case number: MODE_TRACE(false, number); \
+			      MODE_SET_##status(name); continue;)
 #include "tsm-modes.def"
 #undef MODE
 			default:
@@ -2328,7 +2361,8 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 
 		switch (vte->csi_argv[i]) {
 #define MODE(kind, number, name, status, ...) \
-	MODE_ONLY_DEC_##kind(case number: MODE_SET_##status(name); continue;)
+	MODE_ONLY_DEC_##kind(case number: MODE_TRACE(true, number); \
+			     MODE_SET_##status(name); continue;)
 #include "tsm-modes.def"
 #undef MODE
 		default:

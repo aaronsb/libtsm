@@ -55,12 +55,14 @@ libtsm_dep = declare_dependency(
 
 # The test calls of ADR-103 step 3a (tsm_screen_test_image and
 # tsm_screen_test_place) build only into what links this: libtsm's tests and
-# tsm-replay. The shared library neither contains nor exports them.
+# tsm-replay. The shared library neither contains nor exports them. So does
+# the mode trace the modes-tests check reads (TSM_MODE_TRACE, ADR-201).
 libtsm_test_dep = declare_dependency(
     include_directories: '.',
     link_with: libtsm,
     dependencies: deps,
     sources: libtsm_srcs + ['tsm-image-test.c'],
+    compile_args: ['-DTSM_MODE_TRACE'],
 )
 
 install_headers('libtsm.h')
