@@ -262,6 +262,8 @@ enum mode_reset {
 #include "tsm-modes.def"
 #undef MODE
 
+static int mode_report(struct tsm_vte *vte, bool dec, unsigned int number);
+
 static uint8_t color_palette_legacy[TSM_COLOR_NUM][3] = {
 	[TSM_COLOR_BLACK]         = {   0,   0,   0 }, /* black */
 	[TSM_COLOR_RED]           = { 205,   0,   0 }, /* red */
@@ -761,6 +763,15 @@ unsigned int tsm_vte_get_flags(struct tsm_vte *vte)
 	}
 
 	return vte->flags;
+}
+
+SHL_EXPORT
+int tsm_vte_get_mode(struct tsm_vte *vte, bool dec, unsigned int number)
+{
+	if (!vte)
+		return -EINVAL;
+
+	return mode_report(vte, dec, number);
 }
 
 SHL_EXPORT
@@ -2328,6 +2339,53 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 	}
 }
 
+/*
+ * The DECRPM value for a mode: 1 set, 2 reset, 3 permanently set, 4
+ * permanently reset, 0 not recognised. IGNORED and REFUSED rows report their
+ * default as permanent.
+ */
+#define MODE_REPORT_SUPPORTED(name, dflt) return mode_##name##_get(vte) ? 1 : 2;
+#define MODE_REPORT_PARTIAL(name, dflt) return mode_##name##_get(vte) ? 1 : 2;
+#define MODE_REPORT_IGNORED(name, dflt) return (dflt) ? 3 : 4;
+#define MODE_REPORT_REFUSED(name, dflt) return (dflt) ? 3 : 4;
+
+static int mode_report(struct tsm_vte *vte, bool dec, unsigned int number)
+{
+	if (!dec) {
+		switch (number) {
+#define MODE(kind, number, name, status, dflt, ...) \
+	MODE_ONLY_ANSI_##kind(case number: MODE_REPORT_##status(name, dflt))
+#include "tsm-modes.def"
+#undef MODE
+		default:
+			return 0;
+		}
+	}
+
+	switch (number) {
+#define MODE(kind, number, name, status, dflt, ...) \
+	MODE_ONLY_DEC_##kind(case number: MODE_REPORT_##status(name, dflt))
+#include "tsm-modes.def"
+#undef MODE
+	default:
+		return 0;
+	}
+}
+
+/* DECRQM: CSI ? Ps $ p or CSI Ps $ p, answered for every number */
+static void csi_decrqm(struct tsm_vte *vte)
+{
+	bool dec = vte->csi_flags & CSI_WHAT;
+	unsigned int number = vte->csi_argv[0] > 0 ? vte->csi_argv[0] : 0;
+	char buf[32];
+	int len;
+
+	len = snprintf(buf, sizeof(buf), "\e[%s%u;%d$y", dec ? "?" : "",
+		       number, mode_report(vte, dec, number));
+	if (len > 0 && (size_t)len < sizeof(buf))
+		vte_write(vte, buf, len);
+}
+
 static void csi_dev_attr(struct tsm_vte *vte)
 {
 	if (vte->csi_argc <= 1 && vte->csi_argv[0] <= 0) {
@@ -2475,17 +2533,6 @@ static void csi_xtsmgraphics(struct tsm_vte *vte)
 		len = snprintf(buf, sizeof(buf), "\e[?%d;%uS", item, status);
 	if (len > 0 && (size_t)len < sizeof(buf))
 		vte_write(vte, buf, len);
-}
-
-/* DECRQM for mode 2027: 1 set (unicode), 2 reset (wcwidth) */
-static void csi_decrqm_2027(struct tsm_vte *vte)
-{
-	char buf[32];
-	int len;
-
-	len = snprintf(buf, sizeof(buf), "\e[?2027;%u$y",
-		       vte->con->width_method == TSM_WIDTH_UNICODE ? 1 : 2);
-	vte_write(vte, buf, len);
 }
 
 static bool csi_has_subargs(struct tsm_vte *vte)
@@ -2655,10 +2702,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			/* DECSTR: Soft Reset */
 			csi_soft_reset(vte);
 		} else if (vte->csi_flags & CSI_CASH) {
-			/* DECRQM: Request Mode. Only DEC private mode 2027
-			 * replies; the rest are ignored, as before. */
-			if ((vte->csi_flags & CSI_WHAT) && vte->csi_argv[0] == 2027)
-				csi_decrqm_2027(vte);
+			/* DECRQM: Request Mode */
+			csi_decrqm(vte);
 		} else {
 			/* DECSCL: Compatibility Level */
 			/* Sometimes CSI_DQUOTE is set here, too */

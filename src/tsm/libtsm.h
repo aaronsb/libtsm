@@ -1122,6 +1122,16 @@ unsigned int tsm_vte_get_flags(struct tsm_vte *vte);
 unsigned int tsm_vte_get_mouse_mode(struct tsm_vte *vte);
 unsigned int tsm_vte_get_mouse_event(struct tsm_vte *vte);
 
+/*
+ * The state of an ANSI mode (@dec false) or a DEC private mode (@dec true),
+ * as DECRQM reports it to a program: 1 set, 2 reset, 3 permanently set, 4
+ * permanently reset, 0 not recognised. Defined when tsm_vte_get_mode exists.
+ *
+ * @retval -EINVAL if vte is NULL.
+ */
+#define TSM_VTE_GET_MODE 1
+int tsm_vte_get_mode(struct tsm_vte *vte, bool dec, unsigned int number);
+
 void tsm_vte_reset(struct tsm_vte *vte);
 void tsm_vte_hard_reset(struct tsm_vte *vte);
 void tsm_vte_input(struct tsm_vte *vte, const char *u8, size_t len);

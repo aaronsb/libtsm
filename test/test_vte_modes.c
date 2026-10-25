@@ -435,6 +435,135 @@ START_TEST(test_mode_bracketed_paste)
 }
 END_TEST
 
+/* DECRQM and tsm_vte_get_mode (aaronsb/libtsm#31) */
+
+struct mode_reply {
+	bool dec;
+	unsigned int number;
+	unsigned int value;
+};
+
+/* every row in its default state, and numbers with no row */
+static const struct mode_reply mode_defaults[] = {
+	{ false, 2, 4 }, { false, 4, 2 }, { false, 12, 1 }, { false, 20, 2 },
+	{ true, 1, 2 }, { true, 2, 3 }, { true, 3, 4 }, { true, 4, 4 },
+	{ true, 5, 2 }, { true, 6, 2 }, { true, 7, 1 }, { true, 8, 3 },
+	{ true, 9, 2 }, { true, 12, 4 }, { true, 18, 4 }, { true, 19, 4 },
+	{ true, 25, 1 }, { true, 42, 4 }, { true, 47, 2 }, { true, 80, 2 },
+	{ true, 1000, 2 }, { true, 1002, 2 }, { true, 1003, 2 },
+	{ true, 1006, 2 }, { true, 1016, 2 }, { true, 1047, 2 },
+	{ true, 1048, 2 }, { true, 1049, 2 }, { true, 1070, 1 },
+	{ true, 2004, 2 }, { true, 2027, 1 }, { true, 8452, 2 },
+	/* not recognised */
+	{ false, 0, 0 }, { false, 1, 0 }, { false, 3, 0 }, { false, 25, 0 },
+	{ false, 2004, 0 }, { true, 0, 0 }, { true, 10, 0 }, { true, 1004, 0 },
+	{ true, 1005, 0 }, { true, 1015, 0 }, { true, 2026, 0 },
+	{ true, 65535, 0 },
+};
+
+static void assert_decrqm(bool dec, unsigned int number, unsigned int value)
+{
+	char query[32], expect[32];
+
+	snprintf(query, sizeof(query), "\e[%s%u$p", dec ? "?" : "", number);
+	snprintf(expect, sizeof(expect), "\e[%s%u;%u$y", dec ? "?" : "",
+		 number, value);
+	out_clear();
+	input(query);
+	ck_assert_str_eq(out, expect);
+	ck_assert_int_eq(tsm_vte_get_mode(vte, dec, number), value);
+}
+
+START_TEST(test_mode_decrqm_defaults)
+{
+	unsigned int i;
+
+	for (i = 0; i < sizeof(mode_defaults) / sizeof(*mode_defaults); ++i)
+		assert_decrqm(mode_defaults[i].dec, mode_defaults[i].number,
+			      mode_defaults[i].value);
+}
+END_TEST
+
+START_TEST(test_mode_decrqm_set)
+{
+	/* each supported row reports set after SM, reset after RM */
+	input("\e[4;20h\e[?1;5;6;80;2004;8452h");
+	assert_decrqm(false, 4, 1);
+	assert_decrqm(false, 20, 1);
+	assert_decrqm(true, 1, 1);
+	assert_decrqm(true, 5, 1);
+	assert_decrqm(true, 6, 1);
+	assert_decrqm(true, 80, 1);
+	assert_decrqm(true, 2004, 1);
+	assert_decrqm(true, 8452, 1);
+	input("\e[12;4;20l\e[?7;25;1070;2027l");
+	assert_decrqm(false, 12, 2);
+	assert_decrqm(false, 4, 2);
+	assert_decrqm(true, 7, 2);
+	assert_decrqm(true, 25, 2);
+	assert_decrqm(true, 1070, 2);
+	assert_decrqm(true, 2027, 2);
+
+	/* ignored and refused rows keep their fixed state */
+	input("\e[2h\e[?2;3;4;12;18;19;42h\e[?8l");
+	assert_decrqm(false, 2, 4);
+	assert_decrqm(true, 2, 3);
+	assert_decrqm(true, 3, 4);
+	assert_decrqm(true, 8, 3);
+	assert_decrqm(true, 12, 4);
+	assert_decrqm(true, 42, 4);
+
+	/* the alternate screen modes share one flag; 1048 holds no state */
+	input("\e[?1049h");
+	assert_decrqm(true, 47, 1);
+	assert_decrqm(true, 1047, 1);
+	assert_decrqm(true, 1049, 1);
+	input("\e[?1049l\e[?1048h");
+	assert_decrqm(true, 1049, 2);
+	assert_decrqm(true, 1048, 2);
+
+	/* the mouse fields as they are held (aaronsb/libtsm#30): 1000 sets
+	 * the event field to 1002, and 1006 replaces 1000 */
+	input("\e[?1000h");
+	assert_decrqm(true, 1000, 1);
+	assert_decrqm(true, 1002, 1);
+	input("\e[?1006h");
+	assert_decrqm(true, 1000, 2);
+	assert_decrqm(true, 1006, 1);
+	input("\e[?1003h");
+	assert_decrqm(true, 1003, 1);
+	assert_decrqm(true, 1002, 2);
+	input("\e[?1016h");
+	assert_decrqm(true, 1016, 1);
+	assert_decrqm(true, 1006, 2);
+	input("\e[?9h");
+	assert_decrqm(true, 9, 1);
+}
+END_TEST
+
+START_TEST(test_mode_decrqm_form)
+{
+	/* the first number is answered; a missing one is 0 */
+	out_clear();
+	input("\e[?25;7$p");
+	ck_assert_str_eq(out, "\e[?25;1$y");
+	out_clear();
+	input("\e[?$p");
+	ck_assert_str_eq(out, "\e[?0;0$y");
+	out_clear();
+	input("\e[$p");
+	ck_assert_str_eq(out, "\e[0;0$y");
+
+	/* a number past the parser's limit is not recognised */
+	out_clear();
+	input("\e[?9999999$p");
+	ck_assert_int_eq(strncmp(out, "\e[?", 3), 0);
+	ck_assert_int_eq(strcmp(out + strlen(out) - 4, ";0$y"), 0);
+
+	ck_assert_int_eq(tsm_vte_get_mode(NULL, true, 25), -EINVAL);
+}
+END_TEST
+
 TEST_DEFINE_CASE(ansi)
 	CHECKED_FIXTURE(setup, teardown)
 	TEST(test_mode_irm)
@@ -462,11 +591,19 @@ TEST_DEFINE_CASE(dec)
 	TEST(test_mode_bracketed_paste)
 TEST_END_CASE
 
+TEST_DEFINE_CASE(report)
+	CHECKED_FIXTURE(setup, teardown)
+	TEST(test_mode_decrqm_defaults)
+	TEST(test_mode_decrqm_set)
+	TEST(test_mode_decrqm_form)
+TEST_END_CASE
+
 // clang-format off
 TEST_DEFINE(
 	TEST_SUITE(vte_modes,
 		TEST_CASE(ansi),
 		TEST_CASE(dec),
+		TEST_CASE(report),
 		TEST_END
 	)
 )
