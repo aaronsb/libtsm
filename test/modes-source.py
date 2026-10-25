@@ -11,9 +11,12 @@ ADR-201 in aaronsb/kmscon. Checks, in the source:
   per kind, so no case, if or other handling of their own;
 - do_csi's 'h' and 'l' cases only call csi_mode, its $p branch only calls
   csi_decrqm, and csi_decrqm answers from mode_report;
-- do_csi outside its switch is the preamble below, so nothing on the way to
-  the 'h' and 'l' cases handles a mode either (modes-sweep sees a stray
-  handler for a number with no row wherever it is, but not one for a row);
+- do_csi outside its switch is the preamble below, csi_has_subargs (which
+  the preamble calls) is its skeleton, and do_action's ACTION_CSI_DISPATCH
+  case only calls do_csi, so none of them handles a mode either. The rest
+  of the parse path (parse_data, do_trans, the rest of do_action,
+  do_clear, do_collect, do_param) is not read here; there modes-sweep sees
+  a stray handler only for a number with no row;
 - the mode constants (TSM_VTE_MOUSE_MODE_*, TSM_VTE_MOUSE_EVENT_*,
   TSM_VTE_BRACKETED_PASTE) appear only in the accessors (mode_<name>_set,
   mode_<name>_get and the mouse helpers they share) and in
@@ -37,6 +40,8 @@ SKELETON = {
         "continue;}}"),
     "mode_report": (
         "if(!dec){switch(number){<table>default:return0;}}switch(number){<table>default:return0;}"),
+    "csi_has_subargs": (
+        "unsignedinti;for(i=0;i<vte->csi_argc;++i)if(vte->csi_subargc[i])returntrue;returnfalse;"),
 }
 # do_csi up to its switch on the final byte, squeezed the same way, and
 # what follows the switch (nothing)
@@ -55,6 +60,7 @@ EXPANSIONS = {
         "MODE_TRACE(true,number);MODE_SET_##status(name);continue;)"
         "#include\"tsm-modes.def\"#undefMODE",
     ],
+    "csi_has_subargs": [],
     "mode_report": [
         "#defineMODE(kind,number,name,status,dflt,reset,host,...)MODE_ONLY_ANSI_##kind(casenumber:"
         "MODE_REPORT_##status(name,dflt,host))#include\"tsm-modes.def\"#undefMODE",
@@ -88,20 +94,29 @@ def functions(src):
     return found
 
 
+# comments, then string and character literals, which may hold comment marks
+TOKENS = re.compile(r"/\*.*?\*/|//[^\n]*|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'", re.S)
+
+
+def blank(text, literals):
+    """@text with comments, and literals too when @literals, as spaces."""
+    return TOKENS.sub(lambda m: " " * len(m.group(0))
+                      if literals or m.group(0).startswith("/") else m.group(0), text)
+
+
 def squeeze(text):
-    return re.sub(r"\s|\\\n", "", re.sub(r"/\*.*?\*/", "", text, flags=re.S))
+    return re.sub(r"\s|\\\n", "", blank(text, False))
 
 
 def closing(text, at):
     """The index of the brace that closes the one at @at, or -1; braces in
     comments, strings and character literals do not count."""
-    blank = re.sub(r"/\*.*?\*/|\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'",
-                   lambda m: " " * len(m.group(0)), text, flags=re.S)
+    blank_text = blank(text, True)
     depth = 0
-    for i in range(at, len(blank)):
-        if blank[i] == "{":
+    for i in range(at, len(blank_text)):
+        if blank_text[i] == "{":
             depth += 1
-        elif blank[i] == "}":
+        elif blank_text[i] == "}":
             depth -= 1
             if not depth:
                 return i
@@ -130,7 +145,7 @@ def main():
     funcs = {name: (line, body) for name, line, body in functions(src)}
     errors = []
 
-    for name in ("csi_mode", "mode_report"):
+    for name in SKELETON:
         if name not in funcs:
             errors.append(f"{name} not found")
             continue
@@ -144,7 +159,7 @@ def main():
             want = SKELETON[name]
             at = next((i for i, (a, b) in enumerate(zip(shape, want)) if a != b),
                       min(len(shape), len(want)))
-            errors.append(f"{name} (line {line}) does more than expand the table, at "
+            errors.append(f"{name} (line {line}) differs from its skeleton, at "
                           f"...{shape[max(0, at - 30):at + 50]}...")
 
     if "do_csi" not in funcs:
@@ -163,6 +178,13 @@ def main():
                               f"the preamble: {before}")
             if after:
                 errors.append(f"do_csi (line {line}) does more after its switch: {after}")
+
+    m = re.search(r"\tcase ACTION_CSI_DISPATCH:(.*?)\n\t+case ", src, re.S)
+    if not m:
+        errors.append("do_action's case ACTION_CSI_DISPATCH not found")
+    elif squeeze(m.group(1)) != "do_csi(vte,data);break;":
+        errors.append(f"do_action's case ACTION_CSI_DISPATCH does more than call do_csi: "
+                      f"{squeeze(m.group(1))}")
 
     for final, call in (("h", "csi_mode(vte,true);break;"), ("l", "csi_mode(vte,false);break;")):
         m = re.search(r"\tcase '%s':(.*?)\n\tcase " % final, src, re.S)
