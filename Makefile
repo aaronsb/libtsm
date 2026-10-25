@@ -7,6 +7,7 @@
 #   make cases         rewrite the synthetic streams from gen-synthetic.py
 #   make record        re-record the real-program streams (record-programs.py)
 #   make golden        rewrite the goldens from upstream libtsm REF (default v4.8.0)
+#   make modes         rewrite fork/modes.md and fork/modes.tsv from the mode table
 #   make fuzz          fuzz FUZZ_TARGET (sixel, vte-sixel, vte-kitty) for FUZZ_TIME seconds (ASan, UBSan)
 #   make clean         remove fork/build
 #
@@ -85,6 +86,12 @@ record: image ## Re-record the real-program streams in the dev image
 .PHONY: golden
 golden: image ## Rewrite goldens from upstream libtsm REF
 	$(RUN) sh -c 'git config --global --add safe.directory /src && $(CONF)/make-golden.sh $(REF)'
+
+.PHONY: modes
+modes: image ## Rewrite fork/modes.md and fork/modes.tsv from src/tsm/tsm-modes.def
+	$(RUN) sh -c '[ -f $(BUILD)/build.ninja ] || meson setup $(BUILD); meson compile -C $(BUILD) && \
+		$(BUILD)/test/gen-modes md > $(BUILD)/modes.md && $(BUILD)/test/gen-modes tsv > $(BUILD)/modes.tsv && \
+		mv $(BUILD)/modes.md $(BUILD)/modes.tsv fork/'
 
 .PHONY: clean
 clean: ## Remove fork/build

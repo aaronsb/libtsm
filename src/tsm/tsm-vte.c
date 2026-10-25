@@ -126,26 +126,6 @@ enum parser_action {
 /* max length of an OSC code */
 #define OSC_MAX_LEN 128
 
-/* terminal flags */
-#define FLAG_CURSOR_KEY_MODE			0x00000001 /* DEC cursor key mode */
-#define FLAG_KEYPAD_APPLICATION_MODE		0x00000002 /* DEC keypad application mode; TODO: toggle on numlock? */
-#define FLAG_LINE_FEED_NEW_LINE_MODE		0x00000004 /* DEC line-feed/new-line mode */
-#define FLAG_8BIT_MODE				0x00000008 /* Disable UTF-8 mode and enable 8bit compatible mode */
-#define FLAG_7BIT_MODE				0x00000010 /* Disable 8bit mode and use 7bit compatible mode */
-#define FLAG_USE_C1				0x00000020 /* Explicitly use 8bit C1 codes; TODO: implement */
-#define FLAG_KEYBOARD_ACTION_MODE		0x00000040 /* Disable keyboard; TODO: implement? */
-#define FLAG_INSERT_REPLACE_MODE		0x00000080 /* Enable insert mode */
-#define FLAG_SEND_RECEIVE_MODE			0x00000100 /* Disable local echo */
-#define FLAG_TEXT_CURSOR_MODE			0x00000200 /* Show cursor */
-#define FLAG_INVERSE_SCREEN_MODE		0x00000400 /* Inverse colors */
-#define FLAG_ORIGIN_MODE			0x00000800 /* Relative origin for cursor */
-#define FLAG_AUTO_WRAP_MODE			0x00001000 /* Auto line wrap mode */
-#define FLAG_AUTO_REPEAT_MODE			0x00002000 /* Auto repeat key press; TODO: implement */
-#define FLAG_NATIONAL_CHARSET_MODE		0x00004000 /* Send keys from nation charsets; TODO: implement */
-#define FLAG_BACKGROUND_COLOR_ERASE_MODE	0x00008000 /* Set background color on erase (bce) */
-#define FLAG_PREPEND_ESCAPE			0x00010000 /* Prepend escape character to next output */
-#define FLAG_TITE_INHIBIT_MODE			0x00020000 /* Prevent switching to alternate screen buffer */
-
 struct vte_saved_state {
 	unsigned int cursor_x;
 	unsigned int cursor_y;
@@ -240,6 +220,8 @@ struct tsm_vte {
 	bool sixel_active;			/* a DCS q streams into it */
 	/* the kitty graphics protocol (ADR-103 step 4) */
 	bool kitty_enabled;
+	/* the host blinks the cursor in the styles that blink (mode 12) */
+	bool cursor_blink;
 	struct tsm_kitty *kitty;
 	bool apc_kitty;				/* the APC streams into it */
 	/* the image work tsm_vte_input_bounded has left in this call */
@@ -249,6 +231,81 @@ struct tsm_vte {
 static void sixel_drop(struct tsm_vte *vte);
 static void sixel_reset(struct tsm_vte *vte);
 static void kitty_write(struct tsm_vte *vte, const char *u8, size_t len);
+
+/*
+ * Modes (ADR-201 in aaronsb/kmscon): tsm-modes.def has one row per mode,
+ * which these expand by kind and by status.
+ */
+#define MODE_ONLY_ANSI_ANSI(...) __VA_ARGS__
+#define MODE_ONLY_ANSI_DEC(...)
+#define MODE_ONLY_DEC_ANSI(...)
+#define MODE_ONLY_DEC_DEC(...) __VA_ARGS__
+#define MODE_ACCESSORS_SUPPORTED(...) __VA_ARGS__
+#define MODE_ACCESSORS_PARTIAL(...) __VA_ARGS__
+#define MODE_ACCESSORS_IGNORED(...)
+#define MODE_ACCESSORS_REFUSED(...)
+#define MODE_SET_SUPPORTED(name) mode_##name##_set(vte, set)
+#define MODE_SET_PARTIAL(name) mode_##name##_set(vte, set)
+/* an ignored row has no effect, but keeps its legacy flag for
+ * tsm_vte_get_flags, upstream's API; MODE_FLAG_<name> is 0 for one without */
+#define MODE_SET_IGNORED(name) set_reset_flag(vte, set, MODE_FLAG_##name)
+#define MODE_SET_REFUSED(name)
+#define MODE_FLAG_KAM TSM_VTE_FLAG_KEYBOARD_ACTION_MODE
+#define MODE_FLAG_DECCOLM 0
+#define MODE_FLAG_DECSCLM 0
+#define MODE_FLAG_DECARM TSM_VTE_FLAG_AUTO_REPEAT_MODE
+#define MODE_FLAG_DECPFF 0
+#define MODE_FLAG_DECPEX 0
+#define MODE_FLAG_DECNRCM TSM_VTE_FLAG_NATIONAL_CHARSET_MODE
+/* a default the host configures */
+#define CONFIGURED(value) (value)
+
+enum mode_reset {
+	RESET_NONE,
+	RESET_SOFT,	/* DECSTR and RIS */
+	RESET_HARD,	/* RIS only */
+};
+
+#define MODE(kind, number, name, status, ...)				\
+	MODE_ACCESSORS_##status(					\
+		static void mode_##name##_set(struct tsm_vte *vte, bool set); \
+		static bool mode_##name##_get(struct tsm_vte *vte);)
+#include "tsm-modes.def"
+#undef MODE
+
+static int mode_report(struct tsm_vte *vte, bool dec, unsigned int number);
+
+#ifdef TSM_MODE_TRACE
+/*
+ * Test builds only (libtsm_test_dep): with TSM_MODE_TRACE naming a file,
+ * each SM and RM of a row is appended to it with the running test's name,
+ * for the modes-tests check.
+ */
+static const char *mode_trace_name;
+
+void tsm_mode_trace_test(const char *name)
+{
+	mode_trace_name = name;
+}
+
+static void mode_trace(bool dec, unsigned int number, bool set)
+{
+	const char *path = getenv("TSM_MODE_TRACE");
+	FILE *f;
+
+	if (!path || !mode_trace_name)
+		return;
+	f = fopen(path, "a");
+	if (!f)
+		return;
+	fprintf(f, "%s\t%s\t%u\t%s\n", mode_trace_name, dec ? "dec" : "ansi",
+		number, set ? "set" : "reset");
+	fclose(f);
+}
+#define MODE_TRACE(dec, number) mode_trace(dec, number, set)
+#else
+#define MODE_TRACE(dec, number)
+#endif
 
 static uint8_t color_palette_legacy[TSM_COLOR_NUM][3] = {
 	[TSM_COLOR_BLACK]         = {   0,   0,   0 }, /* black */
@@ -572,6 +629,7 @@ int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
 	vte->graphic_max_h = TSM_SIXEL_MAX_SIZE_DEFAULT;
 	vte->sixel_max_registers = TSM_SIXEL_REGISTERS_DEFAULT;
 	vte->sixel_private_default = true;
+	vte->cursor_blink = true;
 	sixel_reset(vte);
 
 	ret = tsm_utf8_mach_new(&vte->mach);
@@ -752,6 +810,15 @@ unsigned int tsm_vte_get_flags(struct tsm_vte *vte)
 }
 
 SHL_EXPORT
+int tsm_vte_get_mode(struct tsm_vte *vte, bool dec, unsigned int number)
+{
+	if (!vte)
+		return -EINVAL;
+
+	return mode_report(vte, dec, number);
+}
+
+SHL_EXPORT
 unsigned int tsm_vte_get_mouse_mode(struct tsm_vte *vte)
 {
 	if (!vte) {
@@ -900,6 +967,21 @@ static void restore_state(struct tsm_vte *vte)
 }
 
 /*
+ * Restores each row @reset covers to its default, through its setter, where
+ * the row's state differs from it: state the caller has already cleared stays
+ * as it is, without the setter's side effects.
+ */
+static void modes_reset(struct tsm_vte *vte, enum mode_reset reset)
+{
+#define MODE(kind, number, name, status, dflt, row_reset, ...)		\
+	MODE_ACCESSORS_##status(					\
+		if (row_reset == reset && mode_##name##_get(vte) != (dflt)) \
+			mode_##name##_set(vte, dflt);)
+#include "tsm-modes.def"
+#undef MODE
+}
+
+/*
  * Reset VTE state
  * This performs a soft reset of the VTE. That is, everything is reset to the
  * same state as when the VTE was created. This does not affect the console,
@@ -911,14 +993,12 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	if (!vte)
 		return;
 
-	vte->flags = 0;
-	vte->flags |= TSM_VTE_FLAG_TEXT_CURSOR_MODE;
-	vte->flags |= TSM_VTE_FLAG_AUTO_REPEAT_MODE;
-	vte->flags |= TSM_VTE_FLAG_SEND_RECEIVE_MODE;
-	vte->flags |= TSM_VTE_FLAG_AUTO_WRAP_MODE;
-	vte->flags |= TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE;
+	/* the modes' flags start reset, and modes_reset sets those whose
+	 * default is set; DECARM is an ignored row with no setter, so its
+	 * legacy flag is set here */
+	vte->flags = TSM_VTE_FLAG_AUTO_REPEAT_MODE |
+		     TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE;
 	tsm_screen_reset(vte->con);
-	tsm_screen_set_flags(vte->con, TSM_SCREEN_AUTO_WRAP);
 
 	tsm_utf8_mach_reset(vte->mach);
 	/* leaving a DCS without its end discards the picture, and a kitty
@@ -939,6 +1019,8 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	vte->g2 = &tsm_vte_unicode_lower;
 	vte->g3 = &tsm_vte_unicode_upper;
 
+	/* the mouse fields hold six modes; cleared here, since their setters
+	 * would tell the host of each change (aaronsb/libtsm#30) */
 	vte->mouse_mode = 0;
 	vte->mouse_event = 0;
 	vte->mouse_last_col = 0;
@@ -946,9 +1028,9 @@ void tsm_vte_reset(struct tsm_vte *vte)
 
 	vte->cattr = vte->def_attr;
 	screen_set_def_cell_attr(vte->con, &vte->def_attr);
-	/* RIS and DECSTR return mode 2027 to the configured method, where the
-	 * draft resets it to off (a deviation ADR-102 records) */
-	screen_set_width_method(vte->con, vte->width_method);
+	/* RIS and DECSTR also return mode 2027 to the configured method,
+	 * where the draft resets it to off (a deviation ADR-102 records) */
+	modes_reset(vte, RESET_SOFT);
 
 	reset_state(vte);
 }
@@ -1013,9 +1095,8 @@ static void sixel_reset(struct tsm_vte *vte)
 {
 	sixel_drop(vte);
 	vte->sixel_registers = vte->sixel_max_registers;
-	vte->sixel_private = vte->sixel_private_default;
-	vte->sixel_no_scroll = false;
-	vte->sixel_cursor_right = false;
+	/* modes 80, 1070 and 8452, the rows only RIS resets */
+	modes_reset(vte, RESET_HARD);
 }
 
 static bool sixel_ready(struct tsm_vte *vte)
@@ -1908,37 +1989,412 @@ static inline void set_reset_flag(struct tsm_vte *vte, bool set,
 		vte->flags &= ~flag;
 }
 
+/*
+ * The mode accessors (ADR-201 in aaronsb/kmscon). Each SUPPORTED and PARTIAL
+ * row of tsm-modes.def has a setter, which SM or RM and the resets call, and
+ * a getter, which DECRQM and the resets read. A getter answers whether the
+ * mode is set as libtsm holds it.
+ */
+
+static void mode_IRM_set(struct tsm_vte *vte, bool set)
+{
+	set_reset_flag(vte, set, TSM_VTE_FLAG_INSERT_REPLACE_MODE);
+	if (set)
+		tsm_screen_set_flags(vte->con, TSM_SCREEN_INSERT_MODE);
+	else
+		tsm_screen_reset_flags(vte->con, TSM_SCREEN_INSERT_MODE);
+}
+
+static bool mode_IRM_get(struct tsm_vte *vte)
+{
+	return vte->flags & TSM_VTE_FLAG_INSERT_REPLACE_MODE;
+}
+
+static void mode_SRM_set(struct tsm_vte *vte, bool set)
+{
+	set_reset_flag(vte, set, TSM_VTE_FLAG_SEND_RECEIVE_MODE);
+}
+
+static bool mode_SRM_get(struct tsm_vte *vte)
+{
+	return vte->flags & TSM_VTE_FLAG_SEND_RECEIVE_MODE;
+}
+
+static void mode_LNM_set(struct tsm_vte *vte, bool set)
+{
+	set_reset_flag(vte, set, TSM_VTE_FLAG_LINE_FEED_NEW_LINE_MODE);
+}
+
+static bool mode_LNM_get(struct tsm_vte *vte)
+{
+	return vte->flags & TSM_VTE_FLAG_LINE_FEED_NEW_LINE_MODE;
+}
+
+static void mode_DECCKM_set(struct tsm_vte *vte, bool set)
+{
+	set_reset_flag(vte, set, TSM_VTE_FLAG_CURSOR_KEY_MODE);
+}
+
+static bool mode_DECCKM_get(struct tsm_vte *vte)
+{
+	return vte->flags & TSM_VTE_FLAG_CURSOR_KEY_MODE;
+}
+
+static void mode_DECSCNM_set(struct tsm_vte *vte, bool set)
+{
+	set_reset_flag(vte, set, TSM_VTE_FLAG_INVERSE_SCREEN_MODE);
+	if (set)
+		tsm_screen_set_flags(vte->con, TSM_SCREEN_INVERSE);
+	else
+		tsm_screen_reset_flags(vte->con, TSM_SCREEN_INVERSE);
+}
+
+static bool mode_DECSCNM_get(struct tsm_vte *vte)
+{
+	return vte->flags & TSM_VTE_FLAG_INVERSE_SCREEN_MODE;
+}
+
+static void mode_DECOM_set(struct tsm_vte *vte, bool set)
+{
+	set_reset_flag(vte, set, TSM_VTE_FLAG_ORIGIN_MODE);
+	if (set)
+		tsm_screen_set_flags(vte->con, TSM_SCREEN_REL_ORIGIN);
+	else
+		tsm_screen_reset_flags(vte->con, TSM_SCREEN_REL_ORIGIN);
+}
+
+static bool mode_DECOM_get(struct tsm_vte *vte)
+{
+	return vte->flags & TSM_VTE_FLAG_ORIGIN_MODE;
+}
+
+static void mode_DECAWM_set(struct tsm_vte *vte, bool set)
+{
+	set_reset_flag(vte, set, TSM_VTE_FLAG_AUTO_WRAP_MODE);
+	if (set)
+		tsm_screen_set_flags(vte->con, TSM_SCREEN_AUTO_WRAP);
+	else
+		tsm_screen_reset_flags(vte->con, TSM_SCREEN_AUTO_WRAP);
+}
+
+static bool mode_DECAWM_get(struct tsm_vte *vte)
+{
+	return vte->flags & TSM_VTE_FLAG_AUTO_WRAP_MODE;
+}
+
+static void mode_DECTCEM_set(struct tsm_vte *vte, bool set)
+{
+	set_reset_flag(vte, set, TSM_VTE_FLAG_TEXT_CURSOR_MODE);
+	if (set)
+		tsm_screen_reset_flags(vte->con, TSM_SCREEN_HIDE_CURSOR);
+	else
+		tsm_screen_set_flags(vte->con, TSM_SCREEN_HIDE_CURSOR);
+}
+
+static bool mode_DECTCEM_get(struct tsm_vte *vte)
+{
+	return vte->flags & TSM_VTE_FLAG_TEXT_CURSOR_MODE;
+}
+
+/*
+ * Mouse tracking. mouse_mode holds the last of 9, 1000, 1006 and 1016 set,
+ * and mouse_event 1002 or 1003, where xterm keeps tracking and encoding apart
+ * (aaronsb/libtsm#30). So the getters answer what tsm_vte_handle_mouse
+ * sends for the events a host passes while tsm_vte_get_mouse_mode is not 0,
+ * as kmscon does, whatever the program asked for: 9 while presses are
+ * reported and releases are not, 1000 while both are, 1002 while drags are,
+ * 1003 while motion with no button is, 1006 and 1016 while the reports are
+ * SGR in cells or in pixels.
+ */
+
+static bool mouse_sgr(struct tsm_vte *vte)
+{
+	return vte->mouse_mode == TSM_VTE_MOUSE_MODE_SGR ||
+	       vte->mouse_mode == TSM_VTE_MOUSE_MODE_PIXEL;
+}
+
+/* 9 and 1000 select button events, set or reset */
+static void mouse_tracking_set(struct tsm_vte *vte, unsigned int mode, bool set)
+{
+	vte->mouse_mode = set ? mode : 0;
+	vte->mouse_event = TSM_VTE_MOUSE_EVENT_BTN;
+
+	if (vte->mouse_cb) {
+		vte->mouse_cb(vte, vte->mouse_event, false, vte->mouse_data);
+	}
+}
+
+static void mode_X10MOUSE_set(struct tsm_vte *vte, bool set)
+{
+	mouse_tracking_set(vte, TSM_VTE_MOUSE_MODE_X10, set);
+}
+
+static bool mode_X10MOUSE_get(struct tsm_vte *vte)
+{
+	return vte->mouse_mode == TSM_VTE_MOUSE_MODE_X10;
+}
+
+static void mode_VT200MOUSE_set(struct tsm_vte *vte, bool set)
+{
+	mouse_tracking_set(vte, TSM_VTE_MOUSE_MODE_VT200, set);
+}
+
+static bool mode_VT200MOUSE_get(struct tsm_vte *vte)
+{
+	return vte->mouse_mode == TSM_VTE_MOUSE_MODE_VT200 || mouse_sgr(vte);
+}
+
+/* 1002 and 1003; under 9 or 1000 the event stays button events */
+static void mouse_event_set(struct tsm_vte *vte, unsigned int event, bool set)
+{
+	if (vte->mouse_mode == TSM_VTE_MOUSE_MODE_X10 || vte->mouse_mode == TSM_VTE_MOUSE_MODE_VT200) {
+	    vte->mouse_event = TSM_VTE_MOUSE_EVENT_BTN;
+	} else {
+	    vte->mouse_event = set ? event : 0;
+	}
+
+	if (vte->mouse_cb && vte->mouse_mode) {
+	    vte->mouse_cb(vte, vte->mouse_event, vte->mouse_mode == TSM_VTE_MOUSE_MODE_PIXEL, vte->mouse_data);
+	}
+}
+
+static void mode_BTNMOUSE_set(struct tsm_vte *vte, bool set)
+{
+	mouse_event_set(vte, TSM_VTE_MOUSE_EVENT_BTN, set);
+}
+
+static bool mode_BTNMOUSE_get(struct tsm_vte *vte)
+{
+	return mouse_sgr(vte) && (vte->mouse_event == TSM_VTE_MOUSE_EVENT_BTN ||
+				  vte->mouse_event == TSM_VTE_MOUSE_EVENT_ANY);
+}
+
+static void mode_ANYMOUSE_set(struct tsm_vte *vte, bool set)
+{
+	mouse_event_set(vte, TSM_VTE_MOUSE_EVENT_ANY, set);
+}
+
+static bool mode_ANYMOUSE_get(struct tsm_vte *vte)
+{
+	return mouse_sgr(vte) && vte->mouse_event == TSM_VTE_MOUSE_EVENT_ANY;
+}
+
+static void mode_SGRMOUSE_set(struct tsm_vte *vte, bool set)
+{
+	vte->mouse_mode = set ? TSM_VTE_MOUSE_MODE_SGR : 0;
+
+	if (!vte->mouse_cb) {
+	    return;
+	}
+
+	if (!set || vte->mouse_event) {
+	    vte->mouse_cb(vte, vte->mouse_event, false, vte->mouse_data);
+	}
+}
+
+static bool mode_SGRMOUSE_get(struct tsm_vte *vte)
+{
+	return vte->mouse_mode == TSM_VTE_MOUSE_MODE_SGR;
+}
+
+static void mode_PIXMOUSE_set(struct tsm_vte *vte, bool set)
+{
+	vte->mouse_mode = set ? TSM_VTE_MOUSE_MODE_PIXEL : 0;
+
+	if (!vte->mouse_cb) {
+	    return;
+	}
+
+	if (!set || vte->mouse_event) {
+	    vte->mouse_cb(vte, vte->mouse_event, set, vte->mouse_data);
+	}
+}
+
+static bool mode_PIXMOUSE_get(struct tsm_vte *vte)
+{
+	return vte->mouse_mode == TSM_VTE_MOUSE_MODE_PIXEL;
+}
+
+/*
+ * AT&T 610 cursor blink. DECRQM reports whether the cursor blinks: the host
+ * blinks it (tsm_vte_set_cursor_blink) and the style is one that blinks, the
+ * default or an odd DECSCUSR style, as kmscon draws them. SM and RM do
+ * nothing yet (aaronsb/libtsm#57).
+ */
+static void mode_CURBLINK_set(struct tsm_vte *vte, bool set)
+{
+	(void)vte;
+	(void)set;
+}
+
+static bool mode_CURBLINK_get(struct tsm_vte *vte)
+{
+	enum tsm_screen_cursor_style style = tsm_screen_get_cursor_style(vte->con);
+
+	return vte->cursor_blink && (style == TSM_SCREEN_CURSOR_DEFAULT || (style & 1));
+}
+
+/*
+ * The alternate screen. 47, 1047 and 1049 share the screen's flag, so each
+ * reports the alternate screen however it was entered. The four do nothing
+ * while TSM_VTE_FLAG_TITE_INHIBIT_MODE is set, which no sequence sets.
+ */
+
+static bool alt_screen_get(struct tsm_vte *vte)
+{
+	return tsm_screen_get_flags(vte->con) & TSM_SCREEN_ALTERNATE;
+}
+
+static void mode_ALTBUF_set(struct tsm_vte *vte, bool set)
+{
+	if (vte->flags & TSM_VTE_FLAG_TITE_INHIBIT_MODE)
+		return;
+
+	if (set)
+		tsm_screen_set_flags(vte->con, TSM_SCREEN_ALTERNATE);
+	else
+		tsm_screen_reset_flags(vte->con, TSM_SCREEN_ALTERNATE);
+}
+
+static bool mode_ALTBUF_get(struct tsm_vte *vte)
+{
+	return alt_screen_get(vte);
+}
+
+/* the alternate screen, erased as it is left */
+static void mode_ALTBUF1047_set(struct tsm_vte *vte, bool set)
+{
+	if (vte->flags & TSM_VTE_FLAG_TITE_INHIBIT_MODE)
+		return;
+
+	if (set) {
+		tsm_screen_set_flags(vte->con, TSM_SCREEN_ALTERNATE);
+	} else {
+		tsm_screen_erase_screen(vte->con, false);
+		tsm_screen_reset_flags(vte->con, TSM_SCREEN_ALTERNATE);
+	}
+}
+
+static bool mode_ALTBUF1047_get(struct tsm_vte *vte)
+{
+	return alt_screen_get(vte);
+}
+
+/* set saves the cursor, reset restores it; nothing stays set */
+static void mode_SAVECUR_set(struct tsm_vte *vte, bool set)
+{
+	if (vte->flags & TSM_VTE_FLAG_TITE_INHIBIT_MODE)
+		return;
+
+	if (set) {
+		vte->alt_cursor_x = tsm_screen_get_cursor_x(vte->con);
+		vte->alt_cursor_y = tsm_screen_get_cursor_y(vte->con);
+	} else {
+		tsm_screen_move_to(vte->con, vte->alt_cursor_x,
+				   vte->alt_cursor_y);
+	}
+}
+
+static bool mode_SAVECUR_get(struct tsm_vte *vte)
+{
+	(void)vte;
+	return false;
+}
+
+/* the alternate screen, erased as it is entered, with the cursor saved */
+static void mode_ALTBUF1049_set(struct tsm_vte *vte, bool set)
+{
+	if (vte->flags & TSM_VTE_FLAG_TITE_INHIBIT_MODE)
+		return;
+
+	if (set) {
+		vte->alt_cursor_x = tsm_screen_get_cursor_x(vte->con);
+		vte->alt_cursor_y = tsm_screen_get_cursor_y(vte->con);
+		tsm_screen_set_flags(vte->con, TSM_SCREEN_ALTERNATE);
+		tsm_screen_erase_screen(vte->con, false);
+	} else {
+		tsm_screen_reset_flags(vte->con, TSM_SCREEN_ALTERNATE);
+		tsm_screen_move_to(vte->con, vte->alt_cursor_x,
+				   vte->alt_cursor_y);
+	}
+}
+
+static bool mode_ALTBUF1049_get(struct tsm_vte *vte)
+{
+	return alt_screen_get(vte);
+}
+
+/* DECSDM: set turns sixel scrolling off, in xterm's sense (ADR-103) */
+static void mode_DECSDM_set(struct tsm_vte *vte, bool set)
+{
+	vte->sixel_no_scroll = set;
+}
+
+static bool mode_DECSDM_get(struct tsm_vte *vte)
+{
+	return vte->sixel_no_scroll;
+}
+
+/* each sixel starts from its own default registers */
+static void mode_SIXPRIV_set(struct tsm_vte *vte, bool set)
+{
+	vte->sixel_private = set;
+}
+
+static bool mode_SIXPRIV_get(struct tsm_vte *vte)
+{
+	return vte->sixel_private;
+}
+
+static void mode_BRPASTE_set(struct tsm_vte *vte, bool set)
+{
+	vte->bracketed_paste = set;
+}
+
+static bool mode_BRPASTE_get(struct tsm_vte *vte)
+{
+	return vte->bracketed_paste;
+}
+
+/* grapheme cluster width (terminal-unicode-core) */
+static void mode_GRAPHEME_set(struct tsm_vte *vte, bool set)
+{
+	screen_set_width_method(vte->con, set ? TSM_WIDTH_UNICODE :
+				TSM_WIDTH_WCWIDTH);
+}
+
+static bool mode_GRAPHEME_get(struct tsm_vte *vte)
+{
+	return vte->con->width_method == TSM_WIDTH_UNICODE;
+}
+
+/* the cursor ends right of a sixel, not below it */
+static void mode_SIXRIGHT_set(struct tsm_vte *vte, bool set)
+{
+	vte->sixel_cursor_right = set;
+}
+
+static bool mode_SIXRIGHT_get(struct tsm_vte *vte)
+{
+	return vte->sixel_cursor_right;
+}
+
+/* SM and RM (DECSET and DECRST with '?'): each row's setter, in order */
 static void csi_mode(struct tsm_vte *vte, bool set)
 {
 	unsigned int i;
 
 	for (i = 0; i < vte->csi_argc; ++i) {
+		if (vte->csi_argv[i] < 0)
+			continue;
+
 		if (!(vte->csi_flags & CSI_WHAT)) {
 			switch (vte->csi_argv[i]) {
-			case -1:
-				continue;
-			case 2: /* KAM */
-				set_reset_flag(vte, set,
-					       TSM_VTE_FLAG_KEYBOARD_ACTION_MODE);
-				continue;
-			case 4: /* IRM */
-				set_reset_flag(vte, set,
-					       TSM_VTE_FLAG_INSERT_REPLACE_MODE);
-				if (set)
-					tsm_screen_set_flags(vte->con,
-						TSM_SCREEN_INSERT_MODE);
-				else
-					tsm_screen_reset_flags(vte->con,
-						TSM_SCREEN_INSERT_MODE);
-				continue;
-			case 12: /* SRM */
-				set_reset_flag(vte, set,
-					       TSM_VTE_FLAG_SEND_RECEIVE_MODE);
-				continue;
-			case 20: /* LNM */
-				set_reset_flag(vte, set,
-					       TSM_VTE_FLAG_LINE_FEED_NEW_LINE_MODE);
-				continue;
+#define MODE(kind, number, name, status, ...) \
+	MODE_ONLY_ANSI_##kind(case number: MODE_TRACE(false, number); \
+			      MODE_SET_##status(name); continue;)
+#include "tsm-modes.def"
+#undef MODE
 			default:
 				llog_debug(vte, "unknown non-DEC (Re)Set-Mode %d",
 					   vte->csi_argv[i]);
@@ -1947,220 +2403,64 @@ static void csi_mode(struct tsm_vte *vte, bool set)
 		}
 
 		switch (vte->csi_argv[i]) {
-		case -1:
-			continue;
-		case 1: /* DECCKM */
-			set_reset_flag(vte, set, TSM_VTE_FLAG_CURSOR_KEY_MODE);
-			continue;
-		case 2: /* DECANM */
-			/* Select VT52 mode */
-			/* We do not support VT52 mode. Is there any reason why
-			 * we should support it? We ignore it here and do not
-			 * mark it as to-do item unless someone has strong
-			 * arguments to support it. */
-			continue;
-		case 3: /* DECCOLM */
-			/* If set, select 132 column mode, otherwise use 80
-			 * column mode. If neither is selected explicitly, we
-			 * use dynamic mode, that is, we send SIGWCH when the
-			 * size changes and we allow arbitrary buffer
-			 * dimensions. On soft-reset, we automatically fall back
-			 * to the default, that is, dynamic mode.
-			 * Dynamic-mode can be forced to a static mode in the
-			 * config. That is, every time dynamic-mode becomes
-			 * active, the terminal will be set to the dimensions
-			 * that were selected in the config. This allows setting
-			 * a fixed size for the terminal regardless of the
-			 * display size.
-			 * TODO: Implement this */
-			continue;
-		case 4: /* DECSCLM */
-			/* Select smooth scrolling. We do not support the
-			 * classic smooth scrolling because we have a scrollback
-			 * buffer. There is no need to implement smooth
-			 * scrolling so ignore this here. */
-			continue;
-		case 5: /* DECSCNM */
-			set_reset_flag(vte, set, TSM_VTE_FLAG_INVERSE_SCREEN_MODE);
-			if (set)
-				tsm_screen_set_flags(vte->con,
-						TSM_SCREEN_INVERSE);
-			else
-				tsm_screen_reset_flags(vte->con,
-						TSM_SCREEN_INVERSE);
-			continue;
-		case 6: /* DECOM */
-			set_reset_flag(vte, set, TSM_VTE_FLAG_ORIGIN_MODE);
-			if (set)
-				tsm_screen_set_flags(vte->con,
-						TSM_SCREEN_REL_ORIGIN);
-			else
-				tsm_screen_reset_flags(vte->con,
-						TSM_SCREEN_REL_ORIGIN);
-			continue;
-		case 7: /* DECAWN */
-			set_reset_flag(vte, set, TSM_VTE_FLAG_AUTO_WRAP_MODE);
-			if (set)
-				tsm_screen_set_flags(vte->con,
-						TSM_SCREEN_AUTO_WRAP);
-			else
-				tsm_screen_reset_flags(vte->con,
-						TSM_SCREEN_AUTO_WRAP);
-			continue;
-		case 8: /* DECARM */
-			set_reset_flag(vte, set, TSM_VTE_FLAG_AUTO_REPEAT_MODE);
-			continue;
-		case TSM_VTE_MOUSE_MODE_X10:
-		case TSM_VTE_MOUSE_MODE_VT200:
-			vte->mouse_mode = set ? vte->csi_argv[i] : 0;
-			vte->mouse_event = TSM_VTE_MOUSE_EVENT_BTN;
-
-			if (vte->mouse_cb) {
-			    vte->mouse_cb(vte, vte->mouse_event, false, vte->mouse_data);
-			}
-			continue;
-		case 12: /* blinking cursor */
-			/* TODO: implement */
-			continue;
-		case 18: /* DECPFF */
-			/* If set, a form feed (FF) is sent to the printer after
-			 * every screen that is printed. We don't have printers
-			 * these days directly attached to terminals so we
-			 * ignore this here. */
-			continue;
-		case 19: /* DECPEX */
-			/* If set, the full screen is printed instead of
-			 * scrolling region only. We have no printer so ignore
-			 * this mode. */
-			continue;
-		case 25: /* DECTCEM */
-			set_reset_flag(vte, set, TSM_VTE_FLAG_TEXT_CURSOR_MODE);
-			if (set)
-				tsm_screen_reset_flags(vte->con,
-						TSM_SCREEN_HIDE_CURSOR);
-			else
-				tsm_screen_set_flags(vte->con,
-						TSM_SCREEN_HIDE_CURSOR);
-			continue;
-		case 42: /* DECNRCM */
-			set_reset_flag(vte, set, TSM_VTE_FLAG_NATIONAL_CHARSET_MODE);
-			continue;
-		case 47: /* Alternate screen buffer */
-			if (vte->flags & TSM_VTE_FLAG_TITE_INHIBIT_MODE)
-				continue;
-
-			if (set)
-				tsm_screen_set_flags(vte->con,
-						     TSM_SCREEN_ALTERNATE);
-			else
-				tsm_screen_reset_flags(vte->con,
-						       TSM_SCREEN_ALTERNATE);
-			continue;
-		case 1047: /* Alternate screen buffer with post-erase */
-			if (vte->flags & TSM_VTE_FLAG_TITE_INHIBIT_MODE)
-				continue;
-
-			if (set) {
-				tsm_screen_set_flags(vte->con,
-						     TSM_SCREEN_ALTERNATE);
-			} else {
-				tsm_screen_erase_screen(vte->con, false);
-				tsm_screen_reset_flags(vte->con,
-						       TSM_SCREEN_ALTERNATE);
-			}
-			continue;
-		case 1048: /* Set/Reset alternate-screen buffer cursor */
-			if (vte->flags & TSM_VTE_FLAG_TITE_INHIBIT_MODE)
-				continue;
-
-			if (set) {
-				vte->alt_cursor_x =
-					tsm_screen_get_cursor_x(vte->con);
-				vte->alt_cursor_y =
-					tsm_screen_get_cursor_y(vte->con);
-			} else {
-				tsm_screen_move_to(vte->con, vte->alt_cursor_x,
-						   vte->alt_cursor_y);
-			}
-			continue;
-		case 1049: /* Alternate screen buffer with pre-erase+cursor */
-			if (vte->flags & TSM_VTE_FLAG_TITE_INHIBIT_MODE)
-				continue;
-
-			if (set) {
-				vte->alt_cursor_x =
-					tsm_screen_get_cursor_x(vte->con);
-				vte->alt_cursor_y =
-					tsm_screen_get_cursor_y(vte->con);
-				tsm_screen_set_flags(vte->con,
-						     TSM_SCREEN_ALTERNATE);
-				tsm_screen_erase_screen(vte->con, false);
-			} else {
-				tsm_screen_reset_flags(vte->con,
-						       TSM_SCREEN_ALTERNATE);
-				tsm_screen_move_to(vte->con, vte->alt_cursor_x,
-						   vte->alt_cursor_y);
-			}
-			continue;
-		case TSM_VTE_MOUSE_EVENT_BTN:
-		case TSM_VTE_MOUSE_EVENT_ANY:
-			if (vte->mouse_mode == TSM_VTE_MOUSE_MODE_X10 || vte->mouse_mode == TSM_VTE_MOUSE_MODE_VT200) {
-			    vte->mouse_event = TSM_VTE_MOUSE_EVENT_BTN;
-			} else {
-			    vte->mouse_event = set ? vte->csi_argv[i] : 0;
-			}
-
-			if (vte->mouse_cb && vte->mouse_mode) {
-			    vte->mouse_cb(vte, vte->mouse_event, vte->mouse_mode == TSM_VTE_MOUSE_MODE_PIXEL, vte->mouse_data);
-			}
-			continue;
-		case TSM_VTE_MOUSE_MODE_SGR:
-			vte->mouse_mode = set ? vte->csi_argv[i] : 0;
-
-			if (!vte->mouse_cb) {
-			    continue;
-			}
-
-			if (!set || vte->mouse_event) {
-			    vte->mouse_cb(vte, vte->mouse_event, false, vte->mouse_data);
-			    continue;
-			}
-			continue;
-		case TSM_VTE_MOUSE_MODE_PIXEL:
-			vte->mouse_mode = set ? vte->csi_argv[i] : 0;
-
-			if (!vte->mouse_cb) {
-			    continue;
-			}
-
-			if (!set || vte->mouse_event) {
-			    vte->mouse_cb(vte, vte->mouse_event, set, vte->mouse_data);
-			    continue;
-			}
-			continue;
-		case 80: /* DECSDM: set turns sixel scrolling off, in xterm's
-			  * sense (ADR-103) */
-			vte->sixel_no_scroll = set;
-			continue;
-		case 1070: /* each sixel starts from its own default registers */
-			vte->sixel_private = set;
-			continue;
-		case 8452: /* the cursor ends right of a sixel, not below it */
-			vte->sixel_cursor_right = set;
-			continue;
-		case 2027: /* grapheme cluster width (terminal-unicode-core) */
-			screen_set_width_method(vte->con, set ? TSM_WIDTH_UNICODE :
-						TSM_WIDTH_WCWIDTH);
-			continue;
-		case TSM_VTE_BRACKETED_PASTE:
-			vte->bracketed_paste = set;
-			continue;
+#define MODE(kind, number, name, status, ...) \
+	MODE_ONLY_DEC_##kind(case number: MODE_TRACE(true, number); \
+			     MODE_SET_##status(name); continue;)
+#include "tsm-modes.def"
+#undef MODE
 		default:
 			llog_debug(vte, "unknown DEC %set-Mode %d",
 				   set?"S":"Res", vte->csi_argv[i]);
 			continue;
 		}
 	}
+}
+
+/*
+ * The DECRPM value for a mode: 1 set, 2 reset, 3 permanently set, 4
+ * permanently reset, 0 not recognised. IGNORED and REFUSED rows report their
+ * default as permanent.
+ */
+#define MODE_REPORT_SUPPORTED(name, dflt) return mode_##name##_get(vte) ? 1 : 2;
+#define MODE_REPORT_PARTIAL(name, dflt) return mode_##name##_get(vte) ? 1 : 2;
+#define MODE_REPORT_IGNORED(name, dflt) return (dflt) ? 3 : 4;
+#define MODE_REPORT_REFUSED(name, dflt) return (dflt) ? 3 : 4;
+
+static int mode_report(struct tsm_vte *vte, bool dec, unsigned int number)
+{
+	if (!dec) {
+		switch (number) {
+#define MODE(kind, number, name, status, dflt, ...) \
+	MODE_ONLY_ANSI_##kind(case number: MODE_REPORT_##status(name, dflt))
+#include "tsm-modes.def"
+#undef MODE
+		default:
+			return 0;
+		}
+	}
+
+	switch (number) {
+#define MODE(kind, number, name, status, dflt, ...) \
+	MODE_ONLY_DEC_##kind(case number: MODE_REPORT_##status(name, dflt))
+#include "tsm-modes.def"
+#undef MODE
+	default:
+		return 0;
+	}
+}
+
+/* DECRQM: CSI ? Ps $ p or CSI Ps $ p, answered for every number */
+static void csi_decrqm(struct tsm_vte *vte)
+{
+	bool dec = vte->csi_flags & CSI_WHAT;
+	unsigned int number = vte->csi_argv[0] > 0 ? vte->csi_argv[0] : 0;
+	char buf[32];
+	int len;
+
+	len = snprintf(buf, sizeof(buf), "\e[%s%u;%d$y", dec ? "?" : "",
+		       number, mode_report(vte, dec, number));
+	if (len > 0 && (size_t)len < sizeof(buf))
+		vte_write(vte, buf, len);
 }
 
 static void csi_dev_attr(struct tsm_vte *vte)
@@ -2310,17 +2610,6 @@ static void csi_xtsmgraphics(struct tsm_vte *vte)
 		len = snprintf(buf, sizeof(buf), "\e[?%d;%uS", item, status);
 	if (len > 0 && (size_t)len < sizeof(buf))
 		vte_write(vte, buf, len);
-}
-
-/* DECRQM for mode 2027: 1 set (unicode), 2 reset (wcwidth) */
-static void csi_decrqm_2027(struct tsm_vte *vte)
-{
-	char buf[32];
-	int len;
-
-	len = snprintf(buf, sizeof(buf), "\e[?2027;%u$y",
-		       vte->con->width_method == TSM_WIDTH_UNICODE ? 1 : 2);
-	vte_write(vte, buf, len);
 }
 
 static bool csi_has_subargs(struct tsm_vte *vte)
@@ -2490,10 +2779,8 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			/* DECSTR: Soft Reset */
 			csi_soft_reset(vte);
 		} else if (vte->csi_flags & CSI_CASH) {
-			/* DECRQM: Request Mode. Only DEC private mode 2027
-			 * replies; the rest are ignored, as before. */
-			if ((vte->csi_flags & CSI_WHAT) && vte->csi_argv[0] == 2027)
-				csi_decrqm_2027(vte);
+			/* DECRQM: Request Mode */
+			csi_decrqm(vte);
 		} else {
 			/* DECSCL: Compatibility Level */
 			/* Sometimes CSI_DQUOTE is set here, too */
@@ -2506,8 +2793,16 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 	case 'l': /* RM: Reset Mode */
 		csi_mode(vte, false);
 		break;
-	case 'r': /* DECSTBM */
-		/* set margin size */
+	case 'r':
+		/* XTRESTORE, CSI ? Pm r, which restores saved DEC private
+		 * modes, is not implemented (ADR-201); it must not set the
+		 * margins from its mode numbers */
+		if (vte->csi_flags & CSI_WHAT) {
+			llog_debug(vte, "XTRESTORE ignored");
+			break;
+		}
+
+		/* DECSTBM: set margin size */
 		upper = vte->csi_argv[0];
 		if (upper < 0)
 			upper = 0;
@@ -3445,6 +3740,15 @@ void tsm_vte_set_kitty_graphics(struct tsm_vte *vte, bool enable)
 		tsm_kitty_cancel(vte->kitty);
 		vte->apc_kitty = false;
 	}
+}
+
+SHL_EXPORT
+void tsm_vte_set_cursor_blink(struct tsm_vte *vte, bool enable)
+{
+	if (!vte)
+		return;
+
+	vte->cursor_blink = enable;
 }
 
 SHL_EXPORT

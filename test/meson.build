@@ -35,6 +35,11 @@ test_vte_mouse = executable(
     dependencies: test_deps,
 )
 test_vte = executable('test_vte', 'test_vte.c', dependencies: test_deps)
+test_vte_modes = executable(
+    'test_vte_modes',
+    'test_vte_modes.c',
+    dependencies: test_deps,
+)
 test_vte_sixel = executable(
     'test_vte_sixel',
     'test_vte_sixel.c',
@@ -58,6 +63,7 @@ test('valgrind', test_valgrind,
      should_fail: get_option('b_sanitize').contains('address'))
 test('vte_mouse', test_vte_mouse)
 test('vte', test_vte)
+test('vte_modes', test_vte_modes)
 test('vte_sixel', test_vte_sixel)
 test('vte_kitty', test_vte_kitty)
 
@@ -128,6 +134,27 @@ if get_option('fuzz')
 endif
 
 
+# The mode table (ADR-201 in the kmscon fork): gen-modes prints fork/modes.md
+# and fork/modes.tsv from src/tsm/tsm-modes.def, and modes-doc fails when the
+# committed files differ (make modes rewrites them).
+gen_modes = executable('gen-modes', 'gen-modes.c', dependencies: [libtsm_test_dep])
+# Every DEC number 0-65535 and ANSI number 0-255: DECRQM replies 0 exactly
+# for the numbers with no row, and SM and RM of those change nothing.
+modes_sweep = executable('modes-sweep', 'modes-sweep.c', dependencies: [libtsm_test_dep])
+test('modes-sweep', modes_sweep, timeout: 120)
+# SM, RM and DECRQM consist of the table's expansions, and the mode constants
+# stay in the accessors.
+test(
+    'modes-source',
+    find_program('python3'),
+    args: [files('modes-source.py'), meson.project_source_root() / 'src' / 'tsm' / 'tsm-vte.c'],
+)
+test(
+    'modes-doc',
+    find_program('python3'),
+    args: [files('modes-doc.py'), gen_modes, meson.project_source_root() / 'fork'],
+)
+
 # Conformance replay (ADR-301 tier 1 in the kmscon fork): every recorded
 # stream in conformance/ must reproduce its golden screen state.
 tsm_replay = executable(
@@ -154,4 +181,15 @@ test(
     find_program('python3'),
     args: [files('conformance/check.py'), tsm_replay, meson.current_source_dir() / 'conformance',
            '--frame'],
+)
+
+# Every supported mode is set and reset by a test its row names, and every
+# test a row names exists (ADR-201); the test build's mode trace shows which.
+test(
+    'modes-tests',
+    find_program('python3'),
+    args: [files('modes-tests.py'), gen_modes, meson.current_source_dir(), tsm_replay,
+           meson.current_source_dir() / 'conformance', test_vte, test_vte_modes,
+           test_vte_mouse, test_vte_sixel, test_vte_kitty, test_screen],
+    timeout: 120,
 )

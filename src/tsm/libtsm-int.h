@@ -560,4 +560,9 @@ extern tsm_vte_charset tsm_vte_unicode_upper;
 extern tsm_vte_charset tsm_vte_dec_supplemental_graphics;
 extern tsm_vte_charset tsm_vte_dec_special_graphics;
 
+#ifdef TSM_MODE_TRACE
+/* test builds: names the running test in the mode trace (tsm-vte.c) */
+void tsm_mode_trace_test(const char *name);
+#endif
+
 #endif /* TSM_LIBTSM_INT_H */
