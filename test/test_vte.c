@@ -925,6 +925,29 @@ START_TEST(test_vte_8bit_c1)
 }
 END_TEST
 
+/* ESC # 8 is DECALN, which libtsm does not implement; with the '#' dropped
+ * it ran as ESC 8, DECRC, and moved the cursor back (aaronsb/libtsm#59) */
+START_TEST(test_vte_esc_hash_not_decrc)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const char *input = "\e7\e[3;5H\e#8";
+	int r;
+
+	r = tsm_screen_new(&screen, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+	ck_assert_int_eq(r, 0);
+	tsm_vte_input(vte, input, strlen(input));
+
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(screen), 4);
+	ck_assert_uint_eq(tsm_screen_get_cursor_y(screen), 2);
+
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+}
+END_TEST
+
 /* draw2 shows a cluster's base codepoint, so a combining mark does not blank
  * the letter it is on */
 START_TEST(test_vte_draw2_cluster_base)
@@ -2625,6 +2648,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_underline_color_dim)
 	TEST(test_vte_modkeys_not_sgr)
 	TEST(test_vte_8bit_c1)
+	TEST(test_vte_esc_hash_not_decrc)
 	TEST(test_vte_draw2_cluster_base)
 	TEST(test_vte_cluster_release)
 	TEST(test_vte_width_method_resets)

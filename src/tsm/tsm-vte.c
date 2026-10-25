@@ -116,6 +116,7 @@ enum parser_action {
 #define CSI_PLUS	0x0100		/* CSI: + */
 #define CSI_POPEN	0x0200		/* CSI: ( */
 #define CSI_PCLOSE	0x0400		/* CSI: ) */
+#define CSI_HASH	0x0800		/* CSI: # */
 
 /* max CSI arguments */
 #define CSI_ARG_MAX 16
@@ -1441,6 +1442,9 @@ static void do_collect(struct tsm_vte *vte, uint32_t data)
 		break;
 	case ')':
 		vte->csi_flags |= CSI_PCLOSE;
+		break;
+	case '#':
+		vte->csi_flags |= CSI_HASH;
 		break;
 	}
 }
@@ -2826,18 +2830,23 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		break;
 	case 'p':
 		if (vte->csi_flags & CSI_GT) {
-			/* xterm: select X11 visual cursor mode */
-			csi_soft_reset(vte);
+			/* XTSMPOINTER, CSI > Ps p, sets when xterm hides the
+			 * pointer while the user types. libtsm gives the host
+			 * no call for it, so it is dropped; it is not a reset
+			 * (aaronsb/libtsm#59). */
+			llog_debug(vte, "XTSMPOINTER ignored");
 		} else if (vte->csi_flags & CSI_BANG) {
 			/* DECSTR: Soft Reset */
 			csi_soft_reset(vte);
 		} else if (vte->csi_flags & CSI_CASH) {
 			/* DECRQM: Request Mode */
 			csi_decrqm(vte);
-		} else {
+		} else if (!(vte->csi_flags & ~CSI_DQUOTE)) {
 			/* DECSCL: Compatibility Level */
 			/* Sometimes CSI_DQUOTE is set here, too */
 			csi_compat_mode(vte);
+		} else {
+			llog_debug(vte, "unhandled CSI p, flags %x", vte->csi_flags);
 		}
 		break;
 	case 'h': /* SM: Set Mode */
