@@ -2836,6 +2836,40 @@ START_TEST(test_vte_csi_t_not_xtwinops)
 }
 END_TEST
 
+/* XTMODKEYS-disable (CSI > Ps n) is not DSR; DECXCPR (CSI ? 6 n) keeps
+ * the plain CPR it has always had */
+START_TEST(test_vte_csi_xtmodkeys_not_dsr)
+{
+	static const char *const seqs[] = { "\e[>6n", "\e[>5n", "\e[>n", NULL };
+
+	pfx_assert_foreign(seqs);
+	pfx_input("\e[?6n");
+	ck_assert_str_eq(pfx_out, "\e[3;3R");
+	pfx_len = 0;
+	pfx_input("\e[6n");
+	ck_assert_str_eq(pfx_out, "\e[3;3R");
+}
+END_TEST
+
+/* ESC - H and ESC - M designate 96-character sets into G1 (Hebrew,
+ * Latin-5), which libtsm does not have; they are not HTS and RI */
+START_TEST(test_vte_esc_96_set_not_hts_ri)
+{
+	static const char *const seqs[] = { "\e-H", "\e-M", "\e.A", "\e/A", NULL };
+
+	/* ESC - H sets no tab stop at column 2: a tab from column 0 reaches 8 */
+	pfx_input("\e-H\r\t");
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(pfx_screen), 8);
+	pfx_input("\e[3;3H");
+	pfx_assert_foreign(seqs);
+	pfx_input("\r\t");
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(pfx_screen), 8);
+	/* a designation libtsm has still works */
+	pfx_input("\e(0q\e(B");
+	ck_assert_uint_eq(pfx_cell(8, 2), 0x2500);
+}
+END_TEST
+
 /* intermediates and markers do_collect has no name for are still
  * recorded: CSI = 1 p, CSI < 1 p and DECLTOD (CSI Ps ; Ps , p) are not
  * DECSCL, and DA3 (CSI = c) is not DA1 */
@@ -3017,6 +3051,8 @@ TEST_DEFINE_CASE(prefixes)
 	TEST(test_vte_csi_xtqfmtkeys_not_tbc)
 	TEST(test_vte_csi_deccara_not_decstbm)
 	TEST(test_vte_csi_t_not_xtwinops)
+	TEST(test_vte_csi_xtmodkeys_not_dsr)
+	TEST(test_vte_esc_96_set_not_hts_ri)
 	TEST(test_vte_csi_other_intermediates)
 TEST_END_CASE
 
