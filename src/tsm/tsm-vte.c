@@ -3453,6 +3453,47 @@ static void vte_write_arrow(struct tsm_vte *vte, char direction, unsigned int mo
 	}
 }
 
+/*
+ * The C0 byte Ctrl turns @sym into, or -1 for a key Ctrl leaves as it is.
+ * @sym is the ascii keysym, so Ctrl+C works whatever layout is active.
+ */
+static int ctrl_byte(uint32_t sym)
+{
+	if ((sym >= XKB_KEY_a && sym <= XKB_KEY_z) ||
+	    (sym >= XKB_KEY_A && sym <= XKB_KEY_Z))
+		return sym & 0x1f;
+
+	switch (sym) {
+	case XKB_KEY_2:
+	case XKB_KEY_space:
+		return 0x00;
+	case XKB_KEY_3:
+	case XKB_KEY_bracketleft:
+	case XKB_KEY_braceleft:
+		return 0x1b;
+	case XKB_KEY_4:
+	case XKB_KEY_backslash:
+	case XKB_KEY_bar:
+		return 0x1c;
+	case XKB_KEY_5:
+	case XKB_KEY_bracketright:
+	case XKB_KEY_braceright:
+		return 0x1d;
+	case XKB_KEY_6:
+	case XKB_KEY_grave:
+	case XKB_KEY_asciitilde:
+		return 0x1e;
+	case XKB_KEY_7:
+	case XKB_KEY_slash:
+	case XKB_KEY_question:
+		return 0x1f;
+	case XKB_KEY_8:
+		return 0x7f;
+	default:
+		return -1;
+	}
+}
+
 SHL_EXPORT
 bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 			     uint32_t ascii, unsigned int mods,
@@ -3461,6 +3502,7 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 	char val, u8[4];
 	size_t len;
 	uint32_t sym;
+	int ctrl;
 
 	if (!vte) {
 		return false;
@@ -3491,142 +3533,10 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 		sym = keysym;
 
 	if (mods & TSM_CONTROL_MASK) {
-		switch (sym) {
-		case XKB_KEY_2:
-		case XKB_KEY_space:
-			vte_write(vte, "\x00", 1);
-			return true;
-		case XKB_KEY_a:
-		case XKB_KEY_A:
-			vte_write(vte, "\x01", 1);
-			return true;
-		case XKB_KEY_b:
-		case XKB_KEY_B:
-			vte_write(vte, "\x02", 1);
-			return true;
-		case XKB_KEY_c:
-		case XKB_KEY_C:
-			vte_write(vte, "\x03", 1);
-			return true;
-		case XKB_KEY_d:
-		case XKB_KEY_D:
-			vte_write(vte, "\x04", 1);
-			return true;
-		case XKB_KEY_e:
-		case XKB_KEY_E:
-			vte_write(vte, "\x05", 1);
-			return true;
-		case XKB_KEY_f:
-		case XKB_KEY_F:
-			vte_write(vte, "\x06", 1);
-			return true;
-		case XKB_KEY_g:
-		case XKB_KEY_G:
-			vte_write(vte, "\x07", 1);
-			return true;
-		case XKB_KEY_h:
-		case XKB_KEY_H:
-			vte_write(vte, "\x08", 1);
-			return true;
-		case XKB_KEY_i:
-		case XKB_KEY_I:
-			vte_write(vte, "\x09", 1);
-			return true;
-		case XKB_KEY_j:
-		case XKB_KEY_J:
-			vte_write(vte, "\x0a", 1);
-			return true;
-		case XKB_KEY_k:
-		case XKB_KEY_K:
-			vte_write(vte, "\x0b", 1);
-			return true;
-		case XKB_KEY_l:
-		case XKB_KEY_L:
-			vte_write(vte, "\x0c", 1);
-			return true;
-		case XKB_KEY_m:
-		case XKB_KEY_M:
-			vte_write(vte, "\x0d", 1);
-			return true;
-		case XKB_KEY_n:
-		case XKB_KEY_N:
-			vte_write(vte, "\x0e", 1);
-			return true;
-		case XKB_KEY_o:
-		case XKB_KEY_O:
-			vte_write(vte, "\x0f", 1);
-			return true;
-		case XKB_KEY_p:
-		case XKB_KEY_P:
-			vte_write(vte, "\x10", 1);
-			return true;
-		case XKB_KEY_q:
-		case XKB_KEY_Q:
-			vte_write(vte, "\x11", 1);
-			return true;
-		case XKB_KEY_r:
-		case XKB_KEY_R:
-			vte_write(vte, "\x12", 1);
-			return true;
-		case XKB_KEY_s:
-		case XKB_KEY_S:
-			vte_write(vte, "\x13", 1);
-			return true;
-		case XKB_KEY_t:
-		case XKB_KEY_T:
-			vte_write(vte, "\x14", 1);
-			return true;
-		case XKB_KEY_u:
-		case XKB_KEY_U:
-			vte_write(vte, "\x15", 1);
-			return true;
-		case XKB_KEY_v:
-		case XKB_KEY_V:
-			vte_write(vte, "\x16", 1);
-			return true;
-		case XKB_KEY_w:
-		case XKB_KEY_W:
-			vte_write(vte, "\x17", 1);
-			return true;
-		case XKB_KEY_x:
-		case XKB_KEY_X:
-			vte_write(vte, "\x18", 1);
-			return true;
-		case XKB_KEY_y:
-		case XKB_KEY_Y:
-			vte_write(vte, "\x19", 1);
-			return true;
-		case XKB_KEY_z:
-		case XKB_KEY_Z:
-			vte_write(vte, "\x1a", 1);
-			return true;
-		case XKB_KEY_3:
-		case XKB_KEY_bracketleft:
-		case XKB_KEY_braceleft:
-			vte_write(vte, "\x1b", 1);
-			return true;
-		case XKB_KEY_4:
-		case XKB_KEY_backslash:
-		case XKB_KEY_bar:
-			vte_write(vte, "\x1c", 1);
-			return true;
-		case XKB_KEY_5:
-		case XKB_KEY_bracketright:
-		case XKB_KEY_braceright:
-			vte_write(vte, "\x1d", 1);
-			return true;
-		case XKB_KEY_6:
-		case XKB_KEY_grave:
-		case XKB_KEY_asciitilde:
-			vte_write(vte, "\x1e", 1);
-			return true;
-		case XKB_KEY_7:
-		case XKB_KEY_slash:
-		case XKB_KEY_question:
-			vte_write(vte, "\x1f", 1);
-			return true;
-		case XKB_KEY_8:
-			vte_write(vte, "\x7f", 1);
+		ctrl = ctrl_byte(sym);
+		if (ctrl >= 0) {
+			val = ctrl;
+			vte_write(vte, &val, 1);
 			return true;
 		}
 	}
