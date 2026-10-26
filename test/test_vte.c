@@ -3038,9 +3038,10 @@ END_TEST
 /* level 0, the default, sends keys as libtsm always has */
 START_TEST(test_vte_modkeys_level0)
 {
-	static const char ctrl_keys[] = " 23[{4\\|5]}6`~7/?8";
-	static const char ctrl_bytes[] = "\0\0\x1b\x1b\x1b\x1c\x1c\x1c\x1d\x1d\x1d\x1e\x1e\x1e"
-					 "\x1f\x1f\x1f\x7f";
+	/* xterm's control bytes (its us-pc105 table, mode 0) */
+	static const char ctrl_keys[] = " 2@`3[{4\\|5]}6^~7/_?8";
+	static const char ctrl_bytes[] = "\0\0\0\0\x1b\x1b\x1b\x1c\x1c\x1c\x1d\x1d\x1d"
+					 "\x1e\x1e\x1e\x1f\x1f\x1f\x7f\x7f";
 	uint32_t ch;
 
 	MOK_CHAR("1", XKB_KEY_1, K_C);
@@ -3052,6 +3053,13 @@ START_TEST(test_vte_modkeys_level0)
 	MOK_CHAR("\e\x01", XKB_KEY_a, K_A | K_C);
 	MOK_CHAR("\0", XKB_KEY_space, K_C);
 	MOK_CHAR("\x1b", XKB_KEY_bracketleft, K_C);
+	/* the keys libtsm once sent wrong (aaronsb/libtsm#72) */
+	MOK_CHAR("\0", XKB_KEY_at, K_C | K_S);
+	MOK_CHAR("\x1e", XKB_KEY_asciicircum, K_C | K_S);
+	MOK_CHAR("\x1f", XKB_KEY_underscore, K_C | K_S);
+	MOK_CHAR("\x7f", XKB_KEY_question, K_C | K_S);
+	MOK_CHAR("\0", XKB_KEY_grave, K_C);
+	MOK_CHAR("\x1e", XKB_KEY_asciitilde, K_C | K_S);
 	MOK_KEY("\t", XKB_KEY_Tab, XKB_KEY_Tab, K_C, '\t');
 	MOK_KEY("\e[Z", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_S, '\t');
 	MOK_KEY("\r", XKB_KEY_Return, XKB_KEY_Return, K_S, '\r');
@@ -3098,7 +3106,14 @@ START_TEST(test_vte_modkeys_level1)
 	MOK_CHAR("\x1c", XKB_KEY_backslash, K_C);
 	MOK_CHAR("\x1f", XKB_KEY_slash, K_C);
 	MOK_CHAR("\0", XKB_KEY_space, K_C);
-	/* and encodes the keys without one */
+	MOK_CHAR("\0", XKB_KEY_at, K_C | K_S);
+	MOK_CHAR("\x1e", XKB_KEY_asciicircum, K_C | K_S);
+	MOK_CHAR("\x1f", XKB_KEY_underscore, K_C | K_S);
+	MOK_CHAR("\0", XKB_KEY_grave, K_C);
+	/* and encodes the keys without one, Ctrl+? among them: its DEL is
+	 * xterm's level 0 only */
+	MOK_CHAR("\e[27;6;63~", XKB_KEY_question, K_C | K_S);
+	MOK_CHAR("\e[27;5;63~", XKB_KEY_question, K_C);
 	MOK_CHAR("\e[27;5;49~", XKB_KEY_1, K_C);
 	MOK_CHAR("\e[27;5;57~", XKB_KEY_9, K_C);
 	MOK_CHAR("\e[27;5;48~", XKB_KEY_0, K_C);
@@ -3172,6 +3187,8 @@ START_TEST(test_vte_modkeys_level2)
 	MOK_CHAR("\e[27;8;65~", XKB_KEY_A, K_A | K_C | K_S);
 	MOK_CHAR("\e[27;6;33~", XKB_KEY_exclam, K_C | K_S);
 	MOK_CHAR("\e[27;4;33~", XKB_KEY_exclam, K_A | K_S);
+	MOK_CHAR("\e[27;6;64~", XKB_KEY_at, K_C | K_S);
+	MOK_CHAR("\e[27;5;96~", XKB_KEY_grave, K_C);
 
 	/* Shift alone encodes space and @ to ~, as xterm's table has it */
 	MOK_CHAR("\e[27;2;65~", XKB_KEY_A, K_S);

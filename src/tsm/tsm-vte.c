@@ -3545,8 +3545,9 @@ static void vte_write_arrow(struct tsm_vte *vte, char direction, unsigned int mo
 }
 
 /*
- * The C0 byte Ctrl turns @sym into, or -1 for a key Ctrl leaves as it is.
- * @sym is the ascii keysym, so Ctrl+C works whatever layout is active.
+ * The C0 byte Ctrl turns @sym into, or -1 for a key Ctrl leaves as it is:
+ * xterm's bytes (its us-pc105 table, mode 0). @sym is the ascii keysym, so
+ * Ctrl+C works whatever layout is active.
  */
 static int ctrl_byte(uint32_t sym)
 {
@@ -3557,6 +3558,8 @@ static int ctrl_byte(uint32_t sym)
 	switch (sym) {
 	case XKB_KEY_2:
 	case XKB_KEY_space:
+	case XKB_KEY_at:
+	case XKB_KEY_grave:
 		return 0x00;
 	case XKB_KEY_3:
 	case XKB_KEY_bracketleft:
@@ -3571,14 +3574,15 @@ static int ctrl_byte(uint32_t sym)
 	case XKB_KEY_braceright:
 		return 0x1d;
 	case XKB_KEY_6:
-	case XKB_KEY_grave:
+	case XKB_KEY_asciicircum:
 	case XKB_KEY_asciitilde:
 		return 0x1e;
 	case XKB_KEY_7:
 	case XKB_KEY_slash:
-	case XKB_KEY_question:
+	case XKB_KEY_underscore:
 		return 0x1f;
 	case XKB_KEY_8:
+	case XKB_KEY_question:
 		return 0x7f;
 	default:
 		return -1;
@@ -3611,9 +3615,9 @@ static uint32_t key_char(uint32_t keysym, uint32_t unicode)
  * table:
  *
  * - Level 1 encodes a printable key with Alt, or with Ctrl where libtsm has
- *   no control byte for it (Ctrl+1 encodes, Ctrl+a stays 0x01; ctrl_byte's
- *   list is not quite xterm's, which also has Ctrl+@, Ctrl+^ and Ctrl+_ and
- *   encodes Ctrl+?, so those four differ from xterm here); space and
+ *   no control byte for it (Ctrl+1 encodes, Ctrl+a stays 0x01), and Ctrl+?,
+ *   whose DEL xterm sends only at level 0: X11's own Ctrl mapping does not
+ *   cover '?'; space and
  *   Escape only with Alt; Tab and Return with any modifier; never
  *   BackSpace. The sources disagree on Alt: xterm(1)'s modifyOtherKeys
  *   entry says Alt and Meta cause no escapes at level 1, while ctlseqs
@@ -3675,7 +3679,8 @@ static bool vte_write_modified_key(struct tsm_vte *vte, uint32_t keysym, uint32_
 			if (m == TSM_SHIFT_MASK && code != ' ' && (code < '@' || code > '~'))
 				return false;
 		} else if (!(m & TSM_ALT_MASK)) {
-			if (!(m & TSM_CONTROL_MASK) || ctrl_byte(sym) >= 0)
+			if (!(m & TSM_CONTROL_MASK) ||
+			    (ctrl_byte(sym) >= 0 && sym != XKB_KEY_question))
 				return false;
 		}
 		break;
