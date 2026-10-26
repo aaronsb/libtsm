@@ -671,11 +671,13 @@ START_TEST(test_mode_focus_resets)
 	out_clear();
 	ck_assert(!tsm_vte_handle_focus(vte, true));
 	ck_assert_uint_eq(out_len, 0);
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1004), 2);
 
 	input("\e[?1004h\e[!p");
 	out_clear();
 	ck_assert(!tsm_vte_handle_focus(vte, false));
 	ck_assert_uint_eq(out_len, 0);
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1004), 2);
 
 	/* and so do the host's resets */
 	input("\e[?1004h");
@@ -732,8 +734,8 @@ START_TEST(test_mode_xtsmpointer_not_reset)
 }
 END_TEST
 
-/* KAM, DECARM and DECNRCM have no effect, but SM and RM still toggle their
- * flags in tsm_vte_get_flags, as upstream's API has them */
+/* KAM and DECNRCM are refused, but SM and RM still toggle their flags in
+ * tsm_vte_get_flags, as upstream's API has them; so does DECARM's setter */
 START_TEST(test_mode_ignored_legacy_flags)
 {
 	ck_assert(!vte_flag(TSM_VTE_FLAG_KEYBOARD_ACTION_MODE));
@@ -758,6 +760,25 @@ START_TEST(test_mode_ignored_legacy_flags)
 }
 END_TEST
 
+/* DECARM: reset stops the host repeating a held key, which it learns from
+ * tsm_vte_get_mode; DECSTR and RIS set it again (aaronsb/libtsm#57) */
+START_TEST(test_mode_decarm)
+{
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 8), 1);
+	input("\e[?8l");
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 8), 2);
+	ck_assert(!vte_flag(TSM_VTE_FLAG_AUTO_REPEAT_MODE));
+	input("\e[?8h");
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 8), 1);
+	ck_assert(vte_flag(TSM_VTE_FLAG_AUTO_REPEAT_MODE));
+
+	input("\e[?8l\e[!p");
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 8), 1);
+	input("\e[?8l\ec");
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 8), 1);
+}
+END_TEST
+
 /* DECRQM and tsm_vte_get_mode (aaronsb/libtsm#31) */
 
 struct mode_reply {
@@ -771,7 +792,7 @@ struct mode_reply {
 static const struct mode_reply mode_defaults[] = {
 	{ false, 2, 4 }, { false, 4, 2 }, { false, 12, 1 }, { false, 20, 2 },
 	{ true, 1, 2 }, { true, 2, 3 }, { true, 3, 4 }, { true, 4, 4 },
-	{ true, 5, 2 }, { true, 6, 2 }, { true, 7, 1 }, { true, 8, 3 },
+	{ true, 5, 2 }, { true, 6, 2 }, { true, 7, 1 }, { true, 8, 1 },
 	{ true, 9, 2 }, { true, 12, 1 }, { true, 18, 4 }, { true, 19, 4 },
 	{ true, 25, 1 }, { true, 42, 4 }, { true, 47, 2 }, { true, 80, 4 },
 	{ true, 1000, 2 }, { true, 1002, 2 }, { true, 1003, 2 },
@@ -832,13 +853,23 @@ START_TEST(test_mode_decrqm_set)
 	assert_decrqm(true, 2027, 2);
 
 	/* ignored and refused rows keep their fixed state */
-	input("\e[2h\e[?2;3;4;12;18;19;42h\e[?8l");
+	input("\e[2h\e[?2;3;4;18;19;42h");
 	assert_decrqm(false, 2, 4);
 	assert_decrqm(true, 2, 3);
 	assert_decrqm(true, 3, 4);
-	assert_decrqm(true, 8, 3);
-	assert_decrqm(true, 12, 1);
+	assert_decrqm(true, 4, 4);
+	assert_decrqm(true, 18, 4);
+	assert_decrqm(true, 19, 4);
 	assert_decrqm(true, 42, 4);
+	input("\e[2l\e[?2;3;4;18;19;42l");
+	assert_decrqm(false, 2, 4);
+	assert_decrqm(true, 2, 3);
+	assert_decrqm(true, 42, 4);
+
+	input("\e[?8l");
+	assert_decrqm(true, 8, 2);
+	input("\e[?8h");
+	assert_decrqm(true, 8, 1);
 
 	/* the alternate screen modes share one flag; 1048 holds no state */
 	input("\e[?1049h");
@@ -979,25 +1010,55 @@ START_TEST(test_mode_mouse_resets)
 }
 END_TEST
 
-/* mode 12 reports whether the cursor style blinks, as kmscon draws it: the
- * default and the odd DECSCUSR styles; SM and RM 12 do nothing yet
- * (aaronsb/libtsm#57) */
+static void assert_cursor_style(enum tsm_screen_cursor_style style)
+{
+	ck_assert_uint_eq(tsm_screen_get_cursor_style(screen), style);
+}
+
+/* mode 12 starts and stops the cursor blinking in a shape DECSCUSR chose, as
+ * xterm has it; under the default style the host's setting rules and SM and
+ * RM leave it. DECRQM reports whether the style blinks, as kmscon draws it:
+ * the default and the odd DECSCUSR styles. RIS and DECSTR return the default
+ * style (aaronsb/libtsm#57) */
 START_TEST(test_mode_cursor_blink)
 {
-	assert_decrqm(true, 12, 1);
-	input("\e[2 q");
-	assert_decrqm(true, 12, 2);
-	input("\e[?12h");
-	assert_decrqm(true, 12, 2);
-	input("\e[5 q");
+	/* the default style keeps the host's blink */
 	assert_decrqm(true, 12, 1);
 	input("\e[?12l");
+	assert_cursor_style(TSM_SCREEN_CURSOR_DEFAULT);
 	assert_decrqm(true, 12, 1);
-	input("\e[6 q");
+	input("\e[?12h");
+	assert_cursor_style(TSM_SCREEN_CURSOR_DEFAULT);
+	assert_decrqm(true, 12, 1);
+
+	/* each chosen shape keeps its shape */
+	input("\e[2 q\e[?12h");
+	assert_cursor_style(TSM_SCREEN_CURSOR_BLOCK_BLINK);
+	assert_decrqm(true, 12, 1);
+	input("\e[?12l");
+	assert_cursor_style(TSM_SCREEN_CURSOR_BLOCK_STEADY);
 	assert_decrqm(true, 12, 2);
-	input("\e[0 q");
+	input("\e[4 q\e[?12h");
+	assert_cursor_style(TSM_SCREEN_CURSOR_UNDERLINE_BLINK);
+	input("\e[?12l");
+	assert_cursor_style(TSM_SCREEN_CURSOR_UNDERLINE_STEADY);
+	input("\e[5 q\e[?12l");
+	assert_cursor_style(TSM_SCREEN_CURSOR_VBAR_STEADY);
+	assert_decrqm(true, 12, 2);
+	input("\e[?12h");
+	assert_cursor_style(TSM_SCREEN_CURSOR_VBAR_BLINK);
+
+	/* an RM under the default style does not carry to the next chosen one */
+	input("\e[2 q\e[?12h\e[0 q\e[?12l\e[2 q");
+	assert_cursor_style(TSM_SCREEN_CURSOR_BLOCK_STEADY);
+
+	/* DECSTR and RIS return the default style, and the host's blink */
+	input("\e[?12l\e[!p");
+	assert_cursor_style(TSM_SCREEN_CURSOR_DEFAULT);
 	assert_decrqm(true, 12, 1);
-	ck_assert_uint_eq(tsm_screen_get_cursor_style(screen), TSM_SCREEN_CURSOR_DEFAULT);
+	input("\e[6 q\ec");
+	assert_cursor_style(TSM_SCREEN_CURSOR_DEFAULT);
+	assert_decrqm(true, 12, 1);
 }
 END_TEST
 
@@ -1025,13 +1086,18 @@ START_TEST(test_mode_decrqm_form)
 END_TEST
 
 /* a host that never blinks the cursor (kmscon's blink=false) says so, and
- * mode 12 then reports reset for every style */
+ * mode 12 then reports reset for every style, set included */
 START_TEST(test_mode_cursor_blink_host)
 {
 	tsm_vte_set_cursor_blink(vte, false);
 	assert_decrqm(true, 12, 2);
 	input("\e[5 q");
 	assert_decrqm(true, 12, 2);
+	input("\e[?12h");
+	assert_decrqm(true, 12, 2);
+	input("\e[?12l");
+	assert_cursor_style(TSM_SCREEN_CURSOR_VBAR_STEADY);
+	input("\e[5 q");
 
 	tsm_vte_set_cursor_blink(vte, true);
 	assert_decrqm(true, 12, 1);
@@ -1256,6 +1322,7 @@ TEST_DEFINE_CASE(dec)
 	TEST(test_mode_focus)
 	TEST(test_mode_focus_resets)
 	TEST(test_mode_ignored_legacy_flags)
+	TEST(test_mode_decarm)
 TEST_END_CASE
 
 TEST_DEFINE_CASE(report)

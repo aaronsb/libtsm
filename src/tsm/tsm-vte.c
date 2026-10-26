@@ -132,14 +132,14 @@ enum parser_action {
 #define MODE_ACCESSORS_REFUSED(...)
 #define MODE_SET_SUPPORTED(name) mode_##name##_set(vte, set)
 #define MODE_SET_PARTIAL(name) mode_##name##_set(vte, set)
-/* an ignored row has no effect, but keeps its legacy flag for
+/* an ignored or refused row has no effect, but keeps its legacy flag for
  * tsm_vte_get_flags, upstream's API; MODE_FLAG_<name> is 0 for one without */
 #define MODE_SET_IGNORED(name) set_reset_flag(vte, set, MODE_FLAG_##name)
-#define MODE_SET_REFUSED(name)
+#define MODE_SET_REFUSED(name) set_reset_flag(vte, set, MODE_FLAG_##name)
 #define MODE_FLAG_KAM TSM_VTE_FLAG_KEYBOARD_ACTION_MODE
+#define MODE_FLAG_DECANM 0
 #define MODE_FLAG_DECCOLM 0
 #define MODE_FLAG_DECSCLM 0
-#define MODE_FLAG_DECARM TSM_VTE_FLAG_AUTO_REPEAT_MODE
 #define MODE_FLAG_DECPFF 0
 #define MODE_FLAG_DECPEX 0
 #define MODE_FLAG_DECNRCM TSM_VTE_FLAG_NATIONAL_CHARSET_MODE
@@ -896,9 +896,10 @@ static void modes_reset(struct tsm_vte *vte, enum mode_reset reset)
 
 /*
  * Reset VTE state
- * This performs a soft reset of the VTE. That is, everything is reset to the
- * same state as when the VTE was created. This does not affect the console,
- * though.
+ * This performs a soft reset of the VTE, as DECSTR and RIS do: everything is
+ * reset to the same state as when the VTE was created. On the screen it
+ * resets the modes, the margins and the tab stops (tsm_screen_reset) and the
+ * cursor style, but leaves the cells and the scrollback.
  */
 SHL_EXPORT
 void tsm_vte_reset(struct tsm_vte *vte)
@@ -907,10 +908,8 @@ void tsm_vte_reset(struct tsm_vte *vte)
 		return;
 
 	/* the modes' flags start reset, and modes_reset sets those whose
-	 * default is set; DECARM is an ignored row with no setter, so its
-	 * legacy flag is set here */
-	vte->flags = TSM_VTE_FLAG_AUTO_REPEAT_MODE |
-		     TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE;
+	 * default is set */
+	vte->flags = TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE;
 	tsm_screen_reset(vte->con);
 
 	tsm_utf8_mach_reset(vte->mach);
@@ -936,6 +935,8 @@ void tsm_vte_reset(struct tsm_vte *vte)
 
 	vte->cattr = vte->def_attr;
 	screen_set_def_cell_attr(vte->con, &vte->def_attr);
+	/* the cursor's shape and blink return to the default, as xterm's do */
+	tsm_screen_set_cursor_style(vte->con, TSM_SCREEN_CURSOR_DEFAULT);
 	/* RIS and DECSTR also return mode 2027 to the configured method,
 	 * where the draft resets it to off (a deviation ADR-102 records) */
 	modes_reset(vte, RESET_SOFT);
@@ -1932,15 +1933,42 @@ static bool mode_PIXMOUSE_get(struct tsm_vte *vte)
 }
 
 /*
- * AT&T 610 cursor blink. DECRQM reports whether the cursor blinks: the host
- * blinks it (tsm_vte_set_cursor_blink) and the style is one that blinks, the
- * default or an odd DECSCUSR style, as kmscon draws them. SM and RM do
- * nothing yet (aaronsb/libtsm#57).
+ * DECARM: the host makes a held key's repeats, and stops them while the
+ * mode is reset (tsm_vte_get_mode)
+ */
+static void mode_DECARM_set(struct tsm_vte *vte, bool set)
+{
+	set_reset_flag(vte, set, TSM_VTE_FLAG_AUTO_REPEAT_MODE);
+}
+
+static bool mode_DECARM_get(struct tsm_vte *vte)
+{
+	return vte->flags & TSM_VTE_FLAG_AUTO_REPEAT_MODE;
+}
+
+/*
+ * AT&T 610 cursor blink. Under a style DECSCUSR chose, set makes the cursor
+ * blink and reset makes it steady, in the same shape: the odd DECSCUSR styles
+ * blink and the even ones are steady. Under the default style the cursor
+ * blinks as the host's setting says (kmscon's blink), and SM and RM leave it,
+ * as xterm's preference wins when it is on and RIS or DECSTR has cleared the
+ * flag it XORs with. DECRQM reports whether the cursor blinks: the host blinks
+ * it (tsm_vte_set_cursor_blink) and the style is one that blinks, as kmscon
+ * draws them.
  */
 static void mode_CURBLINK_set(struct tsm_vte *vte, bool set)
 {
-	(void)vte;
-	(void)set;
+	enum tsm_screen_cursor_style style = tsm_screen_get_cursor_style(vte->con);
+
+	if (style == TSM_SCREEN_CURSOR_DEFAULT || style > TSM_SCREEN_CURSOR_VBAR_STEADY)
+		return;
+	if (set && !(style & 1))
+		--style;
+	else if (!set && (style & 1))
+		++style;
+	else
+		return;
+	tsm_screen_set_cursor_style(vte->con, style);
 }
 
 static bool mode_CURBLINK_get(struct tsm_vte *vte)

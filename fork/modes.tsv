@@ -1,22 +1,22 @@
 kind	number	name	status	decrqm_start	decrqm_seen	default	reset	host	terminfo	spec	tests
-ansi	2	KAM	ignored	4	4	reset	soft	none		ECMA-48 KAM; libtsm#57	
+ansi	2	KAM	refused	4	4	reset	soft	none		ECMA-48 KAM; a program could lock the keyboard of the only terminal on the console, libtsm#57	
 ansi	4	IRM	supported	2	1 2	reset	soft	none		ECMA-48 IRM	test_mode_irm vs16-insert-mode
 ansi	12	SRM	supported	1	1 2	set	soft	none		ECMA-48 SRM	test_mode_srm
 ansi	20	LNM	supported	2	1 2	reset	soft	none		ECMA-48 LNM	test_mode_lnm
 dec	1	DECCKM	supported	2	1 2	reset	soft	none		ctlseqs DECCKM	test_mode_decckm test_vte_get_flags
 dec	2	DECANM	refused	3	3	set	none	none		ctlseqs DECANM; VT52 is not emulated	
-dec	3	DECCOLM	ignored	4	4	reset	none	none		ctlseqs DECCOLM; libtsm#57	
+dec	3	DECCOLM	refused	4	4	reset	none	none		ctlseqs DECCOLM; the console's size comes from the display and the font, and xterm allows it only behind an option, libtsm#57	
 dec	4	DECSCLM	ignored	4	4	reset	none	none		ctlseqs DECSCLM; a console has no smooth scroll	
 dec	5	DECSCNM	supported	2	1 2	reset	soft	none	flash	ctlseqs DECSCNM	test_mode_decscnm test_vte_frame_inverse_screen
 dec	6	DECOM	supported	2	1 2	reset	soft	none		ctlseqs DECOM	test_mode_decom origin-mode
 dec	7	DECAWM	supported	1	1 2	set	soft	none		ctlseqs DECAWM	test_mode_decawm autowrap
-dec	8	DECARM	ignored	3	3	set	soft	none		ctlseqs DECARM; libtsm#57	
+dec	8	DECARM	supported	1	1 2	set	soft	input		ctlseqs DECARM; the host makes the repeats and stops them while reset	test_mode_decarm
 dec	9	X10MOUSE	supported	2	1 2	reset	soft	input		ctlseqs, X10 mouse	test_mode_mouse_x10 test_mouse_x10
-dec	12	CURBLINK	partial	1	1 2	host:vte->cursor_blink	none	none		ctlseqs, AT&T 610 cursor blink; reported from the DECSCUSR style and tsm_vte_set_cursor_blink; SM and RM do nothing yet, libtsm#57	test_mode_cursor_blink test_mode_cursor_blink_host
+dec	12	CURBLINK	supported	1	1 2	host:vte->cursor_blink	soft	none		ctlseqs, AT&T 610 cursor blink; held in a DECSCUSR style, while the default style blinks as the host's setting says, tsm_vte_set_cursor_blink	test_mode_cursor_blink test_mode_cursor_blink_host
 dec	18	DECPFF	ignored	4	4	reset	none	none		ctlseqs DECPFF; a console has no printer	
 dec	19	DECPEX	ignored	4	4	reset	none	none		ctlseqs DECPEX; a console has no printer	
 dec	25	DECTCEM	supported	1	1 2	set	soft	none	civis cnorm	ctlseqs DECTCEM	test_mode_dectcem
-dec	42	DECNRCM	ignored	4	4	reset	soft	none		ctlseqs DECNRCM; libtsm#57	
+dec	42	DECNRCM	refused	4	4	reset	soft	none		ctlseqs DECNRCM; national replacement sets are obsolete next to UTF-8, libtsm#57	
 dec	47	ALTBUF	supported	2	1 2	reset	soft	none		ctlseqs, alternate screen buffer	test_mode_altbuf_47 img-alt-47
 dec	80	DECSDM	supported	4	1 2 4	reset	hard	sixel		ctlseqs DECSDM; ADR-103; offered while sixel is on	test_sixel_display_mode
 dec	1000	VT200MOUSE	supported	2	1 2	reset	soft	input		ctlseqs, normal mouse tracking	test_mode_mouse_vt200 test_mode_mouse_decrqm_matches_reports
