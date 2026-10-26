@@ -13,7 +13,7 @@ libtsm_srcs = [
 # Sixel and the kitty graphics protocol: the decoders and the vte's glue to
 # them, or, with -Dimages=false, glue that has none (ADR-103 in
 # aaronsb/kmscon, libtsm's images option; tsm-vte-int.h)
-if get_option('images')
+if images
     libtsm_srcs += ['tsm-kitty.c', 'tsm-sixel.c', 'tsm-vte-image.c']
 else
     libtsm_srcs += ['tsm-vte-image-none.c']

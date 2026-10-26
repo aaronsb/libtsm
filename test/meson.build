@@ -8,7 +8,6 @@ test_deps = [shl_dep, check_dep, libtsm_test_dep, xkbcommon_dep]
 # Sixel and the kitty graphics protocol (ADR-103 in aaronsb/kmscon): their
 # unit tests, tier 1 cases and fuzz targets need the decoders, which
 # -Dimages=false leaves out; that build tests the glue without them instead
-images = get_option('images')
 no_images_arg = images ? [] : ['--no-images']
 
 # Three of its tests make their pictures from sixel strings
