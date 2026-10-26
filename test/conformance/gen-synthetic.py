@@ -6,14 +6,16 @@ sequences. The streams are committed; rerun this script only to add or change
 a case, and review the resulting goldens as their own change.
 
 Usage: gen-synthetic.py CASES_DIR
-Writes CASES_DIR/<name>.bin, and the fixtures tsm-replay's host serves a
-case into CASES_DIR/<name>.files/, and prints one "<name> <cols> <rows>"
-line per case, which belongs in cases.list.
+Writes CASES_DIR/<name>.bin, the checkpoints of a case that has them into
+CASES_DIR/<name>.cuts, and the fixtures tsm-replay serves a case into
+CASES_DIR/<name>.files/, and prints one "<name> <cols> <rows>" line per
+case, which belongs in cases.list.
 
 SPDX-License-Identifier: MIT
 """
 
 import base64
+import itertools
 import sys
 from pathlib import Path
 
@@ -23,6 +25,8 @@ OSC = ESC + "]"
 DCS = ESC + "P"
 APC = ESC + "_"
 ST = ESC + "\\"
+# A checkpoint: where a case's stream is cut, written to <name>.cuts
+CUT = "\0tsm-cut\0"
 
 
 def sgr(*params):
@@ -1565,6 +1569,193 @@ def _():
             kitty("a=T,f=24,s=1,v=1,C=1,i=11", pix47()[:6]))
 
 
+# The host's side of the replay interface (INTERFACE.md): what a host sends
+# for keys, the pointer, pastes and focus; the host settings a program reads
+# back; and what a host learns of frames. Each step ends at a checkpoint, so
+# its replies are a line of their own.
+
+SHIFT, CTRL, ALT = 1, 4, 8
+
+
+def key(sym, mods=0, ascii=None, uni=None):
+    kv = {"sym": f"{sym:x}"}
+    if ascii is not None:
+        kv["ascii"] = f"{ascii:x}"
+    if uni is not None:
+        kv["unicode"] = f"{uni:x}"
+    if mods:
+        kv["mods"] = mods
+    return tt("key", **kv)
+
+
+def char(c, mods=0):
+    # a key that makes character @c, its keysym the Latin-1 code
+    return key(ord(c), mods, uni=ord(c))
+
+
+@case("input-key", 20, 2)
+def _():
+    # Keys by X11 keysym, as a host passes them: characters, a key from a
+    # Cyrillic layout whose ASCII keysym is c, Ctrl and Alt each alone and
+    # together, editing and function keys, cursor keys in both DECCKM
+    # states, the keypad in DECKPAM, Return under LNM, then modifyOtherKeys
+    # at levels 1 and 2, with XTQMODKEYS reporting the level.
+    es = dict(ascii=0x63, uni=0x441)
+    return (char("a") + char("A", SHIFT) + key(0x20ac, uni=0x20ac) + key(0x6d3, **es) + CUT +
+            key(0x61, CTRL) + key(0x6d3, CTRL, **es) + key(0x20, CTRL) + CUT +
+            char("a", ALT) + char("a", CTRL | ALT) + key(0xff0d, ALT) + CUT +
+            key(0xff0d) + key(0xff08) + key(0xff09) + key(0xfe20, SHIFT) + key(0xff1b) +
+            key(0xffff) + key(0xffbe) + key(0xffc2) + key(0xffc2, SHIFT) + CUT +
+            key(0xff52) + key(0xff52, CTRL) + key(0xff52, ALT) + key(0xff52, SHIFT) +
+            CSI + "?1h" + key(0xff52) + key(0xff50) + CSI + "?1l" + CUT +
+            key(0xff8d) + ESC + "=" + key(0xff8d) + key(0xffb1) + ESC + ">" +
+            CSI + "20h" + key(0xff0d) + CSI + "20l" + CUT +
+            CSI + ">4;1m" + char("1", CTRL) + char("a", CTRL) + char("a", ALT) + CUT +
+            CSI + ">4;2m" + key(0xfe20, SHIFT) + char("a", CTRL) + char("1", CTRL | ALT) +
+            CSI + "?4m" + CSI + ">4;0m")
+
+
+def mouse(col, row, button, event, **kv):
+    return tt("mouse", col=col, row=row, button=button, event=event, **kv)
+
+
+@case("input-mouse", 20, 4)
+def _():
+    # Pointer events, as a host passes them, under each tracking mode and
+    # encoding: none set, X10 (presses only, no modifiers, no wheel), 1000
+    # (releases, the wheel, modifiers), 1002 (drags), 1003 (all motion, one
+    # report per cell entered), SGR, and pixels under 1016, each reported
+    # move; then every mode reset.
+    return (mouse(1, 1, "left", "press") + CUT +
+            CSI + "?9h" + mouse(2, 1, "left", "press") + mouse(2, 1, "left", "release") +
+            mouse(2, 1, "right", "press", mods=SHIFT) + mouse(2, 1, "wheel-up", "press") +
+            CSI + "?9l" + CUT +
+            CSI + "?1000h" + mouse(0, 0, "left", "press") + mouse(0, 0, "left", "release") +
+            mouse(1, 0, "none", "move") + mouse(0, 0, "wheel-up", "press") +
+            mouse(0, 0, "wheel-up", "release") + mouse(3, 2, "middle", "press", mods=CTRL) +
+            CUT +
+            CSI + "?1002h" + mouse(3, 1, "left", "move") + mouse(4, 1, "none", "move") +
+            CSI + "?1002l" + CUT +
+            CSI + "?1003h" + mouse(5, 2, "none", "move") + mouse(5, 2, "none", "move") +
+            mouse(6, 2, "none", "move") + CUT +
+            CSI + "?1006h" + mouse(4, 2, "left", "press") + mouse(4, 2, "left", "release") +
+            mouse(4, 2, "wheel-down", "press") + mouse(7, 3, "middle", "move") +
+            mouse(19, 3, "right", "press", mods=SHIFT | ALT) + CUT +
+            CSI + "?1016h" + mouse(0, 0, "left", "press", px=100, py=40) +
+            mouse(0, 0, "none", "move", px=101, py=40) +
+            mouse(0, 0, "none", "move", px=102, py=40) + CUT +
+            CSI + "?1016l" + CSI + "?1006l" + CSI + "?1003l" + CSI + "?1000l" +
+            mouse(1, 1, "left", "press"))
+
+
+def paste(data):
+    return tt("paste", hex=data.encode("utf-8").hex())
+
+
+@case("input-paste", 20, 2)
+def _():
+    # Pastes, as a host passes them: plain, then bracketed (mode 2004) with
+    # a newline, UTF-8, nothing at all, and the bytes of the closing bracket
+    # itself, which go through as they are; then plain again.
+    return (paste("hi") + CUT +
+            CSI + "?2004h" + paste("a\nb") + CUT +
+            paste("é") + paste("") + CUT +
+            paste(CSI + "201~x") + CUT +
+            CSI + "?2004l" + paste("z"))
+
+
+@case("input-focus", 20, 2)
+def _():
+    # Focus changes, as a host reports them: nothing before mode 1004,
+    # nothing on setting it, then CSI O and CSI I for each change, a repeat
+    # included; DECSTR, RIS and RM each reset the mode. DECRQM reports it.
+    q = CSI + "?1004$p"
+    focus_in, out = tt("focus", **{"in": 1}), tt("focus", **{"in": 0})
+    return (focus_in + out + q + CUT +
+            CSI + "?1004h" + q + CUT +
+            focus_in + out + out + CUT +
+            CSI + "!p" + q + focus_in + CUT +
+            CSI + "?1004h" + ESC + "c" + q + out + CUT +
+            CSI + "?1004h" + CSI + "?1004l" + q + out)
+
+
+PALETTES = ("legacy", "vga", "nord", "solarized", "solarized-black", "solarized-white",
+            "soft-black", "base16-dark", "base16-light")
+
+
+@case("host-palette", 18, 2)
+def _():
+    # Each palette the host can choose, in turn and back to the first: the
+    # sixteen colours as foregrounds and as backgrounds, a default cell and
+    # an inverse one, and OSC 4, 10 and 11 answering from the palette in
+    # force. Choosing a palette erases the screen and resets the pen, so
+    # text written in red before a change is gone and the text after it
+    # takes the default colours.
+    fg = "".join(sgr(c) + f"{i:x}" for i, c in enumerate(list(range(30, 38)) +
+                                                        list(range(90, 98))))
+    bg = "".join(sgr(c) + f"{i:x}" for i, c in enumerate(list(range(40, 48)) +
+                                                        list(range(100, 108))))
+    text = (CSI + "H" + fg + sgr(0) + "d" + sgr(7) + "i" + sgr(0) + "\r\n" + bg + sgr(0) +
+            OSC + "4;1;?" + ST + OSC + "10;?" + ST + OSC + "11;?" + ST)
+    return (text + CUT +
+            sgr(31) + "x" + tt("palette", name="legacy") + "y" + CUT +
+            "".join(tt("palette", name=p) + text + CUT for p in PALETTES[1:]) +
+            tt("palette", name="legacy") + text)
+
+
+def hexs(s):
+    return s.encode("utf-8").hex()
+
+
+@case("host-identify", 20, 2)
+def _():
+    # What a program can learn of the host's settings: the XTVERSION text,
+    # set, kept across DECSTR, and empty; XTGETTCAP from no table, from a
+    # table fixture (a string, a number, a boolean, a parameterised string,
+    # and an unknown name ending the list), and from an empty one; and DA1
+    # and a kitty query as sixel and kitty graphics go off and on.
+    FILES["host-identify"] = {
+        "caps": (f"TN={hexs('kmscon')}\nCo={hexs('256')}\nbce\n"
+                 f"Smulx={hexs(CSI + '4:%p1%dm')}\n").encode("ascii"),
+        "empty": b"",
+    }
+    xtversion = CSI + ">q"
+
+    def xtgettcap(*names):
+        return DCS + "+q" + ";".join(hexs(n) for n in names) + ST
+
+    kq = kitty("i=31,a=q,s=1,v=1,f=24", b"\0\0\0")
+    return (xtversion + CUT +
+            tt("version", text="Other 1.0") + xtversion + CSI + "!p" + xtversion + CUT +
+            tt("version", text="") + xtversion + CUT +
+            xtgettcap("TN") + CUT +
+            tt("termcap", file="caps") + xtgettcap("TN", "Co", "bce", "Smulx") +
+            xtgettcap("TN", "xx", "Co") + CUT +
+            tt("termcap", file="empty") + xtgettcap("TN") + CUT +
+            CSI + "c" + kq + tt("sixel", on=0) + tt("kitty-graphics", on=0) + CSI + "c" + kq +
+            CUT + tt("sixel", on=1) + tt("kitty-graphics", on=1) + CSI + "c" + kq)
+
+
+@case("query-frames", 10, 2)
+def _():
+    # What a host learns of frames: each frame-since caller's changes since
+    # its own last frame, a fresh caller and a resize seeing every cell, and
+    # the count of mode 2026 holds ended by RM, RIS and the host turning
+    # sync off.
+    def since(n):
+        return tt("frame-since", caller=n)
+
+    def frames():
+        return tt("sync-frames")
+
+    bsu, esu = CSI + "?2026h", CSI + "?2026l"
+    return ("ab" + since(0) + since(0) + since(7) + CUT +
+            "c" + since(0) + since(1) + since(0) + CUT +
+            frames() + bsu + "d" + esu + frames() + bsu + ESC + "c" + frames() +
+            bsu + tt("sync", on=0) + frames() + tt("sync", on=1) + CUT +
+            tt("resize", c=12, r=2) + since(0) + since(1))
+
+
 # Every host case again with the host removed (ADR-103's Testing): t=f,
 # t=t and t=s answer EBADF and inline PNG and zlib EINVAL, with no request
 # and no discard
@@ -1580,7 +1771,11 @@ def main():
     out = Path(sys.argv[1])
     out.mkdir(parents=True, exist_ok=True)
     for name, (cols, rows, fn) in CASES.items():
-        (out / f"{name}.bin").write_bytes(fn().encode("utf-8"))
+        parts = [part.encode("utf-8") for part in fn().split(CUT)]
+        (out / f"{name}.bin").write_bytes(b"".join(parts))
+        if len(parts) > 1:
+            cuts = itertools.accumulate(len(part) for part in parts[:-1])
+            (out / f"{name}.cuts").write_text("".join(f"{cut}\n" for cut in cuts))
         if name in FILES:
             files = out / f"{name}.files"
             files.mkdir(exist_ok=True)
