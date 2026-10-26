@@ -3624,9 +3624,10 @@ static uint32_t key_char(uint32_t keysym, uint32_t unicode)
  *   (the table's rows for ! to ? and for characters past ASCII send the
  *   character). The table decides by the character after Shift, which is
  *   what libtsm is given.
- * - Shift+Tab arrives as ISO_Left_Tab, an edit key to xterm: CSI Z at level
- *   1 whatever else is held, and at level 2 with Shift alone; level 2
- *   encodes it when another modifier is held too.
+ * - Shift+Tab arrives as ISO_Left_Tab: CSI Z at level 1 whatever else is
+ *   held, as before; level 2 encodes it as Tab with its modifiers, Shift
+ *   included, so Shift+Tab sends CSI 27 ; 2 ; 9 ~ "rather than CSI Z", as
+ *   ctlseqs has it, and level 2 drops the exceptions level 1 keeps.
  * - Ctrl reads @sym, the ASCII layout's keysym, as the legacy path does: on
  *   a Russian layout Ctrl+es keeps 0x03 (c) at level 1, where xterm, going
  *   by the keysym, encodes it; code is still the character the key made.
@@ -3652,7 +3653,7 @@ static bool vte_write_modified_key(struct tsm_vte *vte, uint32_t keysym, uint32_
 		code = keysym == XKB_KEY_Tab ? 9 : 13;
 		break;
 	case XKB_KEY_ISO_Left_Tab:
-		if (!level2 || m == TSM_SHIFT_MASK)
+		if (!level2)
 			return false;
 		code = 9;
 		break;
