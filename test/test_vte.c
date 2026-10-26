@@ -3110,8 +3110,10 @@ START_TEST(test_vte_modkeys_level1)
 	MOK_CHAR("\x1e", XKB_KEY_asciicircum, K_C | K_S);
 	MOK_CHAR("\x1f", XKB_KEY_underscore, K_C | K_S);
 	MOK_CHAR("\0", XKB_KEY_grave, K_C);
-	MOK_CHAR("\x7f", XKB_KEY_question, K_C | K_S);
-	/* and encodes the keys without one */
+	/* and encodes the keys without one, Ctrl+? among them: its DEL is
+	 * xterm's level 0 only */
+	MOK_CHAR("\e[27;6;63~", XKB_KEY_question, K_C | K_S);
+	MOK_CHAR("\e[27;5;63~", XKB_KEY_question, K_C);
 	MOK_CHAR("\e[27;5;49~", XKB_KEY_1, K_C);
 	MOK_CHAR("\e[27;5;57~", XKB_KEY_9, K_C);
 	MOK_CHAR("\e[27;5;48~", XKB_KEY_0, K_C);
@@ -3185,6 +3187,8 @@ START_TEST(test_vte_modkeys_level2)
 	MOK_CHAR("\e[27;8;65~", XKB_KEY_A, K_A | K_C | K_S);
 	MOK_CHAR("\e[27;6;33~", XKB_KEY_exclam, K_C | K_S);
 	MOK_CHAR("\e[27;4;33~", XKB_KEY_exclam, K_A | K_S);
+	MOK_CHAR("\e[27;6;64~", XKB_KEY_at, K_C | K_S);
+	MOK_CHAR("\e[27;5;96~", XKB_KEY_grave, K_C);
 
 	/* Shift alone encodes space and @ to ~, as xterm's table has it */
 	MOK_CHAR("\e[27;2;65~", XKB_KEY_A, K_S);

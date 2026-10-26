@@ -3615,8 +3615,9 @@ static uint32_t key_char(uint32_t keysym, uint32_t unicode)
  * table:
  *
  * - Level 1 encodes a printable key with Alt, or with Ctrl where libtsm has
- *   no control byte for it (Ctrl+1 encodes, Ctrl+a stays 0x01; Ctrl+? is
- *   DEL here, where xterm's table encodes it at level 1); space and
+ *   no control byte for it (Ctrl+1 encodes, Ctrl+a stays 0x01), and Ctrl+?,
+ *   whose DEL xterm sends only at level 0: X11's own Ctrl mapping does not
+ *   cover '?'; space and
  *   Escape only with Alt; Tab and Return with any modifier; never
  *   BackSpace. The sources disagree on Alt: xterm(1)'s modifyOtherKeys
  *   entry says Alt and Meta cause no escapes at level 1, while ctlseqs
@@ -3678,7 +3679,8 @@ static bool vte_write_modified_key(struct tsm_vte *vte, uint32_t keysym, uint32_
 			if (m == TSM_SHIFT_MASK && code != ' ' && (code < '@' || code > '~'))
 				return false;
 		} else if (!(m & TSM_ALT_MASK)) {
-			if (!(m & TSM_CONTROL_MASK) || ctrl_byte(sym) >= 0)
+			if (!(m & TSM_CONTROL_MASK) ||
+			    (ctrl_byte(sym) >= 0 && sym != XKB_KEY_question))
 				return false;
 		}
 		break;
