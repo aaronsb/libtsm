@@ -52,8 +52,10 @@
 #include <string.h>
 #include "libtsm.h"
 #include "libtsm-int.h"
+#include "tsm-version.h"
 #include "tsm-vte-int.h"
 #include "shl-llog.h"
+#include "shl-macro.h"
 
 #include <xkbcommon/xkbcommon-keysyms.h>
 
@@ -123,6 +125,10 @@ enum dcs_kind {
 	DCS_IGNORED,		/* consumed with no effect */
 	DCS_IMAGE,		/* sixel, the image glue's */
 };
+
+/* XTVERSION's text until the host sets one */
+#define VTE_VERSION_DEFAULT "libtsm(" LIBTSM_VERSION ")"
+shl_assert_cc(sizeof(VTE_VERSION_DEFAULT) <= TSM_VTE_VERSION_MAX + 1);
 
 /*
  * Modes (ADR-201 in aaronsb/kmscon): tsm-modes.def has one row per mode,
@@ -553,6 +559,7 @@ int tsm_vte_new(struct tsm_vte **out, struct tsm_screen *con,
 	set_default_colors(&vte->def_attr);
 
 	vte->cursor_blink = true;
+	tsm_vte_set_version(vte, NULL);
 
 	ret = tsm_utf8_mach_new(&vte->mach);
 	if (ret)
@@ -644,6 +651,29 @@ void tsm_vte_set_led_cb(struct tsm_vte *vte, tsm_vte_led_cb led_cb, void *led_da
 
 	vte->led_cb = led_cb;
 	vte->led_data = led_data;
+}
+
+SHL_EXPORT
+int tsm_vte_set_version(struct tsm_vte *vte, const char *str)
+{
+	size_t i, len;
+
+	if (!vte)
+		return -EINVAL;
+	if (!str)
+		str = VTE_VERSION_DEFAULT;
+
+	/* it goes to the client inside a DCS string, which a control or a
+	 * byte past ASCII could end or break */
+	len = strnlen(str, TSM_VTE_VERSION_MAX + 1);
+	if (len > TSM_VTE_VERSION_MAX)
+		return -EINVAL;
+	for (i = 0; i < len; ++i)
+		if ((unsigned char)str[i] < 0x20 || (unsigned char)str[i] > 0x7e)
+			return -EINVAL;
+
+	memcpy(vte->version, str, len + 1);
+	return 0;
 }
 
 static int vte_update_palette(struct tsm_vte *vte)
@@ -2356,6 +2386,22 @@ static bool csi_foreign(struct tsm_vte *vte, uint32_t data, unsigned int allowed
 	return true;
 }
 
+/* XTVERSION, CSI > Ps q, for Ps 0 or omitted: DCS > | text ST */
+static void csi_xtversion(struct tsm_vte *vte)
+{
+	char buf[TSM_VTE_VERSION_MAX + 8];
+	int len;
+
+	if (vte->csi_argv[0] > 0 || csi_has_subargs(vte)) {
+		llog_debug(vte, "unhandled XTVERSION %d", vte->csi_argv[0]);
+		return;
+	}
+
+	len = snprintf(buf, sizeof(buf), "\eP>|%s\e\\", vte->version);
+	if (len > 0 && (size_t)len < sizeof(buf))
+		vte_write(vte, buf, len);
+}
+
 /*
  * XTMODKEYS (CSI > Pp ; Pv m) and XTQMODKEYS (CSI ? Pp m) for Pp 4, xterm's
  * modifyOtherKeys (aaronsb/libtsm#25): levels 0 to 2 are taken, level 3 is
@@ -2710,12 +2756,14 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 			num = 1;
 		tsm_screen_repeat_char(vte->con, num, &vte->cattr);
 		break;
-	case 'q': /* DECLL - Load LEDs / DECSCUSR - Set Cursor Style */
+	case 'q': /* DECLL - Load LEDs / DECSCUSR - Set Cursor Style / XTVERSION */
 		if (vte->csi_flags & CSI_SPACE) {
 			num = vte->csi_argv[0];
 			if (num < 0)
 				num = 0;
 			tsm_screen_set_cursor_style(vte->con, num);
+		} else if (vte->csi_flags == CSI_GT) {
+			csi_xtversion(vte);
 		} else if (!csi_foreign(vte, data, 0)) {
 			num = vte->csi_argv[0];
 			if (num <= 0) {

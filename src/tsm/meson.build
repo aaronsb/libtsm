@@ -1,5 +1,12 @@
 # SPDX-License-Identifier: MIT
 
+# The version XTVERSION reports until the host sets its own (tsm-vte.c). A
+# header beside the sources, not config.h, so the sources a parent project
+# compiles through libtsm_dep see it too.
+version_conf = configuration_data()
+version_conf.set_quoted('LIBTSM_VERSION', meson.project_version())
+configure_file(configuration: version_conf, output: 'tsm-version.h')
+
 libtsm_srcs = [
     'tsm-image.c',
     'tsm-render.c',

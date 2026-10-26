@@ -2773,11 +2773,11 @@ START_TEST(test_vte_csi_xtrmtitle_not_sd)
 }
 END_TEST
 
-/* XTPOPSGR (CSI # q), DECSCA (CSI Ps " q) and XTVERSION (CSI > Ps q) are
- * not DECLL; DECSCUSR (CSI Ps SP q) is its own */
+/* XTPOPSGR (CSI # q), DECSCA (CSI Ps " q) and XTVERSION with a Ps it does
+ * not take (CSI > 1 q) are not DECLL; DECSCUSR (CSI Ps SP q) is its own */
 START_TEST(test_vte_csi_q_not_decll)
 {
-	static const char *const seqs[] = { "\e[#q", "\e[1\"q", "\e[>q", "\e[>0q", "\e[2 q", NULL };
+	static const char *const seqs[] = { "\e[#q", "\e[1\"q", "\e[>1q", "\e[2 q", NULL };
 
 	pfx_assert_foreign(seqs);
 	ck_assert_int_eq(tsm_screen_get_cursor_style(pfx_screen), 2);

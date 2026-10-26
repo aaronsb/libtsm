@@ -97,6 +97,9 @@ struct tsm_vte {
 	void *led_data;
 	unsigned int led_state;
 
+	/* XTVERSION's text, the host's or the default */
+	char version[TSM_VTE_VERSION_MAX + 1];
+
 	uint8_t (*custom_palette_storage)[3];
 	uint8_t (*palette)[3];
 	struct cell_attr def_attr;

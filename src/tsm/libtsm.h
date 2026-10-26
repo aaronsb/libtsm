@@ -1478,6 +1478,24 @@ void tsm_vte_paste(struct tsm_vte *vte, const char *data);
  */
 #define TSM_VTE_HANDLE_FOCUS 1
 bool tsm_vte_handle_focus(struct tsm_vte *vte, bool focused);
+
+/*
+ * XTVERSION (xterm ctlseqs): a program sends CSI > q or CSI > 0 q and libtsm
+ * replies DCS > | text ST, the terminal's name and version. Defined when
+ * tsm_vte_set_version exists.
+ *
+ * tsm_vte_set_version copies @str as the text: at most TSM_VTE_VERSION_MAX
+ * bytes, each printable ASCII (0x20 to 0x7e), as xterm's "XTerm(411)" is. An
+ * empty string is allowed. NULL restores the default, "libtsm(VERSION)" with
+ * libtsm's own version. The text survives RIS and DECSTR.
+ *
+ * @retval 0 on success.
+ * @retval -EINVAL if vte is NULL, or @str is longer than TSM_VTE_VERSION_MAX
+ * or holds a byte outside 0x20 to 0x7e; the text in force stays.
+ */
+#define TSM_VTE_XTVERSION 1
+#define TSM_VTE_VERSION_MAX 64
+int tsm_vte_set_version(struct tsm_vte *vte, const char *str);
 /** @} */
 
 #ifdef __cplusplus
