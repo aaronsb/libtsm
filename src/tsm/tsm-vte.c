@@ -934,6 +934,8 @@ void tsm_vte_reset(struct tsm_vte *vte)
 
 	vte->cattr = vte->def_attr;
 	screen_set_def_cell_attr(vte->con, &vte->def_attr);
+	/* the cursor's shape and blink return to the default, as xterm's do */
+	tsm_screen_set_cursor_style(vte->con, TSM_SCREEN_CURSOR_DEFAULT);
 	/* RIS and DECSTR also return mode 2027 to the configured method,
 	 * where the draft resets it to off (a deviation ADR-102 records) */
 	modes_reset(vte, RESET_SOFT);
@@ -1932,20 +1934,20 @@ static bool mode_DECARM_get(struct tsm_vte *vte)
 }
 
 /*
- * AT&T 610 cursor blink, as xterm has it: set makes the cursor blink and
- * reset makes it steady, in the shape DECSCUSR chose, which sets both. The
- * odd DECSCUSR styles blink and the even ones are steady; the default draws
- * as a blinking block, so reset makes it a steady block. DECRQM reports
- * whether the cursor blinks: the host blinks it (tsm_vte_set_cursor_blink)
- * and the style is one that blinks, as kmscon draws them.
+ * AT&T 610 cursor blink. Under a style DECSCUSR chose, set makes the cursor
+ * blink and reset makes it steady, in the same shape: the odd DECSCUSR styles
+ * blink and the even ones are steady. Under the default style the cursor
+ * blinks as the host's setting says (kmscon's blink), and SM and RM leave it,
+ * as xterm's preference wins when it is on and RIS or DECSTR has cleared the
+ * flag it XORs with. DECRQM reports whether the cursor blinks: the host blinks
+ * it (tsm_vte_set_cursor_blink) and the style is one that blinks, as kmscon
+ * draws them.
  */
 static void mode_CURBLINK_set(struct tsm_vte *vte, bool set)
 {
 	enum tsm_screen_cursor_style style = tsm_screen_get_cursor_style(vte->con);
 
-	if (style == TSM_SCREEN_CURSOR_DEFAULT)
-		style = TSM_SCREEN_CURSOR_BLOCK_BLINK;
-	if (style > TSM_SCREEN_CURSOR_VBAR_STEADY)
+	if (style == TSM_SCREEN_CURSOR_DEFAULT || style > TSM_SCREEN_CURSOR_VBAR_STEADY)
 		return;
 	if (set && !(style & 1))
 		--style;

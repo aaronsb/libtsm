@@ -881,15 +881,15 @@ struct tsm_vte;
 #define TSM_VTE_FLAG_8BIT_MODE				0x00000008 /* Disable UTF-8 mode and enable 8bit compatible mode */
 #define TSM_VTE_FLAG_7BIT_MODE				0x00000010 /* Disable 8bit mode and use 7bit compatible mode */
 #define TSM_VTE_FLAG_USE_C1				0x00000020 /* Explicitly use 8bit C1 codes; TODO: implement */
-#define TSM_VTE_FLAG_KEYBOARD_ACTION_MODE		0x00000040 /* Disable keyboard; TODO: implement? */
+#define TSM_VTE_FLAG_KEYBOARD_ACTION_MODE		0x00000040 /* KAM, refused (libtsm#57): only this bit follows SM and RM */
 #define TSM_VTE_FLAG_INSERT_REPLACE_MODE		0x00000080 /* Enable insert mode */
 #define TSM_VTE_FLAG_SEND_RECEIVE_MODE			0x00000100 /* Disable local echo */
 #define TSM_VTE_FLAG_TEXT_CURSOR_MODE			0x00000200 /* Show cursor */
 #define TSM_VTE_FLAG_INVERSE_SCREEN_MODE		0x00000400 /* Inverse colors */
 #define TSM_VTE_FLAG_ORIGIN_MODE			0x00000800 /* Relative origin for cursor */
 #define TSM_VTE_FLAG_AUTO_WRAP_MODE			0x00001000 /* Auto line wrap mode */
-#define TSM_VTE_FLAG_AUTO_REPEAT_MODE			0x00002000 /* Auto repeat key press; TODO: implement */
-#define TSM_VTE_FLAG_NATIONAL_CHARSET_MODE		0x00004000 /* Send keys from nation charsets; TODO: implement */
+#define TSM_VTE_FLAG_AUTO_REPEAT_MODE			0x00002000 /* DECARM: the host repeats held keys while set */
+#define TSM_VTE_FLAG_NATIONAL_CHARSET_MODE		0x00004000 /* DECNRCM, refused (libtsm#57): only this bit follows SM and RM */
 #define TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE	0x00008000 /* Set background color on erase (bce) */
 #define TSM_VTE_FLAG_PREPEND_ESCAPE			0x00010000 /* Prepend escape character to next output */
 #define TSM_VTE_FLAG_TITE_INHIBIT_MODE			0x00020000 /* Prevent switching to alternate screen buffer */
@@ -1138,9 +1138,10 @@ unsigned int tsm_vte_get_mouse_event(struct tsm_vte *vte);
  * The state of an ANSI mode (@dec false) or a DEC private mode (@dec true),
  * as DECRQM reports it to a program: 1 set, 2 reset, 3 permanently set, 4
  * permanently reset, 0 not recognised. Defined when tsm_vte_get_mode exists.
- * It reports what the terminal does: KAM, DECARM and DECNRCM, which have no
- * effect, report their fixed state here while their legacy bits in
- * tsm_vte_get_flags still follow SM and RM. Sixel's modes, 80, 1070 and
+ * It reports what the terminal does: KAM and DECNRCM, which are refused,
+ * report their fixed state here while their legacy bits in tsm_vte_get_flags
+ * still follow SM and RM. DECARM, mode 8, reports 1 or 2, and the host stops
+ * repeating held keys while it reports 2. Sixel's modes, 80, 1070 and
  * 8452, also report their fixed state while sixel is off (TSM_VTE_SIXEL); SM
  * and RM still store them.
  *

@@ -12,7 +12,7 @@ dec	6	DECOM	supported	2	1 2	reset	soft	none		ctlseqs DECOM	test_mode_decom origi
 dec	7	DECAWM	supported	1	1 2	set	soft	none		ctlseqs DECAWM	test_mode_decawm autowrap
 dec	8	DECARM	supported	1	1 2	set	soft	input		ctlseqs DECARM; the host makes the repeats and stops them while reset	test_mode_decarm
 dec	9	X10MOUSE	supported	2	1 2	reset	soft	input		ctlseqs, X10 mouse	test_mode_mouse_x10 test_mouse_x10
-dec	12	CURBLINK	supported	1	1 2	host:vte->cursor_blink	none	none		ctlseqs, AT&T 610 cursor blink; held in the DECSCUSR style, and reset while the host does not blink the cursor, tsm_vte_set_cursor_blink	test_mode_cursor_blink test_mode_cursor_blink_host
+dec	12	CURBLINK	supported	1	1 2	host:vte->cursor_blink	soft	none		ctlseqs, AT&T 610 cursor blink; held in a DECSCUSR style, while the default style blinks as the host's setting says, tsm_vte_set_cursor_blink	test_mode_cursor_blink test_mode_cursor_blink_host
 dec	18	DECPFF	ignored	4	4	reset	none	none		ctlseqs DECPFF; a console has no printer	
 dec	19	DECPEX	ignored	4	4	reset	none	none		ctlseqs DECPEX; a console has no printer	
 dec	25	DECTCEM	supported	1	1 2	set	soft	none	civis cnorm	ctlseqs DECTCEM	test_mode_dectcem

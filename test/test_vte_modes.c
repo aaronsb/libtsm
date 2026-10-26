@@ -945,30 +945,31 @@ static void assert_cursor_style(enum tsm_screen_cursor_style style)
 	ck_assert_uint_eq(tsm_screen_get_cursor_style(screen), style);
 }
 
-/* mode 12 starts and stops the cursor blinking in the shape DECSCUSR chose,
- * as xterm has it; DECRQM reports whether the style blinks, as kmscon draws
- * it: the default and the odd DECSCUSR styles (aaronsb/libtsm#57) */
+/* mode 12 starts and stops the cursor blinking in a shape DECSCUSR chose, as
+ * xterm has it; under the default style the host's setting rules and SM and
+ * RM leave it. DECRQM reports whether the style blinks, as kmscon draws it:
+ * the default and the odd DECSCUSR styles. RIS and DECSTR return the default
+ * style (aaronsb/libtsm#57) */
 START_TEST(test_mode_cursor_blink)
 {
+	/* the default style keeps the host's blink */
+	assert_decrqm(true, 12, 1);
+	input("\e[?12l");
+	assert_cursor_style(TSM_SCREEN_CURSOR_DEFAULT);
 	assert_decrqm(true, 12, 1);
 	input("\e[?12h");
 	assert_cursor_style(TSM_SCREEN_CURSOR_DEFAULT);
 	assert_decrqm(true, 12, 1);
 
-	/* the default draws as a blinking block */
+	/* each chosen shape keeps its shape */
+	input("\e[2 q\e[?12h");
+	assert_cursor_style(TSM_SCREEN_CURSOR_BLOCK_BLINK);
+	assert_decrqm(true, 12, 1);
 	input("\e[?12l");
 	assert_cursor_style(TSM_SCREEN_CURSOR_BLOCK_STEADY);
 	assert_decrqm(true, 12, 2);
-	input("\e[?12h");
-	assert_cursor_style(TSM_SCREEN_CURSOR_BLOCK_BLINK);
-	assert_decrqm(true, 12, 1);
-
-	/* each shape keeps its shape */
-	input("\e[4 q");
-	assert_decrqm(true, 12, 2);
-	input("\e[?12h");
+	input("\e[4 q\e[?12h");
 	assert_cursor_style(TSM_SCREEN_CURSOR_UNDERLINE_BLINK);
-	assert_decrqm(true, 12, 1);
 	input("\e[?12l");
 	assert_cursor_style(TSM_SCREEN_CURSOR_UNDERLINE_STEADY);
 	input("\e[5 q\e[?12l");
@@ -977,8 +978,11 @@ START_TEST(test_mode_cursor_blink)
 	input("\e[?12h");
 	assert_cursor_style(TSM_SCREEN_CURSOR_VBAR_BLINK);
 
-	/* and DECSCUSR sets it again */
-	input("\e[?12l\e[0 q");
+	/* DECSTR and RIS return the default style, and the host's blink */
+	input("\e[?12l\e[!p");
+	assert_cursor_style(TSM_SCREEN_CURSOR_DEFAULT);
+	assert_decrqm(true, 12, 1);
+	input("\e[6 q\ec");
 	assert_cursor_style(TSM_SCREEN_CURSOR_DEFAULT);
 	assert_decrqm(true, 12, 1);
 }
