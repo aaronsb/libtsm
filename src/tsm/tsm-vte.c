@@ -127,8 +127,7 @@ enum dcs_kind {
 	DCS_XTGETTCAP,		/* DCS + q, answered here */
 };
 
-/* the names one XTGETTCAP request is answered for, and its reply's size */
-#define XTGETTCAP_NAMES 16
+/* an XTGETTCAP reply's size */
 #define XTGETTCAP_REPLY_MAX 4096
 
 /* an entry of the host's XTGETTCAP table; value is NULL for a boolean */

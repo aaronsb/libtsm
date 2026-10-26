@@ -3630,17 +3630,18 @@ START_TEST(test_vte_xtgettcap_invalid)
 }
 END_TEST
 
-/* a payload past 1024 bytes is refused whole; 16 names are answered, and a
- * reply stops before it passes 4096 bytes */
+/* a payload past 1039 bytes, 16 hex names of 32 bytes and their separators,
+ * is refused whole; 16 names are answered, and a reply stops before it
+ * passes 4096 bytes */
 START_TEST(test_vte_xtgettcap_bounds)
 {
 	char query[2048], reply[1024];
 	size_t len, i;
 	const char *p;
 
-	/* "544e" and 204 more ";544e": 1024 bytes, answered for 16 names */
+	/* "544e" and 207 more ";544e": 1039 bytes, answered for 16 names */
 	len = snprintf(query, sizeof(query), "\eP+q544e");
-	for (i = 0; i < 204; ++i)
+	for (i = 0; i < 207; ++i)
 		len += snprintf(query + len, sizeof(query) - len, ";544e");
 	snprintf(query + len, sizeof(query) - len, "\e\\");
 	len = snprintf(reply, sizeof(reply), "\eP1+r");

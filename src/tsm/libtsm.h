@@ -1523,7 +1523,8 @@ int tsm_vte_set_version(struct tsm_vte *vte, const char *str);
  * lacks, or one that is not hex for such a name, ends the list after the ';'
  * before it; as the first name, the reply is DCS 0 + r ST, the name not
  * repeated. At most 16 names are answered, the reply is at most 4096 bytes,
- * and a payload over 1024 bytes is answered DCS 0 + r ST. CAN, SUB, or ESC
+ * and a payload over 1039 bytes (16 hex names of TSM_VTE_TERMCAP_NAME_MAX
+ * bytes and their separators) is answered DCS 0 + r ST. CAN, SUB, or ESC
  * not followed by '\', drop the request with no reply. DCS + q with a
  * parameter gets no reply, as in xterm.
  *

@@ -30,9 +30,12 @@
 /* max length of an OSC code */
 #define OSC_MAX_LEN 128
 
-/* max length of an XTGETTCAP request's payload, its hex names and their
- * separators: sixteen names of 32 bytes */
-#define XTGETTCAP_MAX_LEN 1024
+/* the names one XTGETTCAP request is answered for, and the max length of
+ * its payload: that many names of TSM_VTE_TERMCAP_NAME_MAX bytes, hex
+ * encoded, and the ';' between each two (1039 bytes) */
+#define XTGETTCAP_NAMES 16
+#define XTGETTCAP_MAX_LEN \
+	(XTGETTCAP_NAMES * (2 * TSM_VTE_TERMCAP_NAME_MAX + 1) - 1)
 
 /* an entry of the host's XTGETTCAP table (tsm-vte.c) */
 struct vte_termcap;
