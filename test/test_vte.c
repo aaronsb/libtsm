@@ -3214,10 +3214,11 @@ START_TEST(test_vte_modkeys_level2)
 	MOK_KEY("\x1b", XKB_KEY_Escape, XKB_KEY_Escape, 0, 0x1b);
 	MOK_KEY("\x08", XKB_KEY_BackSpace, XKB_KEY_BackSpace, 0, 0x08);
 
-	/* Tab, Return and Escape encode with any modifier; Shift+Tab
-	 * (ISO_Left_Tab) stays CSI Z with Shift alone */
+	/* Tab, Return and Escape encode with any modifier, Shift+Tab
+	 * (ISO_Left_Tab) included: CSI 27;2;9~ rather than CSI Z, as ctlseqs
+	 * has it */
 	MOK_KEY("\e[27;5;9~", XKB_KEY_Tab, XKB_KEY_Tab, K_C, '\t');
-	MOK_KEY("\e[Z", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_S, '\t');
+	MOK_KEY("\e[27;2;9~", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_S, '\t');
 	MOK_KEY("\e[27;6;9~", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_C | K_S, '\t');
 	MOK_KEY("\e[27;4;9~", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_A | K_S, '\t');
 	MOK_KEY("\e[27;3;13~", XKB_KEY_Return, XKB_KEY_Return, K_A, '\r');
