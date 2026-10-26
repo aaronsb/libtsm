@@ -159,3 +159,13 @@ kit-host-errors-nohook # kit-host-errors with the host removed
 kit-host-requests-nohook # kit-host-requests with the host removed
 kit-host-outcomes-nohook # kit-host-outcomes with the host removed
 kit-host-lengths-nohook # kit-host-lengths with the host removed
+#
+# The replay interface (INTERFACE.md): test commands for the host's side,
+# which upstream feeds to its vte, which ignores them.
+input-key           # keys as a host passes them: characters, Ctrl and Alt, editing, function, cursor and keypad keys, LNM, modifyOtherKeys 1 and 2
+input-mouse         # pointer events under X10, 1000, 1002, 1003, SGR and pixel reporting, and with none
+input-paste         # plain and bracketed pastes
+input-focus         # focus changes under mode 1004, and its reset by DECSTR, RIS and RM
+host-palette        # each palette's colours and OSC 4, 10 and 11 replies, and the erase a palette change makes
+host-identify       # the XTVERSION text, the XTGETTCAP table, and DA1 and a kitty query with sixel and kitty graphics off and on
+query-frames        # each frame-since caller's changed cells, a resize's, and the count of mode 2026 frames
