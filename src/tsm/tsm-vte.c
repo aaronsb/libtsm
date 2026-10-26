@@ -933,6 +933,8 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	vte->mouse_encoding = 0;
 	vte->mouse_last_col = 0;
 	vte->mouse_last_row = 0;
+	/* not a DEC mode, so no row; xterm's RIS and DECSTR reset it too */
+	vte->modify_other_keys = 0;
 
 	vte->cattr = vte->def_attr;
 	screen_set_def_cell_attr(vte->con, &vte->def_attr);
@@ -2307,6 +2309,46 @@ static bool csi_foreign(struct tsm_vte *vte, uint32_t data, unsigned int allowed
 	return true;
 }
 
+/*
+ * XTMODKEYS (CSI > Pp ; Pv m) and XTQMODKEYS (CSI ? Pp m) for Pp 4, xterm's
+ * modifyOtherKeys (aaronsb/libtsm#25): levels 0 to 2 are taken, level 3 is
+ * not, Pv omitted is 0, and CSI > m (every resource back to its initial
+ * value) is 0 too. The query's reply is the XTMODKEYS that restores the
+ * level. The other resources (modifyCursorKeys and the like), and the
+ * sub-parameter that factors modifiers out, are xterm's alone and ignored.
+ */
+static void csi_modkeys(struct tsm_vte *vte)
+{
+	char buf[16];
+	int len;
+
+	if (csi_has_subargs(vte)) {
+		llog_debug(vte, "XTMODKEYS with a sub-parameter ignored");
+		return;
+	}
+
+	if (vte->csi_flags == CSI_WHAT) {
+		if (vte->csi_argv[0] != 4)
+			return;
+		len = snprintf(buf, sizeof(buf), "\e[>4;%um", vte->modify_other_keys);
+		vte_write(vte, buf, len);
+		return;
+	}
+	if (vte->csi_flags != CSI_GT)
+		return;
+
+	if (vte->csi_argc <= 1 && vte->csi_argv[0] < 0)
+		vte->modify_other_keys = 0;
+	else if (vte->csi_argv[0] != 4)
+		llog_debug(vte, "XTMODKEYS %d ignored", vte->csi_argv[0]);
+	else if (vte->csi_argv[1] < 0)
+		vte->modify_other_keys = 0;
+	else if (vte->csi_argv[1] <= 2)
+		vte->modify_other_keys = vte->csi_argv[1];
+	else
+		llog_debug(vte, "modifyOtherKeys %d ignored", vte->csi_argv[1]);
+}
+
 static void do_csi(struct tsm_vte *vte, uint32_t data)
 {
 	int num, x, y, upper, lower;
@@ -2457,7 +2499,9 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		/* A '>' or '?' prefix marks a private sequence, not SGR:
 		 * XTMODKEYS \033[>4;1m sets and XTQMODKEYS \033[?4m queries
 		 * xterm's modifyOtherKeys level. Neither is SGR 4 (underline). */
-		if (!(vte->csi_flags & (CSI_GT | CSI_WHAT)))
+		if (vte->csi_flags & (CSI_GT | CSI_WHAT))
+			csi_modkeys(vte);
+		else
 			csi_attribute(vte);
 		break;
 	case 'p':
@@ -2568,6 +2612,13 @@ static void do_csi(struct tsm_vte *vte, uint32_t data)
 		tsm_screen_tab_right(vte->con, num);
 		break;
 	case 'n': /* DSR */
+		/* XTMODKEYS disable (CSI > Ps n): modifyOtherKeys's -1 is
+		 * level 0 here; the other resources are xterm's alone */
+		if (vte->csi_flags == CSI_GT) {
+			if (vte->csi_argv[0] == 4)
+				vte->modify_other_keys = 0;
+			break;
+		}
 		/* device status reports; DECXCPR (CSI ? 6 n) gets the plain
 		 * CPR, as it always has */
 		if (csi_foreign(vte, data, CSI_WHAT))
@@ -3494,6 +3545,99 @@ static int ctrl_byte(uint32_t sym)
 	}
 }
 
+/*
+ * The character a printable key produced, after Shift: from the keysym where
+ * it is Latin-1, else the host's codepoint; 0 for none. Keysyms from 0xfd00
+ * up are function, keypad and other non-character keys (ctlseqs, "Alt and
+ * Meta Keys"), never encoded, whatever codepoint the host gives them.
+ */
+static uint32_t key_char(uint32_t keysym, uint32_t unicode)
+{
+	if ((keysym >= 0x20 && keysym <= 0x7e) || (keysym >= 0xa0 && keysym <= 0xff))
+		return keysym;
+	if (keysym >= 0xfd00 && keysym <= 0xffff)
+		return 0;
+	if (unicode < 0x20 || unicode == 0x7f || unicode > 0x10ffff)
+		return 0;
+	return unicode;
+}
+
+/*
+ * xterm's modifyOtherKeys (aaronsb/libtsm#25): at level 1 or 2, a key
+ * pressed with Shift, Alt or Ctrl is sent as CSI 27 ; mod ; code ~, mod as
+ * for the cursor keys and code the character, where the rules below say so;
+ * returns false to leave the key to the usual encoding. The rules follow
+ * ctlseqs ("Alt and Meta Keys") and xterm's "Modified Other Keys (us-pc105)"
+ * table:
+ *
+ * - Level 1 encodes a printable key with Alt, or with Ctrl where libtsm has
+ *   no control byte for it (Ctrl+1 encodes, Ctrl+a stays 0x01; ctrl_byte's
+ *   list is not quite xterm's, which also has Ctrl+@, Ctrl+^ and Ctrl+_ and
+ *   encodes Ctrl+?, so those four differ from xterm here); space and
+ *   Escape only with Alt; Tab and Return with any modifier; Shift+Tab
+ *   (ISO_Left_Tab) only with another modifier, CSI Z otherwise; never
+ *   BackSpace.
+ * - Level 2 encodes all of them with any modifier, Shift+Tab included, but
+ *   BackSpace not with Ctrl alone, and, with Shift alone, only space and the
+ *   characters @ to ~ (the table's rows for ! to ? and for characters past
+ *   ASCII send the character). The table decides by the character after
+ *   Shift, which is what libtsm is given.
+ *
+ * Alt goes in mod, so no ESC comes before the sequence. Keypad, function,
+ * cursor and edit keys and Linefeed are never encoded here.
+ */
+static bool vte_write_modified_key(struct tsm_vte *vte, uint32_t keysym, uint32_t sym,
+				   unsigned int mods, uint32_t unicode)
+{
+	unsigned int m = mods & (TSM_SHIFT_MASK | TSM_ALT_MASK | TSM_CONTROL_MASK);
+	bool level2 = vte->modify_other_keys == 2;
+	uint32_t code;
+	char buf[32];
+	int len;
+
+	if (!m)
+		return false;
+
+	switch (keysym) {
+	case XKB_KEY_Tab:
+	case XKB_KEY_Return:
+		code = keysym == XKB_KEY_Tab ? 9 : 13;
+		break;
+	case XKB_KEY_ISO_Left_Tab:
+		if (!level2 && m == TSM_SHIFT_MASK)
+			return false;
+		code = 9;
+		break;
+	case XKB_KEY_Escape:
+		if (!level2 && !(m & TSM_ALT_MASK))
+			return false;
+		code = 27;
+		break;
+	case XKB_KEY_BackSpace:
+		if (!level2 || m == TSM_CONTROL_MASK)
+			return false;
+		code = vte->backspace_sends_delete ? 127 : 8;
+		break;
+	default:
+		code = key_char(keysym, unicode);
+		if (!code)
+			return false;
+		if (level2) {
+			if (m == TSM_SHIFT_MASK && code != ' ' && (code < '@' || code > '~'))
+				return false;
+		} else if (!(m & TSM_ALT_MASK)) {
+			if (!(m & TSM_CONTROL_MASK) || ctrl_byte(sym) >= 0)
+				return false;
+		}
+		break;
+	}
+
+	len = snprintf(buf, sizeof(buf), "\e[27;%c;%u~", csi_modifier_from_mask(m), code);
+	vte->flags &= ~TSM_VTE_FLAG_PREPEND_ESCAPE;
+	vte_write(vte, buf, len);
+	return true;
+}
+
 SHL_EXPORT
 bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 			     uint32_t ascii, unsigned int mods,
@@ -3531,6 +3675,10 @@ bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 	sym = ascii;
 	if (sym == XKB_KEY_NoSymbol)
 		sym = keysym;
+
+	if (vte->modify_other_keys &&
+	    vte_write_modified_key(vte, keysym, sym, mods, unicode))
+		return true;
 
 	if (mods & TSM_CONTROL_MASK) {
 		ctrl = ctrl_byte(sym);
