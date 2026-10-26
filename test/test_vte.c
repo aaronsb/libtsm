@@ -3673,6 +3673,114 @@ START_TEST(test_vte_xtgettcap_bounds)
 }
 END_TEST
 
+/* appends @n copies of @s to @buf at *@len */
+static void id_append(char *buf, size_t size, size_t *len, const char *s, size_t n)
+{
+	size_t l = strlen(s);
+
+	for (; n; --n) {
+		ck_assert_uint_lt(*len + l, size);
+		memcpy(buf + *len, s, l + 1);
+		*len += l;
+	}
+}
+
+/* DCS + q for seven "big" names, then @tail */
+static void id_edge_query(char *buf, size_t size, const char *tail)
+{
+	size_t len = 0;
+
+	id_append(buf, size, &len, "\eP+q626967", 1);
+	id_append(buf, size, &len, ";626967", 6);
+	id_append(buf, size, &len, tail, 1);
+}
+
+/* @query replies exactly @reply, @len bytes, too long for check's message */
+static void id_assert_long_reply(const char *query, const char *reply, size_t len)
+{
+	ck_assert_uint_eq(strlen(reply), len);
+	id_clear();
+	id_input(query);
+	ck_assert_uint_eq(id_len, len);
+	ck_assert_msg(!memcmp(id_out, reply, len), "the %zu-byte reply differs", len);
+}
+
+/* DCS 1 + r with seven "big" pairs, then @tail and @end */
+static void id_edge_reply(char *buf, size_t size, const char *tail, const char *end)
+{
+	size_t len = 0, i;
+
+	id_append(buf, size, &len, "\eP1+r", 1);
+	for (i = 0; i < 7; ++i) {
+		if (i)
+			id_append(buf, size, &len, ";", 1);
+		id_append(buf, size, &len, "626967=", 1);
+		id_append(buf, size, &len, "61", TSM_VTE_TERMCAP_VALUE_MAX);
+	}
+	id_append(buf, size, &len, tail, 1);
+	id_append(buf, size, &len, end, 1);
+}
+
+/*
+ * The reply's size at its edge. Each "big" pair (626967= and 512 hex
+ * digits) takes 520 bytes with its ';', so seven come to 3645 with the
+ * 5-byte DCS 1 + r, and Tc; brings that to 3650. A pair is written only
+ * while it, a ';' and the 2-byte ST still fit in 4096: e1 (pair 443) fits
+ * at 3650 exactly, e2 (445) is one byte past there, and e3 (449) one byte
+ * past at 3645.
+ */
+START_TEST(test_vte_xtgettcap_reply_edge)
+{
+	static char v1[220], v2[221], v3[223];
+	struct tsm_vte_termcap caps[] = {
+		{ "big", id_big }, { "Tc", NULL }, { "e1", v1 }, { "e2", v2 }, { "e3", v3 },
+	};
+	char query[256], reply[4200], e1[500];
+	size_t len = 0;
+
+	memset(v1, 'b', 219);
+	memset(v2, 'b', 220);
+	memset(v3, 'b', 222);
+	ck_assert_int_eq(tsm_vte_set_termcap(id_vte, caps, sizeof(caps) / sizeof(*caps)), 0);
+	id_append(e1, sizeof(e1), &len, ";5463;6531=", 1);
+	id_append(e1, sizeof(e1), &len, "62", 219);
+
+	/* e1 last: 4095 bytes */
+	id_edge_query(query, sizeof(query), ";5463;6531\e\\");
+	id_edge_reply(reply, sizeof(reply), e1, "\e\\");
+	id_assert_long_reply(query, reply, 4095);
+
+	/* a name after e1: its ';' makes 4096, and the list stops there */
+	id_edge_query(query, sizeof(query), ";5463;6531;5463\e\\");
+	id_edge_reply(reply, sizeof(reply), e1, ";\e\\");
+	id_assert_long_reply(query, reply, 4096);
+
+	/* e2, a byte past at 3650, ends the list after Tc;, with a name
+	 * after it or without */
+	id_edge_reply(reply, sizeof(reply), ";5463;", "\e\\");
+	id_edge_query(query, sizeof(query), ";5463;6532;5463\e\\");
+	id_assert_long_reply(query, reply, 3652);
+	id_edge_query(query, sizeof(query), ";5463;6532\e\\");
+	id_assert_long_reply(query, reply, 3652);
+
+	/* e3, a byte past at 3645, ends the list after the seventh big */
+	id_edge_query(query, sizeof(query), ";6533\e\\");
+	id_edge_reply(reply, sizeof(reply), ";", "\e\\");
+	id_assert_long_reply(query, reply, 3647);
+}
+END_TEST
+
+/* a reset between the ESC and the '\' drops the request */
+START_TEST(test_vte_xtgettcap_esc_reset)
+{
+	id_input("\eP+q544e\e");
+	tsm_vte_reset(id_vte);
+	id_assert_reply("\\", "");
+	/* the next request is answered */
+	id_assert_reply("\eP+q544e\e\\", "\eP1+r544e=6B6D73636F6E\e\\");
+}
+END_TEST
+
 /* CAN, SUB, and an ESC not followed by '\', drop the request; ST, 7-bit or
  * as U+009C, answers it */
 START_TEST(test_vte_xtgettcap_end)
@@ -3777,7 +3885,9 @@ TEST_DEFINE_CASE(identify)
 	TEST(test_vte_xtgettcap_multiple)
 	TEST(test_vte_xtgettcap_invalid)
 	TEST(test_vte_xtgettcap_bounds)
+	TEST(test_vte_xtgettcap_reply_edge)
 	TEST(test_vte_xtgettcap_end)
+	TEST(test_vte_xtgettcap_esc_reset)
 	TEST(test_vte_xtgettcap_split)
 	TEST(test_vte_xtgettcap_set)
 TEST_END_CASE
