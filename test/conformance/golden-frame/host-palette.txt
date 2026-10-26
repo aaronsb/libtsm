@@ -1,0 +1,426 @@
+checkpoint 248
+size 18x2
+cursor 16,1
+flags AUTO_WRAP
+reply 1b5d343b313b7267623a636463642f303030302f303030301b5c1b5d31303b7267623a653565352f653565352f653565351b5c1b5d31313b7267623a303030302f303030302f303030301b5c
+palette legacy fg=#e5e5e5 bg=#000000
+changed 36
+frame-cursor 16,1 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |0123456789abcdefdi|
+cells 0 0-0 w=1 fg=#000000 bg=#000000 ul=#000000
+cells 0 1-1 w=1 fg=#cd0000 bg=#000000 ul=#cd0000
+cells 0 2-2 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+cells 0 3-3 w=1 fg=#cdcd00 bg=#000000 ul=#cdcd00
+cells 0 4-4 w=1 fg=#0000ee bg=#000000 ul=#0000ee
+cells 0 5-5 w=1 fg=#cd00cd bg=#000000 ul=#cd00cd
+cells 0 6-6 w=1 fg=#00cdcd bg=#000000 ul=#00cdcd
+cells 0 8-8 w=1 fg=#7f7f7f bg=#000000 ul=#7f7f7f
+cells 0 9-9 w=1 fg=#ff0000 bg=#000000 ul=#ff0000
+cells 0 10-10 w=1 fg=#00ff00 bg=#000000 ul=#00ff00
+cells 0 11-11 w=1 fg=#ffff00 bg=#000000 ul=#ffff00
+cells 0 12-12 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff
+cells 0 13-13 w=1 fg=#ff00ff bg=#000000 ul=#ff00ff
+cells 0 14-14 w=1 fg=#00ffff bg=#000000 ul=#00ffff
+cells 0 15-15 w=1 fg=#ffffff bg=#000000 ul=#ffffff
+cells 0 17-17 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+row 1 |0123456789abcdef|
+cells 1 1-1 w=1 fg=#e5e5e5 bg=#cd0000 ul=#e5e5e5
+cells 1 2-2 w=1 fg=#e5e5e5 bg=#00cd00 ul=#e5e5e5
+cells 1 3-3 w=1 fg=#e5e5e5 bg=#cdcd00 ul=#e5e5e5
+cells 1 4-4 w=1 fg=#e5e5e5 bg=#0000ee ul=#e5e5e5
+cells 1 5-5 w=1 fg=#e5e5e5 bg=#cd00cd ul=#e5e5e5
+cells 1 6-6 w=1 fg=#e5e5e5 bg=#00cdcd ul=#e5e5e5
+cells 1 7-7 w=1 fg=#e5e5e5 bg=#e5e5e5 ul=#e5e5e5
+cells 1 8-8 w=1 fg=#e5e5e5 bg=#7f7f7f ul=#e5e5e5
+cells 1 9-9 w=1 fg=#e5e5e5 bg=#ff0000 ul=#e5e5e5
+cells 1 10-10 w=1 fg=#e5e5e5 bg=#00ff00 ul=#e5e5e5
+cells 1 11-11 w=1 fg=#e5e5e5 bg=#ffff00 ul=#e5e5e5
+cells 1 12-12 w=1 fg=#e5e5e5 bg=#5c5cff ul=#e5e5e5
+cells 1 13-13 w=1 fg=#e5e5e5 bg=#ff00ff ul=#e5e5e5
+cells 1 14-14 w=1 fg=#e5e5e5 bg=#00ffff ul=#e5e5e5
+cells 1 15-15 w=1 fg=#e5e5e5 bg=#ffffff ul=#e5e5e5
+checkpoint 287
+size 18x2
+cursor 18,1
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 36
+frame-cursor 17,1 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 |                 y|
+checkpoint 564
+size 18x2
+cursor 16,1
+flags AUTO_WRAP
+reply 1b5d343b313b7267623a616161612f303030302f303030301b5c1b5d31303b7267623a616161612f616161612f616161611b5c1b5d31313b7267623a303030302f303030302f303030301b5c
+palette vga fg=#aaaaaa bg=#000000
+changed 36
+frame-cursor 16,1 default visible w=1 fg=#000000 bg=#aaaaaa ul=#000000
+row 0 |0123456789abcdefdi|
+cells 0 0-0 w=1 fg=#000000 bg=#000000 ul=#000000
+cells 0 1-1 w=1 fg=#aa0000 bg=#000000 ul=#aa0000
+cells 0 2-2 w=1 fg=#00aa00 bg=#000000 ul=#00aa00
+cells 0 3-3 w=1 fg=#aa5500 bg=#000000 ul=#aa5500
+cells 0 4-4 w=1 fg=#0000aa bg=#000000 ul=#0000aa
+cells 0 5-5 w=1 fg=#aa00aa bg=#000000 ul=#aa00aa
+cells 0 6-6 w=1 fg=#00aaaa bg=#000000 ul=#00aaaa
+cells 0 8-8 w=1 fg=#555555 bg=#000000 ul=#555555
+cells 0 9-9 w=1 fg=#ff5555 bg=#000000 ul=#ff5555
+cells 0 10-10 w=1 fg=#55ff55 bg=#000000 ul=#55ff55
+cells 0 11-11 w=1 fg=#ffff55 bg=#000000 ul=#ffff55
+cells 0 12-12 w=1 fg=#5555ff bg=#000000 ul=#5555ff
+cells 0 13-13 w=1 fg=#ff55ff bg=#000000 ul=#ff55ff
+cells 0 14-14 w=1 fg=#55ffff bg=#000000 ul=#55ffff
+cells 0 15-15 w=1 fg=#ffffff bg=#000000 ul=#ffffff
+cells 0 17-17 w=1 fg=#000000 bg=#aaaaaa ul=#000000 inverse
+row 1 |0123456789abcdef|
+cells 1 1-1 w=1 fg=#aaaaaa bg=#aa0000 ul=#aaaaaa
+cells 1 2-2 w=1 fg=#aaaaaa bg=#00aa00 ul=#aaaaaa
+cells 1 3-3 w=1 fg=#aaaaaa bg=#aa5500 ul=#aaaaaa
+cells 1 4-4 w=1 fg=#aaaaaa bg=#0000aa ul=#aaaaaa
+cells 1 5-5 w=1 fg=#aaaaaa bg=#aa00aa ul=#aaaaaa
+cells 1 6-6 w=1 fg=#aaaaaa bg=#00aaaa ul=#aaaaaa
+cells 1 7-7 w=1 fg=#aaaaaa bg=#aaaaaa ul=#aaaaaa
+cells 1 8-8 w=1 fg=#aaaaaa bg=#555555 ul=#aaaaaa
+cells 1 9-9 w=1 fg=#aaaaaa bg=#ff5555 ul=#aaaaaa
+cells 1 10-10 w=1 fg=#aaaaaa bg=#55ff55 ul=#aaaaaa
+cells 1 11-11 w=1 fg=#aaaaaa bg=#ffff55 ul=#aaaaaa
+cells 1 12-12 w=1 fg=#aaaaaa bg=#5555ff ul=#aaaaaa
+cells 1 13-13 w=1 fg=#aaaaaa bg=#ff55ff ul=#aaaaaa
+cells 1 14-14 w=1 fg=#aaaaaa bg=#55ffff ul=#aaaaaa
+cells 1 15-15 w=1 fg=#aaaaaa bg=#ffffff ul=#aaaaaa
+checkpoint 842
+size 18x2
+cursor 16,1
+flags AUTO_WRAP
+reply 1b5d343b313b7267623a626662662f363136312f366136611b5c1b5d31303b7267623a643864382f646564652f653965391b5c1b5d31313b7267623a326532652f333433342f343034301b5c
+palette nord fg=#d8dee9 bg=#2e3440
+changed 36
+frame-cursor 16,1 default visible w=1 fg=#2e3440 bg=#d8dee9 ul=#2e3440
+row 0 |0123456789abcdefdi|
+cells 0 0-0 w=1 fg=#3b4252 bg=#2e3440 ul=#3b4252
+cells 0 1-1 w=1 fg=#bf616a bg=#2e3440 ul=#bf616a
+cells 0 2-2 w=1 fg=#a3be8c bg=#2e3440 ul=#a3be8c
+cells 0 3-3 w=1 fg=#ebcb8b bg=#2e3440 ul=#ebcb8b
+cells 0 4-4 w=1 fg=#81a1c1 bg=#2e3440 ul=#81a1c1
+cells 0 5-5 w=1 fg=#b48ead bg=#2e3440 ul=#b48ead
+cells 0 6-6 w=1 fg=#88c0d0 bg=#2e3440 ul=#88c0d0
+cells 0 7-7 w=1 fg=#e5e9f0 bg=#2e3440 ul=#e5e9f0
+cells 0 8-8 w=1 fg=#4c566a bg=#2e3440 ul=#4c566a
+cells 0 9-9 w=1 fg=#bf616a bg=#2e3440 ul=#bf616a
+cells 0 10-10 w=1 fg=#a3be8c bg=#2e3440 ul=#a3be8c
+cells 0 11-11 w=1 fg=#ebcb8b bg=#2e3440 ul=#ebcb8b
+cells 0 12-12 w=1 fg=#81a1c1 bg=#2e3440 ul=#81a1c1
+cells 0 13-13 w=1 fg=#b48ead bg=#2e3440 ul=#b48ead
+cells 0 14-14 w=1 fg=#8fbcbb bg=#2e3440 ul=#8fbcbb
+cells 0 15-15 w=1 fg=#eceff4 bg=#2e3440 ul=#eceff4
+cells 0 17-17 w=1 fg=#2e3440 bg=#d8dee9 ul=#2e3440 inverse
+row 1 |0123456789abcdef|
+cells 1 0-0 w=1 fg=#d8dee9 bg=#3b4252 ul=#d8dee9
+cells 1 1-1 w=1 fg=#d8dee9 bg=#bf616a ul=#d8dee9
+cells 1 2-2 w=1 fg=#d8dee9 bg=#a3be8c ul=#d8dee9
+cells 1 3-3 w=1 fg=#d8dee9 bg=#ebcb8b ul=#d8dee9
+cells 1 4-4 w=1 fg=#d8dee9 bg=#81a1c1 ul=#d8dee9
+cells 1 5-5 w=1 fg=#d8dee9 bg=#b48ead ul=#d8dee9
+cells 1 6-6 w=1 fg=#d8dee9 bg=#88c0d0 ul=#d8dee9
+cells 1 7-7 w=1 fg=#d8dee9 bg=#e5e9f0 ul=#d8dee9
+cells 1 8-8 w=1 fg=#d8dee9 bg=#4c566a ul=#d8dee9
+cells 1 9-9 w=1 fg=#d8dee9 bg=#bf616a ul=#d8dee9
+cells 1 10-10 w=1 fg=#d8dee9 bg=#a3be8c ul=#d8dee9
+cells 1 11-11 w=1 fg=#d8dee9 bg=#ebcb8b ul=#d8dee9
+cells 1 12-12 w=1 fg=#d8dee9 bg=#81a1c1 ul=#d8dee9
+cells 1 13-13 w=1 fg=#d8dee9 bg=#b48ead ul=#d8dee9
+cells 1 14-14 w=1 fg=#d8dee9 bg=#8fbcbb ul=#d8dee9
+cells 1 15-15 w=1 fg=#d8dee9 bg=#eceff4 ul=#d8dee9
+checkpoint 1125
+size 18x2
+cursor 16,1
+flags AUTO_WRAP
+reply 1b5d343b313b7267623a646364632f333233322f326632661b5c1b5d31303b7267623a656565652f653865382f643564351b5c1b5d31313b7267623a303730372f333633362f343234321b5c
+palette solarized fg=#eee8d5 bg=#073642
+changed 36
+frame-cursor 16,1 default visible w=1 fg=#073642 bg=#eee8d5 ul=#073642
+row 0 |0123456789abcdefdi|
+cells 0 0-0 w=1 fg=#073642 bg=#073642 ul=#073642
+cells 0 1-1 w=1 fg=#dc322f bg=#073642 ul=#dc322f
+cells 0 2-2 w=1 fg=#859900 bg=#073642 ul=#859900
+cells 0 3-3 w=1 fg=#b58900 bg=#073642 ul=#b58900
+cells 0 4-4 w=1 fg=#268bd2 bg=#073642 ul=#268bd2
+cells 0 5-5 w=1 fg=#d33682 bg=#073642 ul=#d33682
+cells 0 6-6 w=1 fg=#2aa198 bg=#073642 ul=#2aa198
+cells 0 8-8 w=1 fg=#002b36 bg=#073642 ul=#002b36
+cells 0 9-9 w=1 fg=#cb4b16 bg=#073642 ul=#cb4b16
+cells 0 10-10 w=1 fg=#586e75 bg=#073642 ul=#586e75
+cells 0 11-11 w=1 fg=#657b83 bg=#073642 ul=#657b83
+cells 0 12-12 w=1 fg=#839496 bg=#073642 ul=#839496
+cells 0 13-13 w=1 fg=#6c71c4 bg=#073642 ul=#6c71c4
+cells 0 14-14 w=1 fg=#93a1a1 bg=#073642 ul=#93a1a1
+cells 0 15-15 w=1 fg=#fdf6e3 bg=#073642 ul=#fdf6e3
+cells 0 17-17 w=1 fg=#073642 bg=#eee8d5 ul=#073642 inverse
+row 1 |0123456789abcdef|
+cells 1 1-1 w=1 fg=#eee8d5 bg=#dc322f ul=#eee8d5
+cells 1 2-2 w=1 fg=#eee8d5 bg=#859900 ul=#eee8d5
+cells 1 3-3 w=1 fg=#eee8d5 bg=#b58900 ul=#eee8d5
+cells 1 4-4 w=1 fg=#eee8d5 bg=#268bd2 ul=#eee8d5
+cells 1 5-5 w=1 fg=#eee8d5 bg=#d33682 ul=#eee8d5
+cells 1 6-6 w=1 fg=#eee8d5 bg=#2aa198 ul=#eee8d5
+cells 1 7-7 w=1 fg=#eee8d5 bg=#eee8d5 ul=#eee8d5
+cells 1 8-8 w=1 fg=#eee8d5 bg=#002b36 ul=#eee8d5
+cells 1 9-9 w=1 fg=#eee8d5 bg=#cb4b16 ul=#eee8d5
+cells 1 10-10 w=1 fg=#eee8d5 bg=#586e75 ul=#eee8d5
+cells 1 11-11 w=1 fg=#eee8d5 bg=#657b83 ul=#eee8d5
+cells 1 12-12 w=1 fg=#eee8d5 bg=#839496 ul=#eee8d5
+cells 1 13-13 w=1 fg=#eee8d5 bg=#6c71c4 ul=#eee8d5
+cells 1 14-14 w=1 fg=#eee8d5 bg=#93a1a1 ul=#eee8d5
+cells 1 15-15 w=1 fg=#eee8d5 bg=#fdf6e3 ul=#eee8d5
+checkpoint 1414
+size 18x2
+cursor 16,1
+flags AUTO_WRAP
+reply 1b5d343b313b7267623a646364632f333233322f326632661b5c1b5d31303b7267623a656565652f653865382f643564351b5c1b5d31313b7267623a303030302f303030302f303030301b5c
+palette solarized-black fg=#eee8d5 bg=#000000
+changed 36
+frame-cursor 16,1 default visible w=1 fg=#000000 bg=#eee8d5 ul=#000000
+row 0 |0123456789abcdefdi|
+cells 0 0-0 w=1 fg=#000000 bg=#000000 ul=#000000
+cells 0 1-1 w=1 fg=#dc322f bg=#000000 ul=#dc322f
+cells 0 2-2 w=1 fg=#859900 bg=#000000 ul=#859900
+cells 0 3-3 w=1 fg=#b58900 bg=#000000 ul=#b58900
+cells 0 4-4 w=1 fg=#268bd2 bg=#000000 ul=#268bd2
+cells 0 5-5 w=1 fg=#d33682 bg=#000000 ul=#d33682
+cells 0 6-6 w=1 fg=#2aa198 bg=#000000 ul=#2aa198
+cells 0 8-8 w=1 fg=#002b36 bg=#000000 ul=#002b36
+cells 0 9-9 w=1 fg=#cb4b16 bg=#000000 ul=#cb4b16
+cells 0 10-10 w=1 fg=#586e75 bg=#000000 ul=#586e75
+cells 0 11-11 w=1 fg=#657b83 bg=#000000 ul=#657b83
+cells 0 12-12 w=1 fg=#839496 bg=#000000 ul=#839496
+cells 0 13-13 w=1 fg=#6c71c4 bg=#000000 ul=#6c71c4
+cells 0 14-14 w=1 fg=#93a1a1 bg=#000000 ul=#93a1a1
+cells 0 15-15 w=1 fg=#fdf6e3 bg=#000000 ul=#fdf6e3
+cells 0 17-17 w=1 fg=#000000 bg=#eee8d5 ul=#000000 inverse
+row 1 |0123456789abcdef|
+cells 1 1-1 w=1 fg=#eee8d5 bg=#dc322f ul=#eee8d5
+cells 1 2-2 w=1 fg=#eee8d5 bg=#859900 ul=#eee8d5
+cells 1 3-3 w=1 fg=#eee8d5 bg=#b58900 ul=#eee8d5
+cells 1 4-4 w=1 fg=#eee8d5 bg=#268bd2 ul=#eee8d5
+cells 1 5-5 w=1 fg=#eee8d5 bg=#d33682 ul=#eee8d5
+cells 1 6-6 w=1 fg=#eee8d5 bg=#2aa198 ul=#eee8d5
+cells 1 7-7 w=1 fg=#eee8d5 bg=#eee8d5 ul=#eee8d5
+cells 1 8-8 w=1 fg=#eee8d5 bg=#002b36 ul=#eee8d5
+cells 1 9-9 w=1 fg=#eee8d5 bg=#cb4b16 ul=#eee8d5
+cells 1 10-10 w=1 fg=#eee8d5 bg=#586e75 ul=#eee8d5
+cells 1 11-11 w=1 fg=#eee8d5 bg=#657b83 ul=#eee8d5
+cells 1 12-12 w=1 fg=#eee8d5 bg=#839496 ul=#eee8d5
+cells 1 13-13 w=1 fg=#eee8d5 bg=#6c71c4 ul=#eee8d5
+cells 1 14-14 w=1 fg=#eee8d5 bg=#93a1a1 ul=#eee8d5
+cells 1 15-15 w=1 fg=#eee8d5 bg=#fdf6e3 ul=#eee8d5
+checkpoint 1703
+size 18x2
+cursor 16,1
+flags AUTO_WRAP
+reply 1b5d343b313b7267623a646364632f333233322f326632661b5c1b5d31303b7267623a303730372f333633362f343234321b5c1b5d31313b7267623a656565652f653865382f643564351b5c
+palette solarized-white fg=#073642 bg=#eee8d5
+changed 36
+frame-cursor 16,1 default visible w=1 fg=#eee8d5 bg=#073642 ul=#eee8d5
+row 0 |0123456789abcdefdi|
+cells 0 1-1 w=1 fg=#dc322f bg=#eee8d5 ul=#dc322f
+cells 0 2-2 w=1 fg=#859900 bg=#eee8d5 ul=#859900
+cells 0 3-3 w=1 fg=#b58900 bg=#eee8d5 ul=#b58900
+cells 0 4-4 w=1 fg=#268bd2 bg=#eee8d5 ul=#268bd2
+cells 0 5-5 w=1 fg=#d33682 bg=#eee8d5 ul=#d33682
+cells 0 6-6 w=1 fg=#2aa198 bg=#eee8d5 ul=#2aa198
+cells 0 7-7 w=1 fg=#eee8d5 bg=#eee8d5 ul=#eee8d5
+cells 0 8-8 w=1 fg=#002b36 bg=#eee8d5 ul=#002b36
+cells 0 9-9 w=1 fg=#cb4b16 bg=#eee8d5 ul=#cb4b16
+cells 0 10-10 w=1 fg=#586e75 bg=#eee8d5 ul=#586e75
+cells 0 11-11 w=1 fg=#657b83 bg=#eee8d5 ul=#657b83
+cells 0 12-12 w=1 fg=#839496 bg=#eee8d5 ul=#839496
+cells 0 13-13 w=1 fg=#6c71c4 bg=#eee8d5 ul=#6c71c4
+cells 0 14-14 w=1 fg=#93a1a1 bg=#eee8d5 ul=#93a1a1
+cells 0 15-15 w=1 fg=#fdf6e3 bg=#eee8d5 ul=#fdf6e3
+cells 0 17-17 w=1 fg=#eee8d5 bg=#073642 ul=#eee8d5 inverse
+row 1 |0123456789abcdef|
+cells 1 0-0 w=1 fg=#073642 bg=#073642 ul=#073642
+cells 1 1-1 w=1 fg=#073642 bg=#dc322f ul=#073642
+cells 1 2-2 w=1 fg=#073642 bg=#859900 ul=#073642
+cells 1 3-3 w=1 fg=#073642 bg=#b58900 ul=#073642
+cells 1 4-4 w=1 fg=#073642 bg=#268bd2 ul=#073642
+cells 1 5-5 w=1 fg=#073642 bg=#d33682 ul=#073642
+cells 1 6-6 w=1 fg=#073642 bg=#2aa198 ul=#073642
+cells 1 8-8 w=1 fg=#073642 bg=#002b36 ul=#073642
+cells 1 9-9 w=1 fg=#073642 bg=#cb4b16 ul=#073642
+cells 1 10-10 w=1 fg=#073642 bg=#586e75 ul=#073642
+cells 1 11-11 w=1 fg=#073642 bg=#657b83 ul=#073642
+cells 1 12-12 w=1 fg=#073642 bg=#839496 ul=#073642
+cells 1 13-13 w=1 fg=#073642 bg=#6c71c4 ul=#073642
+cells 1 14-14 w=1 fg=#073642 bg=#93a1a1 ul=#073642
+cells 1 15-15 w=1 fg=#073642 bg=#fdf6e3 ul=#073642
+checkpoint 1987
+size 18x2
+cursor 16,1
+flags AUTO_WRAP
+reply 1b5d343b313b7267623a373037302f353035302f353035301b5c1b5d31303b7267623a646364632f646364632f636363631b5c1b5d31313b7267623a326332632f326332632f326332631b5c
+palette soft-black fg=#dcdccc bg=#2c2c2c
+changed 36
+frame-cursor 16,1 default visible w=1 fg=#2c2c2c bg=#dcdccc ul=#2c2c2c
+row 0 |0123456789abcdefdi|
+cells 0 0-0 w=1 fg=#3f3f3f bg=#2c2c2c ul=#3f3f3f
+cells 0 1-1 w=1 fg=#705050 bg=#2c2c2c ul=#705050
+cells 0 2-2 w=1 fg=#60b48a bg=#2c2c2c ul=#60b48a
+cells 0 3-3 w=1 fg=#dfaf8f bg=#2c2c2c ul=#dfaf8f
+cells 0 4-4 w=1 fg=#9ab8d7 bg=#2c2c2c ul=#9ab8d7
+cells 0 5-5 w=1 fg=#dc8cc3 bg=#2c2c2c ul=#dc8cc3
+cells 0 6-6 w=1 fg=#8cd0d3 bg=#2c2c2c ul=#8cd0d3
+cells 0 7-7 w=1 fg=#ffffff bg=#2c2c2c ul=#ffffff
+cells 0 8-8 w=1 fg=#709080 bg=#2c2c2c ul=#709080
+cells 0 9-9 w=1 fg=#dca3a3 bg=#2c2c2c ul=#dca3a3
+cells 0 10-10 w=1 fg=#72d5a3 bg=#2c2c2c ul=#72d5a3
+cells 0 11-11 w=1 fg=#f0dfaf bg=#2c2c2c ul=#f0dfaf
+cells 0 12-12 w=1 fg=#94bff3 bg=#2c2c2c ul=#94bff3
+cells 0 13-13 w=1 fg=#ec93d3 bg=#2c2c2c ul=#ec93d3
+cells 0 14-14 w=1 fg=#93e0e3 bg=#2c2c2c ul=#93e0e3
+cells 0 17-17 w=1 fg=#2c2c2c bg=#dcdccc ul=#2c2c2c inverse
+row 1 |0123456789abcdef|
+cells 1 0-0 w=1 fg=#dcdccc bg=#3f3f3f ul=#dcdccc
+cells 1 1-1 w=1 fg=#dcdccc bg=#705050 ul=#dcdccc
+cells 1 2-2 w=1 fg=#dcdccc bg=#60b48a ul=#dcdccc
+cells 1 3-3 w=1 fg=#dcdccc bg=#dfaf8f ul=#dcdccc
+cells 1 4-4 w=1 fg=#dcdccc bg=#9ab8d7 ul=#dcdccc
+cells 1 5-5 w=1 fg=#dcdccc bg=#dc8cc3 ul=#dcdccc
+cells 1 6-6 w=1 fg=#dcdccc bg=#8cd0d3 ul=#dcdccc
+cells 1 7-7 w=1 fg=#dcdccc bg=#ffffff ul=#dcdccc
+cells 1 8-8 w=1 fg=#dcdccc bg=#709080 ul=#dcdccc
+cells 1 9-9 w=1 fg=#dcdccc bg=#dca3a3 ul=#dcdccc
+cells 1 10-10 w=1 fg=#dcdccc bg=#72d5a3 ul=#dcdccc
+cells 1 11-11 w=1 fg=#dcdccc bg=#f0dfaf ul=#dcdccc
+cells 1 12-12 w=1 fg=#dcdccc bg=#94bff3 ul=#dcdccc
+cells 1 13-13 w=1 fg=#dcdccc bg=#ec93d3 ul=#dcdccc
+cells 1 14-14 w=1 fg=#dcdccc bg=#93e0e3 ul=#dcdccc
+cells 1 15-15 w=1 fg=#dcdccc bg=#dcdccc ul=#dcdccc
+checkpoint 2272
+size 18x2
+cursor 16,1
+flags AUTO_WRAP
+reply 1b5d343b313b7267623a616261622f343634362f343234321b5c1b5d31303b7267623a643864382f643864382f643864381b5c1b5d31313b7267623a313831382f313831382f313831381b5c
+palette base16-dark fg=#d8d8d8 bg=#181818
+changed 36
+frame-cursor 16,1 default visible w=1 fg=#181818 bg=#d8d8d8 ul=#181818
+row 0 |0123456789abcdefdi|
+cells 0 0-0 w=1 fg=#000000 bg=#181818 ul=#000000
+cells 0 1-1 w=1 fg=#ab4642 bg=#181818 ul=#ab4642
+cells 0 2-2 w=1 fg=#a1b56c bg=#181818 ul=#a1b56c
+cells 0 3-3 w=1 fg=#f7ca88 bg=#181818 ul=#f7ca88
+cells 0 4-4 w=1 fg=#7cafc2 bg=#181818 ul=#7cafc2
+cells 0 5-5 w=1 fg=#ba8baf bg=#181818 ul=#ba8baf
+cells 0 6-6 w=1 fg=#86c1b9 bg=#181818 ul=#86c1b9
+cells 0 7-7 w=1 fg=#aaaaaa bg=#181818 ul=#aaaaaa
+cells 0 8-8 w=1 fg=#555555 bg=#181818 ul=#555555
+cells 0 9-9 w=1 fg=#ab4642 bg=#181818 ul=#ab4642
+cells 0 10-10 w=1 fg=#a1b56c bg=#181818 ul=#a1b56c
+cells 0 11-11 w=1 fg=#f7ca88 bg=#181818 ul=#f7ca88
+cells 0 12-12 w=1 fg=#7cafc2 bg=#181818 ul=#7cafc2
+cells 0 13-13 w=1 fg=#ba8baf bg=#181818 ul=#ba8baf
+cells 0 14-14 w=1 fg=#86c1b9 bg=#181818 ul=#86c1b9
+cells 0 15-15 w=1 fg=#ffffff bg=#181818 ul=#ffffff
+cells 0 17-17 w=1 fg=#181818 bg=#d8d8d8 ul=#181818 inverse
+row 1 |0123456789abcdef|
+cells 1 0-0 w=1 fg=#d8d8d8 bg=#000000 ul=#d8d8d8
+cells 1 1-1 w=1 fg=#d8d8d8 bg=#ab4642 ul=#d8d8d8
+cells 1 2-2 w=1 fg=#d8d8d8 bg=#a1b56c ul=#d8d8d8
+cells 1 3-3 w=1 fg=#d8d8d8 bg=#f7ca88 ul=#d8d8d8
+cells 1 4-4 w=1 fg=#d8d8d8 bg=#7cafc2 ul=#d8d8d8
+cells 1 5-5 w=1 fg=#d8d8d8 bg=#ba8baf ul=#d8d8d8
+cells 1 6-6 w=1 fg=#d8d8d8 bg=#86c1b9 ul=#d8d8d8
+cells 1 7-7 w=1 fg=#d8d8d8 bg=#aaaaaa ul=#d8d8d8
+cells 1 8-8 w=1 fg=#d8d8d8 bg=#555555 ul=#d8d8d8
+cells 1 9-9 w=1 fg=#d8d8d8 bg=#ab4642 ul=#d8d8d8
+cells 1 10-10 w=1 fg=#d8d8d8 bg=#a1b56c ul=#d8d8d8
+cells 1 11-11 w=1 fg=#d8d8d8 bg=#f7ca88 ul=#d8d8d8
+cells 1 12-12 w=1 fg=#d8d8d8 bg=#7cafc2 ul=#d8d8d8
+cells 1 13-13 w=1 fg=#d8d8d8 bg=#ba8baf ul=#d8d8d8
+cells 1 14-14 w=1 fg=#d8d8d8 bg=#86c1b9 ul=#d8d8d8
+cells 1 15-15 w=1 fg=#d8d8d8 bg=#ffffff ul=#d8d8d8
+checkpoint 2558
+size 18x2
+cursor 16,1
+flags AUTO_WRAP
+reply 1b5d343b313b7267623a616261622f343634362f343234321b5c1b5d31303b7267623a313831382f313831382f313831381b5c1b5d31313b7267623a643864382f643864382f643864381b5c
+palette base16-light fg=#181818 bg=#d8d8d8
+changed 36
+frame-cursor 16,1 default visible w=1 fg=#d8d8d8 bg=#181818 ul=#d8d8d8
+row 0 |0123456789abcdefdi|
+cells 0 0-0 w=1 fg=#000000 bg=#d8d8d8 ul=#000000
+cells 0 1-1 w=1 fg=#ab4642 bg=#d8d8d8 ul=#ab4642
+cells 0 2-2 w=1 fg=#a1b56c bg=#d8d8d8 ul=#a1b56c
+cells 0 3-3 w=1 fg=#f7ca88 bg=#d8d8d8 ul=#f7ca88
+cells 0 4-4 w=1 fg=#7cafc2 bg=#d8d8d8 ul=#7cafc2
+cells 0 5-5 w=1 fg=#ba8baf bg=#d8d8d8 ul=#ba8baf
+cells 0 6-6 w=1 fg=#86c1b9 bg=#d8d8d8 ul=#86c1b9
+cells 0 7-7 w=1 fg=#aaaaaa bg=#d8d8d8 ul=#aaaaaa
+cells 0 8-8 w=1 fg=#555555 bg=#d8d8d8 ul=#555555
+cells 0 9-9 w=1 fg=#ab4642 bg=#d8d8d8 ul=#ab4642
+cells 0 10-10 w=1 fg=#a1b56c bg=#d8d8d8 ul=#a1b56c
+cells 0 11-11 w=1 fg=#f7ca88 bg=#d8d8d8 ul=#f7ca88
+cells 0 12-12 w=1 fg=#7cafc2 bg=#d8d8d8 ul=#7cafc2
+cells 0 13-13 w=1 fg=#ba8baf bg=#d8d8d8 ul=#ba8baf
+cells 0 14-14 w=1 fg=#86c1b9 bg=#d8d8d8 ul=#86c1b9
+cells 0 15-15 w=1 fg=#ffffff bg=#d8d8d8 ul=#ffffff
+cells 0 17-17 w=1 fg=#d8d8d8 bg=#181818 ul=#d8d8d8 inverse
+row 1 |0123456789abcdef|
+cells 1 0-0 w=1 fg=#181818 bg=#000000 ul=#181818
+cells 1 1-1 w=1 fg=#181818 bg=#ab4642 ul=#181818
+cells 1 2-2 w=1 fg=#181818 bg=#a1b56c ul=#181818
+cells 1 3-3 w=1 fg=#181818 bg=#f7ca88 ul=#181818
+cells 1 4-4 w=1 fg=#181818 bg=#7cafc2 ul=#181818
+cells 1 5-5 w=1 fg=#181818 bg=#ba8baf ul=#181818
+cells 1 6-6 w=1 fg=#181818 bg=#86c1b9 ul=#181818
+cells 1 7-7 w=1 fg=#181818 bg=#aaaaaa ul=#181818
+cells 1 8-8 w=1 fg=#181818 bg=#555555 ul=#181818
+cells 1 9-9 w=1 fg=#181818 bg=#ab4642 ul=#181818
+cells 1 10-10 w=1 fg=#181818 bg=#a1b56c ul=#181818
+cells 1 11-11 w=1 fg=#181818 bg=#f7ca88 ul=#181818
+cells 1 12-12 w=1 fg=#181818 bg=#7cafc2 ul=#181818
+cells 1 13-13 w=1 fg=#181818 bg=#ba8baf ul=#181818
+cells 1 14-14 w=1 fg=#181818 bg=#86c1b9 ul=#181818
+cells 1 15-15 w=1 fg=#181818 bg=#ffffff ul=#181818
+checkpoint 2838
+size 18x2
+cursor 16,1
+flags AUTO_WRAP
+reply 1b5d343b313b7267623a636463642f303030302f303030301b5c1b5d31303b7267623a653565352f653565352f653565351b5c1b5d31313b7267623a303030302f303030302f303030301b5c
+palette legacy fg=#e5e5e5 bg=#000000
+changed 36
+frame-cursor 16,1 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |0123456789abcdefdi|
+cells 0 0-0 w=1 fg=#000000 bg=#000000 ul=#000000
+cells 0 1-1 w=1 fg=#cd0000 bg=#000000 ul=#cd0000
+cells 0 2-2 w=1 fg=#00cd00 bg=#000000 ul=#00cd00
+cells 0 3-3 w=1 fg=#cdcd00 bg=#000000 ul=#cdcd00
+cells 0 4-4 w=1 fg=#0000ee bg=#000000 ul=#0000ee
+cells 0 5-5 w=1 fg=#cd00cd bg=#000000 ul=#cd00cd
+cells 0 6-6 w=1 fg=#00cdcd bg=#000000 ul=#00cdcd
+cells 0 8-8 w=1 fg=#7f7f7f bg=#000000 ul=#7f7f7f
+cells 0 9-9 w=1 fg=#ff0000 bg=#000000 ul=#ff0000
+cells 0 10-10 w=1 fg=#00ff00 bg=#000000 ul=#00ff00
+cells 0 11-11 w=1 fg=#ffff00 bg=#000000 ul=#ffff00
+cells 0 12-12 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff
+cells 0 13-13 w=1 fg=#ff00ff bg=#000000 ul=#ff00ff
+cells 0 14-14 w=1 fg=#00ffff bg=#000000 ul=#00ffff
+cells 0 15-15 w=1 fg=#ffffff bg=#000000 ul=#ffffff
+cells 0 17-17 w=1 fg=#000000 bg=#e5e5e5 ul=#000000 inverse
+row 1 |0123456789abcdef|
+cells 1 1-1 w=1 fg=#e5e5e5 bg=#cd0000 ul=#e5e5e5
+cells 1 2-2 w=1 fg=#e5e5e5 bg=#00cd00 ul=#e5e5e5
+cells 1 3-3 w=1 fg=#e5e5e5 bg=#cdcd00 ul=#e5e5e5
+cells 1 4-4 w=1 fg=#e5e5e5 bg=#0000ee ul=#e5e5e5
+cells 1 5-5 w=1 fg=#e5e5e5 bg=#cd00cd ul=#e5e5e5
+cells 1 6-6 w=1 fg=#e5e5e5 bg=#00cdcd ul=#e5e5e5
+cells 1 7-7 w=1 fg=#e5e5e5 bg=#e5e5e5 ul=#e5e5e5
+cells 1 8-8 w=1 fg=#e5e5e5 bg=#7f7f7f ul=#e5e5e5
+cells 1 9-9 w=1 fg=#e5e5e5 bg=#ff0000 ul=#e5e5e5
+cells 1 10-10 w=1 fg=#e5e5e5 bg=#00ff00 ul=#e5e5e5
+cells 1 11-11 w=1 fg=#e5e5e5 bg=#ffff00 ul=#e5e5e5
+cells 1 12-12 w=1 fg=#e5e5e5 bg=#5c5cff ul=#e5e5e5
+cells 1 13-13 w=1 fg=#e5e5e5 bg=#ff00ff ul=#e5e5e5
+cells 1 14-14 w=1 fg=#e5e5e5 bg=#00ffff ul=#e5e5e5
+cells 1 15-15 w=1 fg=#e5e5e5 bg=#ffffff ul=#e5e5e5

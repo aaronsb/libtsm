@@ -1,0 +1,35 @@
+checkpoint 27
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 6869
+row 0 ||
+row 1 ||
+checkpoint 64
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b3230307e610a621b5b3230317e
+row 0 ||
+row 1 ||
+checkpoint 114
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b3230307ec3a91b5b3230317e1b5b3230307e1b5b3230317e
+row 0 ||
+row 1 ||
+checkpoint 151
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b3230307e1b5b3230317e781b5b3230317e
+row 0 ||
+row 1 ||
+checkpoint 184
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 7a
+row 0 ||
+row 1 ||

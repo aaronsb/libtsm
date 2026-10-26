@@ -2,150 +2,65 @@
  * tsm-replay - replay a recorded byte stream into libtsm and print the
  * resulting screen state as text.
  *
- * The text is the conformance contract (ADR-301 tier 1 in the kmscon fork):
- * the same stream must produce the same text before and after a change to the
- * screen model, unless the change is meant to alter it. Only the public API is
- * used, so the tool builds against any libtsm, including upstream releases.
+ * The text is the conformance contract (ADR-301 tier 1). INTERFACE.md, beside
+ * this file, defines it as the contract vtium's replay implementation meets:
+ * the command line, the input, the test commands, the reference host and the
+ * output. This file is the reference implementation in the frozen C code, the
+ * source of the goldens. Only the public API is used, so it builds against any
+ * libtsm, including upstream releases. What follows are its C notes: how it
+ * meets the interface in libtsm's terms.
  *
- * Usage: tsm-replay [--draw2 | --frame] COLS ROWS FILE [CUTS]
+ * Each part needs a declaration in libtsm.h and is left out without it:
+ *   --frame, damage-exact     TSM_SCREEN_FRAME (tsm_screen_frame)
+ *   --draw2                   TSM_SCREEN_CELL_UNDERLINE_COLOR (tsm_screen_draw2)
+ *   underline=, ul=, strike   TSM_SCREEN_ATTR_UNDERLINE_STYLE
+ *   placement, image lines    TSM_SCREEN_IMAGES (tsm_screen_frame_image)
+ *   test commands, --describe TSM_SCREEN_IMAGES; elsewhere the APC reaches the
+ *                             vte, which ignores it
+ * A build with -Dimages=false declares every macro but never turns sixel on;
+ * --describe reads that from DECRQM 80 and leaves out the image features.
  *
- * CUTS, if given, is a file of byte offsets into FILE, one per line, in
- * increasing order. The screen state is printed at each offset (and at the end
- * of FILE), each block headed "checkpoint OFFSET", so a recording of a
- * full-screen program can be checked at every screen it showed, not only after
- * it exits.
+ * Each test command, by the call that runs it and the declaration it needs
+ * beyond TSM_SCREEN_IMAGES:
+ *   resize                    tsm_screen_resize
+ *   sb-max                    tsm_screen_set_max_sb
+ *   sb-up, sb-down, sb-reset  tsm_screen_sb_up, _sb_down, _sb_reset
+ *   cell                      tsm_screen_set_cell_size
+ *   limit                     tsm_screen_set_image_limit
+ *   image, place              tsm_screen_test_image, tsm_screen_test_place
+ *   sixel                     tsm_vte_set_sixel (TSM_VTE_SIXEL)
+ *   graphic-max               tsm_vte_set_graphic_max_size (TSM_VTE_SIXEL)
+ *   registers                 tsm_vte_set_sixel_registers (TSM_VTE_SIXEL)
+ *   kitty-graphics            tsm_vte_set_kitty_graphics (TSM_VTE_KITTY_GRAPHICS)
+ *   host                      tsm_vte_set_image_cb (TSM_VTE_IMAGE_HOST)
+ *   sync                      tsm_vte_set_sync (TSM_VTE_SYNC)
+ *   sync-frames               tsm_vte_get_sync_frames (TSM_VTE_SYNC)
+ *   version                   tsm_vte_set_version (TSM_VTE_XTVERSION and
+ *                             TSM_VTE_TERMCAP, the identify feature's pair)
+ *   termcap                   tsm_vte_set_termcap (the same pair)
+ *   key                       tsm_vte_handle_keyboard, the modifier bits as
+ *                             TSM_*_MASK
+ *   mouse                     tsm_vte_handle_mouse, a move with a button held
+ *                             as that button plus 32 and with none as 3, the
+ *                             modifiers as TSM_MOUSE_MODIFIER_*
+ *   paste                     tsm_vte_paste
+ *   focus                     tsm_vte_handle_focus (TSM_VTE_HANDLE_FOCUS)
+ *   palette                   tsm_vte_set_palette (TSM_SCREEN_CELL_UNDERLINE_COLOR)
+ *   frame-since               tsm_screen_frame_since (TSM_SCREEN_FRAME_SINCE)
+ * A negative return prints the command's error line.
  *
- * Output, one item per line:
- *   size COLSxROWS
- *   cursor X,Y
- *   flags NAME|NAME...        (screen flags, "none" if clear)
- *   reply HEX                 (bytes libtsm wrote back, e.g. to DA; omitted if none)
- *   row N |TEXT|              (cells left to right, trailing blanks trimmed)
- *   attr N A-B KEY...         (a run of cells A..B on row N with non-default attributes)
- *
- * In TEXT a cell with no character is a space, a cell holding several
- * codepoints prints them all, and the cell after a wide character prints
- * nothing, so wide characters keep their row aligned in a monospace view. A
- * cell with more than MAX_CP codepoints is an error (exit 3), so a cluster is
- * never truncated silently.
- *
- * KEY is fg=, bg= (a palette index or #rrggbb), or a flag: bold, italic,
- * underline, inverse, protect, blink, dim. Against a libtsm that declares
- * TSM_SCREEN_ATTR_UNDERLINE_STYLE it also prints, only when set:
- *   underline=STYLE           (in place of "underline" for double, curly, dotted, dashed)
- *   ul=                       (underline colour set by SGR 58, as fg=)
- *   strike
- *
- * --draw2 prints the screen through tsm_screen_draw2 instead, the cells a
- * renderer such as kmscon reads: colours resolved to RGB through the palette,
- * with reverse video, dim and the underline colour applied. It needs the fork's
- * libtsm (TSM_SCREEN_CELL_UNDERLINE_COLOR) and exits 2 elsewhere. The size,
- * cursor, flags and reply lines are as above, then:
- *   palette NAME fg=#rrggbb bg=#rrggbb   (the palette and its default colours)
- *   row N |TEXT|              (each cell's codepoint as draw2 gives it: the
- *                              base of a cluster, a space for an empty cell or
- *                              the trailing half of a wide one; trailing blanks
- *                              trimmed)
- *   cells N A-B fg=#rrggbb bg=#rrggbb ul=#rrggbb[ ulset] FLAG...
- *                             (a run of cells A..B on row N that differs from
- *                              the default cell: default fg and bg, underline
- *                              in the foreground, no flags; FLAG is bold,
- *                              italic, underline or blink)
- *
- * --frame prints the screen through tsm_screen_frame, the call that replaces
- * draw2 (TSM_SCREEN_FRAME; exits 2 without it), with the same palette:
- *   palette NAME fg=#rrggbb bg=#rrggbb
- *   changed N                 (cells flagged changed since the previous frame;
- *                              the first frame of a run flags all of them)
- *   frame-cursor X,Y STYLE visible|hidden[ KEY...]
- *                             (the cursor; when visible, the cell it draws, as
- *                              in a cells line)
- *   row N |TEXT|              (as the default view: a cluster prints all its
- *                              codepoints, a trailing half nothing)
- *   cells N A-B w=W fg=#rrggbb bg=#rrggbb ul=#rrggbb KEY...
- *                             (a run of cells that differs from the default
- *                              cell: width 1, default fg and bg, underline in
- *                              the foreground, no attributes; KEY is ulset,
- *                              underline=STYLE, bold, italic, dim, blink,
- *                              inverse, protect or strike)
- *
- * Against a libtsm that declares TSM_SCREEN_IMAGES every view ends with the
- * placements a frame lists, in draw order, and the images they show, each
- * numbered in that order so no key enters a golden; nothing when there are
- * none:
- *   placement N row R col C box CxR at X,Y size WxH src X,Y WxH cell WxH
- *             z Z BAND KIND image M[ opaque][ changed]
- *                             (one line: R is the visible row of the box's
- *                              top, negative when it is above the view, as
- *                              for a placement anchored in scrollback; BAND is
- *                              below-bg, below-text or above-text; KIND sixel
- *                              or kitty; changed only in the --frame view)
- *   image M WxH digest HEX    (FNV-1a of the pixels, each as A, R, G, B)
- *
- * Against a libtsm that declares TSM_VTE_XTVERSION, XTVERSION replies
- * "tsm-replay", whatever libtsm's version.
- *
- * Against a libtsm that declares TSM_VTE_SIXEL, sixel is on, so a stream's
- * sixel strings make placements and DA1 replies with attribute 4. Against
- * one that declares TSM_VTE_KITTY_GRAPHICS, kitty graphics are on too.
- *
- * There, too, the stream may hold test commands, for what no protocol makes
- * yet (kitty images, ADR-103 step 4a) and for the host's side of the screen
- * (cell size, limits, resize, scrolling the view): an APC
- * "ESC _ tsm-test;CMD;KEY=VALUE... ESC \" runs CMD
- * through libtsm's public and test-only calls in place of being fed to the
- * vte. Elsewhere it reaches the vte, which ignores it. A command that fails
- * prints "test CMD error N" (a negative errno) where it ran. CMD and its keys:
- *   cell;w=;h=                tsm_screen_set_cell_size
- *   limit;b=                  tsm_screen_set_image_limit
- *   sb-max;n=                 tsm_screen_set_max_sb
- *   resize;c=;r=              tsm_screen_resize
- *   sb-up;n= | sb-down;n= | sb-reset
- *                             scroll the view through scrollback
- *   image;n=;w=;h=[;kitty=1;id=;tr=1;fill=AARRGGBB]
- *                             an image of one premultiplied colour (default
- *                             ff808080), a sixel unless kitty=1 (id defaults
- *                             to n), called n in later commands
- *   place;img=[;col=;row=;x=;y=;c=;r=;sx=;sy=;sw=;sh=;z=;p=]
- *                             a placement of image n at the cursor unless col
- *                             and row are given
- *   graphic-max;w=;h=         tsm_vte_set_graphic_max_size (TSM_VTE_SIXEL)
- *   registers;n=[;private=0]  tsm_vte_set_sixel_registers (TSM_VTE_SIXEL)
- *   host;on=0|1               remove or install the fixture host (below)
- *   sync;on=0|1               tsm_vte_set_sync (TSM_VTE_SYNC), on by default
- *
- * Against a libtsm that declares TSM_VTE_IMAGE_HOST, tsm-replay installs a
- * fixture host as the kitty host hook (ADR-103, the Notes of 2026-10-24),
- * feeds the stream through tsm_vte_input_bounded, and answers each request
- * with tsm_vte_image_reply before it feeds the rest, the path kmscon takes,
- * pause and resume included. Answers come from FILE's fixture directory, FILE
- * with ".bin" replaced by ".files". A request names a fixture: the last
- * component of its path or name for t=f, t=t and t=s, and direct-<n> for the
- * case's nth inline request, from 1. tsm-replay answers with an outcome, the
- * image helper's terms, taking the first that applies:
- *   <fixture>.error           its first word, an outcome (UNREADABLE, TOO_SHORT,
- *                             CORRUPT, TOO_LARGE or OVER_BUDGET), is the answer
- *   <fixture>.rgba            for a PNG request: a decoded image, width and height
- *                             as little-endian 32-bit integers, then RGBA, since
- *                             tsm-replay links no decoder
- *   <fixture>.bytes           for an INFLATE request without PNG: the inflated
- *                             bytes, of which the first min_bytes come back
- *                             (fewer TOO_SHORT; under EXACT, more CORRUPT)
- *   <fixture>                 for a request with neither: the data itself, read
- *                             from offset for at most read_max bytes (0: to the
- *                             end), of which the first min_bytes come back (an
- *                             offset at or past the end UNREADABLE, fewer
- *                             TOO_SHORT)
- *   otherwise                 UNREADABLE for the file media, CORRUPT for inline
- *                             data
- * A discard is answered OK with no bytes, as the image helper answers one. It
- * deletes nothing and applies none of the image helper's path rules. Each
- * request is printed among the replies, where it happened:
- *   host: ID t=M flags=F O=OFFSET max=READ_MAX min=MIN_BYTES name=NAME len=LEN
- *                             (F the flags set, of inflate, png, exact and
- *                              discard, comma-separated, or -; NAME as
- *                              received, every byte outside 0x21 to 0x7e, and
- *                              the backslash, as \xNN; empty for inline data)
+ * The reference host is tsm_screen_set_image_limit of 320 MB,
+ * tsm_vte_set_sixel, tsm_vte_set_kitty_graphics and tsm_vte_set_sync on,
+ * tsm_vte_set_version("tsm-replay"), and tsm_vte_set_palette("legacy") for
+ * --draw2 and --frame (libtsm's default elsewhere, the same palette). Where
+ * libtsm declares TSM_VTE_IMAGE_HOST, the fixture host is the image hook:
+ * the stream goes through tsm_vte_input_bounded, and each request is
+ * answered with tsm_vte_image_reply before the rest is fed, the path kmscon
+ * took; elsewhere through tsm_vte_input. A request's fields print as the
+ * host: line: ID is the request's id, M its medium, F its flags (inflate,
+ * png, exact, discard as TSM_VTE_IMAGE_INFLATE, _PNG, _EXACT, _DISCARD),
+ * then offset, read_max, min_bytes, name and data_len; the outcomes are
+ * enum tsm_vte_image_status.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -165,6 +80,16 @@ void tsm_mode_trace_test(const char *name);
 #endif
 
 #define MAX_CP 32
+/* the largest screen INTERFACE.md takes */
+#define MAX_COLS 2048
+#define MAX_ROWS 1024
+#define INTERFACE_VERSION "1.0"
+
+#ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
+/* the palette the --draw2 and --frame views resolve through, set explicitly
+ * so a change of libtsm's default palette shows as a change here */
+static const char *palette = "legacy";
+#endif
 
 struct cell {
 	uint32_t cp[MAX_CP];
@@ -197,6 +122,8 @@ static void on_write(struct tsm_vte *vte, const char *u8, size_t len, void *data
 	struct reply *r = data;
 
 	(void)vte;
+	if (!len)
+		return;
 	if (r->len + len > r->cap) {
 		r->cap = (r->len + len) * 2;
 		r->buf = realloc(r->buf, r->cap);
@@ -422,6 +349,23 @@ static unsigned char *read_file(const char *path, size_t *len)
 	return buf;
 }
 
+/* the @len bytes at @s as a decimal number from 0 to @max, with no sign or
+ * leading zero, or -1 */
+static long long decimal(const char *s, size_t len, long long max)
+{
+	long long n = 0;
+	size_t i;
+
+	if (!len || (len > 1 && s[0] == '0'))
+		return -1;
+	for (i = 0; i < len; i++) {
+		if (s[i] < '0' || s[i] > '9' || s[i] - '0' > max || n > (max - (s[i] - '0')) / 10)
+			return -1;
+		n = n * 10 + (s[i] - '0');
+	}
+	return n;
+}
+
 #ifdef TSM_SCREEN_IMAGES
 /* images the test commands made, by the number the stream gives them */
 #define TEST_IMAGES 64
@@ -429,6 +373,8 @@ static uint64_t test_images[TEST_IMAGES];
 /* tsm-replay's own frame age, so printing placements leaves the --frame
  * view's changes as they are */
 static struct tsm_frame_age image_age;
+/* FILE's fixture directory: FILE with ".bin" replaced by ".files" */
+static char fixture_dir[4096];
 
 static uint32_t fnv1a(uint32_t h, uint8_t byte)
 {
@@ -498,35 +444,243 @@ static int host_cb(struct tsm_vte *vte, const struct tsm_vte_image_request *req,
 		   void *data);
 #endif
 
-/* the value of KEY= among @argc tokens, or @def */
-static long test_arg(char **argv, int argc, const char *key, long def)
-{
-	size_t len = strlen(key);
-	int i;
+/*
+ * The test commands, in INTERFACE.md's order, each with its feature (NULL
+ * for none) and the keys it takes. Every other key exits 2.
+ */
+#define TEST_KEYS 14
+static const struct test_spec {
+	const char *name;
+	const char *feature;
+	const char *keys[TEST_KEYS];
+} test_specs[] = {
+	{ "resize", NULL, { "c", "r" } },
+	{ "sb-max", NULL, { "n" } },
+	{ "sb-up", NULL, { "n" } },
+	{ "sb-down", NULL, { "n" } },
+	{ "sb-reset", NULL, { NULL } },
+	{ "cell", "images", { "w", "h" } },
+	{ "limit", "images", { "b" } },
+	{ "image", "images", { "n", "w", "h", "kitty", "id", "tr", "fill" } },
+	{ "place", "images", { "img", "col", "row", "x", "y", "c", "r", "sx", "sy", "sw", "sh",
+			       "z", "p" } },
+#ifdef TSM_VTE_SIXEL
+	{ "sixel", "sixel", { "on" } },
+	{ "graphic-max", "sixel", { "w", "h" } },
+	{ "registers", "sixel", { "n", "private" } },
+#endif
+#ifdef TSM_VTE_KITTY_GRAPHICS
+	{ "kitty-graphics", "kitty-graphics", { "on" } },
+#endif
+#ifdef TSM_VTE_IMAGE_HOST
+	{ "host", "image-host", { "on" } },
+#endif
+#ifdef TSM_VTE_SYNC
+	{ "sync", "sync", { "on" } },
+	{ "sync-frames", "sync", { NULL } },
+#endif
+#if defined(TSM_VTE_XTVERSION) && defined(TSM_VTE_TERMCAP)
+	{ "version", "identify", { "text" } },
+	{ "termcap", "identify", { "file" } },
+#endif
+	{ "key", "input", { "sym", "ascii", "unicode", "mods" } },
+	{ "mouse", "input", { "col", "row", "px", "py", "button", "event", "mods" } },
+	{ "paste", "input", { "hex" } },
+#ifdef TSM_VTE_HANDLE_FOCUS
+	{ "focus", "focus", { "in" } },
+#endif
+#ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
+	{ "palette", "palette", { "name" } },
+#endif
+#ifdef TSM_SCREEN_FRAME_SINCE
+	{ "frame-since", "query", { "caller" } },
+#endif
+};
 
-	for (i = 0; i < argc; i++)
-		if (!strncmp(argv[i], key, len) && argv[i][len] == '=')
-			return strtol(argv[i] + len + 1, NULL, !strcmp(key, "fill") ? 16 : 10);
-	return def;
+/* a test command split at ';': its name, then each KEY=VALUE */
+#define TEST_CMD_MAX 511
+#define TEST_ARGS 32
+struct test_cmd {
+	const struct test_spec *spec;
+	int argc;
+	char *key[TEST_ARGS];
+	char *val[TEST_ARGS];
+};
+
+static void test_fail(const struct test_cmd *c, const char *key, const char *what)
+{
+	fprintf(stderr, "tsm-replay: test command %s: %s%s%s\n", c->spec->name,
+		key ? key : "", key ? ": " : "", what);
+	exit(2);
 }
 
-static int test_image_cmd(struct tsm_screen *screen, char **argv, int argc)
+/* KEY's value, or NULL */
+static const char *test_val(const struct test_cmd *c, const char *key)
+{
+	int i;
+
+	for (i = 0; i < c->argc; i++)
+		if (!strcmp(c->key[i], key))
+			return c->val[i];
+	return NULL;
+}
+
+/* KEY, required, as a string */
+static const char *test_str(const struct test_cmd *c, const char *key)
+{
+	const char *v = test_val(c, key);
+
+	if (!v)
+		test_fail(c, key, "missing");
+	return v;
+}
+
+static int hex_digit(char ch)
+{
+	if (ch >= '0' && ch <= '9')
+		return ch - '0';
+	if (ch >= 'a' && ch <= 'f')
+		return ch - 'a' + 10;
+	if (ch >= 'A' && ch <= 'F')
+		return ch - 'A' + 10;
+	return -1;
+}
+
+/* @v, KEY's value, as a number from 0 to @max, in decimal or in hex */
+static uint64_t parse_num(const struct test_cmd *c, const char *key, const char *v,
+			  uint64_t max, bool hex)
+{
+	unsigned int base = hex ? 16 : 10;
+	uint64_t n = 0;
+	int d;
+
+	if (!*v)
+		test_fail(c, key, "empty");
+	if (!hex && v[0] == '0' && v[1])
+		test_fail(c, key, "has a leading zero");
+	for (; *v; v++) {
+		d = hex_digit(*v);
+		if (d < 0 || (unsigned int)d >= base)
+			test_fail(c, key, hex ? "not hex" : "not a decimal number");
+		if ((uint64_t)d > max || n > (max - d) / base)
+			test_fail(c, key, "out of range");
+		n = n * base + d;
+	}
+	return n;
+}
+
+/* KEY as a decimal number from 0 to @max; @def when absent, where -1 makes it required */
+static uint64_t test_uint(const struct test_cmd *c, const char *key, int64_t def,
+			  uint64_t max)
+{
+	const char *v = test_val(c, key);
+
+	if (!v && def < 0)
+		test_fail(c, key, "missing");
+	return v ? parse_num(c, key, v, max, false) : (uint64_t)def;
+}
+
+/* KEY as a hex number from 0 to @max, as test_uint */
+static uint64_t test_hex(const struct test_cmd *c, const char *key, int64_t def,
+			 uint64_t max)
+{
+	const char *v = test_val(c, key);
+
+	if (!v && def < 0)
+		test_fail(c, key, "missing");
+	return v ? parse_num(c, key, v, max, true) : (uint64_t)def;
+}
+
+/* KEY as a signed 32-bit decimal number, @def when absent */
+static int32_t test_int(const struct test_cmd *c, const char *key, int32_t def)
+{
+	const char *v = test_val(c, key);
+
+	if (!v)
+		return def;
+	if (*v == '-') {
+		uint64_t n = parse_num(c, key, v + 1, (uint64_t)INT32_MAX + 1, false);
+
+		if (!n)
+			test_fail(c, key, "is -0");
+		return (int32_t)-(int64_t)n;
+	}
+	return (int32_t)parse_num(c, key, v, INT32_MAX, false);
+}
+
+/* KEY as 0 or 1 */
+static bool test_flag(const struct test_cmd *c, const char *key, int def)
+{
+	return test_uint(c, key, def, 1);
+}
+
+/* KEY as the index of one of the NULL-terminated @names */
+static unsigned int test_name(const struct test_cmd *c, const char *key,
+			      const char *const *names)
+{
+	const char *v = test_str(c, key);
+	unsigned int i;
+
+	for (i = 0; names[i]; i++)
+		if (!strcmp(v, names[i]))
+			return i;
+	test_fail(c, key, "not a name the command takes");
+	return 0;
+}
+
+/* KEY as a fixture's name, which stays inside the fixture directory */
+static const char *test_fixture(const struct test_cmd *c, const char *key)
+{
+	const char *v = test_str(c, key);
+	size_t i, len = strlen(v);
+
+	if (!len || len > 255 || v[0] == '.')
+		test_fail(c, key, "not a fixture name");
+	for (i = 0; i < len; i++)
+		if (!((v[i] >= 'a' && v[i] <= 'z') || (v[i] >= 'A' && v[i] <= 'Z') ||
+		      (v[i] >= '0' && v[i] <= '9') || v[i] == '.' || v[i] == '_' || v[i] == '-'))
+			test_fail(c, key, "not a fixture name");
+	return v;
+}
+
+/* the bytes hex @v spells, none of them 0, in @out, at most @max; their count */
+static size_t hex_bytes(const struct test_cmd *c, const char *key, const char *v,
+			unsigned char *out, size_t max)
+{
+	size_t len = strlen(v), i;
+	int hi, lo;
+
+	if (len % 2 || len / 2 > max)
+		test_fail(c, key, "not hex bytes of a length the command takes");
+	for (i = 0; i < len / 2; i++) {
+		hi = hex_digit(v[2 * i]);
+		lo = hex_digit(v[2 * i + 1]);
+		if (hi < 0 || lo < 0)
+			test_fail(c, key, "not hex");
+		if (!hi && !lo)
+			test_fail(c, key, "holds a zero byte");
+		out[i] = hi << 4 | lo;
+	}
+	return len / 2;
+}
+
+static int test_image_cmd(struct tsm_screen *screen, const struct test_cmd *c)
 {
 	struct tsm_test_image img = { 0 };
-	long n = test_arg(argv, argc, "n", 0);
-	uint32_t fill = (uint32_t)test_arg(argv, argc, "fill", 0xff808080);
+	uint64_t n = test_uint(c, "n", 0, TEST_IMAGES - 1);
+	uint32_t fill = (uint32_t)test_hex(c, "fill", 0xff808080, UINT32_MAX);
 	uint32_t *px;
 	size_t i;
 	int r;
 
-	if (n < 0 || n >= TEST_IMAGES)
-		return -EINVAL;
-	img.width = (unsigned int)test_arg(argv, argc, "w", 0);
-	img.height = (unsigned int)test_arg(argv, argc, "h", 0);
-	img.kind = test_arg(argv, argc, "kitty", 0) ? TSM_IMAGE_KITTY : TSM_IMAGE_SIXEL;
+	img.width = (unsigned int)test_uint(c, "w", 0, 65535);
+	img.height = (unsigned int)test_uint(c, "h", 0, 65535);
+	if ((uint64_t)img.width * img.height > 16777216)
+		test_fail(c, "w", "times h is over 16777216");
+	img.kind = test_flag(c, "kitty", 0) ? TSM_IMAGE_KITTY : TSM_IMAGE_SIXEL;
 	if (img.kind == TSM_IMAGE_KITTY)
-		img.id = (uint32_t)test_arg(argv, argc, "id", n);
-	img.transient = test_arg(argv, argc, "tr", 0);
+		img.id = (uint32_t)test_uint(c, "id", n, UINT32_MAX);
+	img.transient = test_flag(c, "tr", 0);
 	px = malloc(sizeof(*px) * img.width * img.height + 1);
 	if (!px) {
 		perror("malloc");
@@ -540,94 +694,433 @@ static int test_image_cmd(struct tsm_screen *screen, char **argv, int argc)
 	return r;
 }
 
-static int test_place_cmd(struct tsm_screen *screen, char **argv, int argc)
+static int test_place_cmd(struct tsm_screen *screen, const struct test_cmd *c)
 {
 	struct tsm_test_placement pl = { 0 };
 	uint64_t key;
-	long n = test_arg(argv, argc, "img", 0);
 
-	if (n < 0 || n >= TEST_IMAGES)
-		return -EINVAL;
-	pl.image = test_images[n];
-	pl.id = (uint32_t)test_arg(argv, argc, "p", 0);
-	pl.col = (unsigned int)test_arg(argv, argc, "col", tsm_screen_get_cursor_x(screen));
-	pl.row = (unsigned int)test_arg(argv, argc, "row", tsm_screen_get_cursor_y(screen));
-	pl.x = (unsigned int)test_arg(argv, argc, "x", 0);
-	pl.y = (unsigned int)test_arg(argv, argc, "y", 0);
-	pl.cols = (unsigned int)test_arg(argv, argc, "c", 0);
-	pl.rows = (unsigned int)test_arg(argv, argc, "r", 0);
-	pl.src_x = (unsigned int)test_arg(argv, argc, "sx", 0);
-	pl.src_y = (unsigned int)test_arg(argv, argc, "sy", 0);
-	pl.src_width = (unsigned int)test_arg(argv, argc, "sw", 0);
-	pl.src_height = (unsigned int)test_arg(argv, argc, "sh", 0);
-	pl.z = (int32_t)test_arg(argv, argc, "z", 0);
+	pl.image = test_images[test_uint(c, "img", 0, TEST_IMAGES - 1)];
+	pl.id = (uint32_t)test_uint(c, "p", 0, UINT32_MAX);
+	pl.col = (unsigned int)test_uint(c, "col", tsm_screen_get_cursor_x(screen), UINT32_MAX);
+	pl.row = (unsigned int)test_uint(c, "row", tsm_screen_get_cursor_y(screen), UINT32_MAX);
+	pl.x = (unsigned int)test_uint(c, "x", 0, UINT32_MAX);
+	pl.y = (unsigned int)test_uint(c, "y", 0, UINT32_MAX);
+	pl.cols = (unsigned int)test_uint(c, "c", 0, UINT32_MAX);
+	pl.rows = (unsigned int)test_uint(c, "r", 0, UINT32_MAX);
+	pl.src_x = (unsigned int)test_uint(c, "sx", 0, UINT32_MAX);
+	pl.src_y = (unsigned int)test_uint(c, "sy", 0, UINT32_MAX);
+	pl.src_width = (unsigned int)test_uint(c, "sw", 0, UINT32_MAX);
+	pl.src_height = (unsigned int)test_uint(c, "sh", 0, UINT32_MAX);
+	pl.z = test_int(c, "z", 0);
 	return tsm_screen_test_place(screen, &pl, &key);
 }
+
+/* INTERFACE.md's modifier bits as libtsm's */
+static unsigned int key_mods(unsigned int mods)
+{
+	return (mods & 1 ? TSM_SHIFT_MASK : 0) | (mods & 2 ? TSM_LOCK_MASK : 0) |
+	       (mods & 4 ? TSM_CONTROL_MASK : 0) | (mods & 8 ? TSM_ALT_MASK : 0) |
+	       (mods & 16 ? TSM_LOGO_MASK : 0);
+}
+
+static void test_key_cmd(struct tsm_vte *vte, const struct test_cmd *c)
+{
+	uint32_t sym = (uint32_t)test_hex(c, "sym", -1, 0x1fffffff);
+	uint32_t ascii = (uint32_t)test_hex(c, "ascii", 0, 0x1fffffff);
+	uint32_t unicode = test_val(c, "unicode") ?
+			   (uint32_t)test_hex(c, "unicode", -1, 0x10ffff) : TSM_VTE_INVALID;
+
+	tsm_vte_handle_keyboard(vte, sym, ascii, key_mods(test_uint(c, "mods", 0, 31)), unicode);
+}
+
+static void test_mouse_cmd(struct tsm_screen *screen, struct tsm_vte *vte,
+			   const struct test_cmd *c)
+{
+	static const char *const buttons[] = {
+		"left", "middle", "right", "wheel-up", "wheel-down", "none", NULL,
+	};
+	static const unsigned int button_codes[] = {
+		TSM_MOUSE_BUTTON_LEFT, TSM_MOUSE_BUTTON_MIDDLE, TSM_MOUSE_BUTTON_RIGHT,
+		TSM_MOUSE_BUTTON_WHEEL_UP, TSM_MOUSE_BUTTON_WHEEL_DOWN,
+	};
+	static const char *const events[] = { "press", "release", "move", NULL };
+	static const unsigned int event_codes[] = {
+		TSM_MOUSE_EVENT_PRESSED, TSM_MOUSE_EVENT_RELEASED, TSM_MOUSE_EVENT_MOVED,
+	};
+	unsigned int col = test_uint(c, "col", -1, tsm_screen_get_width(screen) - 1);
+	unsigned int row = test_uint(c, "row", -1, tsm_screen_get_height(screen) - 1);
+	unsigned int px = test_uint(c, "px", 0, 65535), py = test_uint(c, "py", 0, 65535);
+	unsigned int button = test_name(c, "button", buttons);
+	unsigned int event = test_name(c, "event", events);
+	unsigned int mods = test_uint(c, "mods", 0, 31), code, flags = 0;
+
+	bool none = !strcmp(buttons[button], "none");
+
+	if (event_codes[event] == TSM_MOUSE_EVENT_MOVED) {
+		/* motion with a button held is that button plus 32, with none 3 */
+		if (!none && button_codes[button] > TSM_MOUSE_BUTTON_RIGHT)
+			test_fail(c, "button", "a wheel in a move");
+		code = none ? 3 : button_codes[button] + 32;
+	} else {
+		if (none)
+			test_fail(c, "button", "none in a press or release");
+		code = button_codes[button];
+	}
+	if (mods & 1)
+		flags |= TSM_MOUSE_MODIFIER_SHIFT;
+	if (mods & 4)
+		flags |= TSM_MOUSE_MODIFIER_CTRL;
+	if (mods & 8)
+		flags |= TSM_MOUSE_MODIFIER_META;
+	tsm_vte_handle_mouse(vte, col, row, px, py, code, event_codes[event], flags);
+}
+
+static void test_paste_cmd(struct tsm_vte *vte, const struct test_cmd *c)
+{
+	char data[TEST_CMD_MAX / 2 + 1];
+
+	data[hex_bytes(c, "hex", test_str(c, "hex"), (unsigned char *)data,
+		       sizeof(data) - 1)] = 0;
+	tsm_vte_paste(vte, data);
+}
+
+#if defined(TSM_VTE_XTVERSION) && defined(TSM_VTE_TERMCAP)
+/* a termcap fixture: one capability a line, NAME or NAME=HEX */
+static int test_termcap_cmd(struct tsm_vte *vte, const struct test_cmd *c)
+{
+	struct tsm_vte_termcap *caps;
+	char path[4400], *buf, *line, *next, *eq;
+	unsigned char *values;
+	size_t len, n = 0, i, j, vlen;
+	int r;
+
+	snprintf(path, sizeof(path), "%s/%s", fixture_dir, test_fixture(c, "file"));
+	buf = (char *)read_file(path, &len);
+	buf = realloc(buf, len + 1);
+	caps = calloc(TSM_VTE_TERMCAP_MAX, sizeof(*caps));
+	values = malloc((size_t)TSM_VTE_TERMCAP_MAX * (TSM_VTE_TERMCAP_VALUE_MAX + 1));
+	if (!buf || !caps || !values) {
+		perror("malloc");
+		exit(2);
+	}
+	buf[len] = 0;
+	if (strlen(buf) != len)
+		test_fail(c, "file", "holds a zero byte");
+	for (line = buf; line; line = next) {
+		next = strchr(line, '\n');
+		if (next)
+			*next++ = 0;
+		if (!*line)
+			continue;
+		if (n == TSM_VTE_TERMCAP_MAX)
+			test_fail(c, "file", "has more entries than a table holds");
+		eq = strchr(line, '=');
+		if (eq) {
+			*eq = 0;
+			vlen = hex_bytes(c, "file", eq + 1,
+					 values + n * (TSM_VTE_TERMCAP_VALUE_MAX + 1),
+					 TSM_VTE_TERMCAP_VALUE_MAX);
+			values[n * (TSM_VTE_TERMCAP_VALUE_MAX + 1) + vlen] = 0;
+			caps[n].value = (char *)values + n * (TSM_VTE_TERMCAP_VALUE_MAX + 1);
+		}
+		if (!*line || strlen(line) > TSM_VTE_TERMCAP_NAME_MAX)
+			test_fail(c, "file", "names a capability of no or too many bytes");
+		for (j = 0; line[j]; j++)
+			if (line[j] < 0x21 || line[j] > 0x7e)
+				test_fail(c, "file", "names a capability with a byte outside 0x21-0x7e");
+		for (i = 0; i < n; i++)
+			if (!strcmp(caps[i].name, line))
+				test_fail(c, "file", "names a capability twice");
+		caps[n++].name = line;
+	}
+	r = tsm_vte_set_termcap(vte, caps, n);
+	free(values);
+	free(caps);
+	free(buf);
+	return r;
+}
+#endif
+
+#ifdef TSM_SCREEN_FRAME_SINCE
+/* the frame ages of frame-since's callers */
+#define TEST_CALLERS 8
+static struct tsm_frame_age test_callers[TEST_CALLERS];
+#endif
 
 /* runs the test command in @cmd, @len bytes after "tsm-test;" */
 static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
 			 const char *cmd, size_t len)
 {
-	char buf[512], *argv[32], *tok, *save;
-	int argc = 0, r = 0;
+	char buf[TEST_CMD_MAX + 1], *tok, *save, *eq;
+	struct test_cmd c = { 0 };
+	const char *name;
+	size_t i;
+	int j, k, r = 0;
 
-	(void)vte;
-
-	if (len >= sizeof(buf)) {
-		fprintf(stderr, "tsm-replay: test command too long\n");
+	if (len > TEST_CMD_MAX) {
+		fprintf(stderr, "tsm-replay: test command over %d bytes\n", TEST_CMD_MAX);
+		exit(2);
+	}
+	for (i = 0; i < len; i++) {
+		if (cmd[i] < 0x20 || cmd[i] > 0x7e) {
+			fprintf(stderr, "tsm-replay: test command holds byte 0x%02x\n",
+				(unsigned char)cmd[i]);
+			exit(2);
+		}
+	}
+	if (len && cmd[0] == ';') {
+		fprintf(stderr, "tsm-replay: test command starts with ;\n");
 		exit(2);
 	}
 	memcpy(buf, cmd, len);
 	buf[len] = 0;
-	for (tok = strtok_r(buf, ";", &save); tok && argc < 32; tok = strtok_r(NULL, ";", &save))
-		argv[argc++] = tok;
-	if (!argc) {
+	name = strtok_r(buf, ";", &save);
+	if (!name) {
 		fprintf(stderr, "tsm-replay: empty test command\n");
 		exit(2);
 	}
-
-	if (!strcmp(argv[0], "cell")) {
-		r = tsm_screen_set_cell_size(screen, test_arg(argv, argc, "w", 0),
-					     test_arg(argv, argc, "h", 0));
-	} else if (!strcmp(argv[0], "limit")) {
-		tsm_screen_set_image_limit(screen, (size_t)test_arg(argv, argc, "b", 0));
-	} else if (!strcmp(argv[0], "sb-max")) {
-		tsm_screen_set_max_sb(screen, test_arg(argv, argc, "n", 0));
-	} else if (!strcmp(argv[0], "resize")) {
-		r = tsm_screen_resize(screen, test_arg(argv, argc, "c", 0),
-				      test_arg(argv, argc, "r", 0));
-	} else if (!strcmp(argv[0], "sb-up")) {
-		tsm_screen_sb_up(screen, test_arg(argv, argc, "n", 1));
-	} else if (!strcmp(argv[0], "sb-down")) {
-		tsm_screen_sb_down(screen, test_arg(argv, argc, "n", 1));
-	} else if (!strcmp(argv[0], "sb-reset")) {
-		tsm_screen_sb_reset(screen);
-	} else if (!strcmp(argv[0], "image")) {
-		r = test_image_cmd(screen, argv, argc);
-	} else if (!strcmp(argv[0], "place")) {
-		r = test_place_cmd(screen, argv, argc);
-#ifdef TSM_VTE_SIXEL
-	} else if (!strcmp(argv[0], "graphic-max")) {
-		r = tsm_vte_set_graphic_max_size(vte, test_arg(argv, argc, "w", 0),
-						 test_arg(argv, argc, "h", 0));
-	} else if (!strcmp(argv[0], "registers")) {
-		r = tsm_vte_set_sixel_registers(vte, test_arg(argv, argc, "n", 0),
-						test_arg(argv, argc, "private", 1));
-#endif
-#ifdef TSM_VTE_SYNC
-	} else if (!strcmp(argv[0], "sync")) {
-		tsm_vte_set_sync(vte, test_arg(argv, argc, "on", 1));
-#endif
-#ifdef TSM_VTE_IMAGE_HOST
-	} else if (!strcmp(argv[0], "host")) {
-		tsm_vte_set_image_cb(vte, test_arg(argv, argc, "on", 1) ? host_cb : NULL, NULL);
-#endif
-	} else {
-		fprintf(stderr, "tsm-replay: unknown test command %s\n", argv[0]);
+	for (i = 0; i < sizeof(test_specs) / sizeof(test_specs[0]); i++)
+		if (!strcmp(test_specs[i].name, name))
+			c.spec = &test_specs[i];
+	if (!c.spec) {
+		fprintf(stderr, "tsm-replay: unknown test command %s\n", name);
 		exit(2);
 	}
+	while ((tok = strtok_r(NULL, ";", &save))) {
+		if (c.argc == TEST_ARGS - 1)
+			test_fail(&c, NULL, "has too many keys");
+		eq = strchr(tok, '=');
+		if (!eq)
+			test_fail(&c, tok, "has no value");
+		*eq = 0;
+		if (strchr(eq + 1, '='))
+			test_fail(&c, tok, "has = in its value");
+		for (k = 0; k < TEST_KEYS && c.spec->keys[k] && strcmp(c.spec->keys[k], tok); k++)
+			;
+		if (k == TEST_KEYS || !c.spec->keys[k])
+			test_fail(&c, tok, "is not a key the command takes");
+		for (j = 0; j < c.argc; j++)
+			if (!strcmp(c.key[j], tok))
+				test_fail(&c, tok, "given twice");
+		c.key[c.argc] = tok;
+		c.val[c.argc++] = eq + 1;
+	}
+
+	if (!strcmp(name, "cell")) {
+		r = tsm_screen_set_cell_size(screen, test_uint(&c, "w", -1, UINT32_MAX),
+					     test_uint(&c, "h", -1, UINT32_MAX));
+	} else if (!strcmp(name, "limit")) {
+		tsm_screen_set_image_limit(screen, (size_t)test_uint(&c, "b", -1, SIZE_MAX));
+	} else if (!strcmp(name, "sb-max")) {
+		tsm_screen_set_max_sb(screen, test_uint(&c, "n", -1, UINT32_MAX));
+	} else if (!strcmp(name, "resize")) {
+		unsigned int cols = test_uint(&c, "c", -1, MAX_COLS);
+		unsigned int rows = test_uint(&c, "r", -1, MAX_ROWS);
+
+		if (!cols || !rows)
+			test_fail(&c, cols ? "r" : "c", "out of range");
+		r = tsm_screen_resize(screen, cols, rows);
+	} else if (!strcmp(name, "sb-up")) {
+		tsm_screen_sb_up(screen, test_uint(&c, "n", 1, UINT32_MAX));
+	} else if (!strcmp(name, "sb-down")) {
+		tsm_screen_sb_down(screen, test_uint(&c, "n", 1, UINT32_MAX));
+	} else if (!strcmp(name, "sb-reset")) {
+		tsm_screen_sb_reset(screen);
+	} else if (!strcmp(name, "image")) {
+		r = test_image_cmd(screen, &c);
+	} else if (!strcmp(name, "place")) {
+		r = test_place_cmd(screen, &c);
+#ifdef TSM_VTE_SIXEL
+	} else if (!strcmp(name, "sixel")) {
+		tsm_vte_set_sixel(vte, test_flag(&c, "on", 1));
+	} else if (!strcmp(name, "graphic-max")) {
+		r = tsm_vte_set_graphic_max_size(vte, test_uint(&c, "w", -1, UINT32_MAX),
+						 test_uint(&c, "h", -1, UINT32_MAX));
+	} else if (!strcmp(name, "registers")) {
+		r = tsm_vte_set_sixel_registers(vte, test_uint(&c, "n", -1, UINT32_MAX),
+						test_flag(&c, "private", 1));
+#endif
+#ifdef TSM_VTE_KITTY_GRAPHICS
+	} else if (!strcmp(name, "kitty-graphics")) {
+		tsm_vte_set_kitty_graphics(vte, test_flag(&c, "on", 1));
+#endif
+#ifdef TSM_VTE_IMAGE_HOST
+	} else if (!strcmp(name, "host")) {
+		tsm_vte_set_image_cb(vte, test_flag(&c, "on", 1) ? host_cb : NULL, NULL);
+#endif
+#ifdef TSM_VTE_SYNC
+	} else if (!strcmp(name, "sync")) {
+		tsm_vte_set_sync(vte, test_flag(&c, "on", 1));
+	} else if (!strcmp(name, "sync-frames")) {
+		printf("test sync-frames %llu\n",
+		       (unsigned long long)tsm_vte_get_sync_frames(vte));
+#endif
+#if defined(TSM_VTE_XTVERSION) && defined(TSM_VTE_TERMCAP)
+	} else if (!strcmp(name, "version")) {
+		const char *text = test_str(&c, "text");
+
+		if (strlen(text) > TSM_VTE_VERSION_MAX)
+			test_fail(&c, "text", "over 64 bytes");
+		for (i = 0; text[i]; i++)
+			if (text[i] < 0x20 || text[i] > 0x7e)
+				test_fail(&c, "text", "holds a byte outside 0x20-0x7e");
+		r = tsm_vte_set_version(vte, text);
+	} else if (!strcmp(name, "termcap")) {
+		r = test_termcap_cmd(vte, &c);
+#endif
+	} else if (!strcmp(name, "key")) {
+		test_key_cmd(vte, &c);
+	} else if (!strcmp(name, "mouse")) {
+		test_mouse_cmd(screen, vte, &c);
+	} else if (!strcmp(name, "paste")) {
+		test_paste_cmd(vte, &c);
+#ifdef TSM_VTE_HANDLE_FOCUS
+	} else if (!strcmp(name, "focus")) {
+		tsm_vte_handle_focus(vte, test_flag(&c, "in", -1));
+#endif
+#ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
+	} else if (!strcmp(name, "palette")) {
+		static const char *const palettes[] = {
+			"legacy", "vga", "nord", "solarized", "solarized-black",
+			"solarized-white", "soft-black", "base16-dark", "base16-light", NULL,
+		};
+
+		const char *chosen = palettes[test_name(&c, "name", palettes)];
+
+		r = tsm_vte_set_palette(vte, chosen);
+		if (r >= 0)
+			palette = chosen;
+#endif
+#ifdef TSM_SCREEN_FRAME_SINCE
+	} else if (!strcmp(name, "frame-since")) {
+		const struct tsm_frame *f;
+		unsigned int n = test_uint(&c, "caller", -1, TEST_CALLERS - 1), changed = 0;
+
+		f = tsm_screen_frame_since(screen, &test_callers[n]);
+		if (!f) {
+			fprintf(stderr, "tsm-replay: tsm_screen_frame_since failed\n");
+			exit(3);
+		}
+		for (i = 0; i < (size_t)f->cols * f->rows; i++)
+			if (tsm_frame_cell_at(f, i % f->cols, i / f->cols)->flags &
+			    TSM_FRAME_CHANGED)
+				changed++;
+		printf("test frame-since %u changed %u\n", n, changed);
+#endif
+	}
 	if (r < 0)
-		printf("test %s error %d\n", argv[0], r);
+		printf("test %s error %d\n", name, r);
+}
+
+/*
+ * The features of INTERFACE.md this build has, in its order. A build with
+ * -Dimages=false declares every macro but never turns sixel on, so
+ * images_on() leaves the image features out there.
+ */
+static const char *const features[] = {
+#ifdef TSM_SCREEN_ATTR_UNDERLINE_STYLE
+	"attrs-extended",
+#endif
+#ifdef TSM_SCREEN_FRAME
+	"view-frame",
+#endif
+#ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
+	"view-draw2",
+#endif
+	"images",
+#ifdef TSM_VTE_SIXEL
+	"sixel",
+#endif
+#ifdef TSM_VTE_KITTY_GRAPHICS
+	"kitty-graphics",
+#endif
+#ifdef TSM_VTE_IMAGE_HOST
+	"image-host",
+#endif
+#ifdef TSM_VTE_SYNC
+	"sync",
+#endif
+#if defined(TSM_VTE_XTVERSION) && defined(TSM_VTE_TERMCAP)
+	"identify",
+#endif
+	"input",
+#ifdef TSM_VTE_HANDLE_FOCUS
+	"focus",
+#endif
+#ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
+	"palette",
+#endif
+#ifdef TSM_SCREEN_FRAME_SINCE
+	"query",
+#endif
+#ifdef TSM_SCREEN_FRAME
+	"damage-exact",
+#endif
+};
+
+/* whether sixel comes on: DECRQM 80 reports a fixed 4 while it is off */
+static bool images_on(void)
+{
+#if defined(TSM_VTE_SIXEL) && defined(TSM_VTE_GET_MODE)
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	struct reply reply = { 0 };
+	bool on;
+
+	if (tsm_screen_new(&screen, NULL, NULL) < 0 ||
+	    tsm_vte_new(&vte, screen, on_write, &reply, NULL, NULL) < 0) {
+		fprintf(stderr, "tsm-replay: cannot create screen or vte\n");
+		exit(2);
+	}
+	tsm_screen_set_image_limit(screen, (size_t)320 * 1000 * 1000);
+	tsm_vte_set_sixel(vte, true);
+	on = tsm_vte_get_mode(vte, true, 80) != 4;
+	tsm_vte_unref(vte);
+	tsm_screen_unref(screen);
+	free(reply.buf);
+	return on;
+#else
+	return false;
+#endif
+}
+
+static bool has_feature(const char *name, bool images)
+{
+	size_t i;
+
+	if (!images && (!strcmp(name, "images") || !strcmp(name, "sixel") ||
+			!strcmp(name, "kitty-graphics") || !strcmp(name, "image-host")))
+		return false;
+	for (i = 0; i < sizeof(features) / sizeof(features[0]); i++)
+		if (!strcmp(features[i], name))
+			return true;
+	return false;
+}
+
+/* --describe: the interface version, views, features and commands */
+static int describe(void)
+{
+	bool images = images_on();
+	size_t i;
+
+	printf("interface %s\n", INTERFACE_VERSION);
+	printf("view screen\n");
+#ifdef TSM_SCREEN_FRAME
+	printf("view frame\n");
+#endif
+#ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
+	printf("view draw2\n");
+#endif
+	for (i = 0; i < sizeof(features) / sizeof(features[0]); i++)
+		if (has_feature(features[i], images))
+			printf("feature %s\n", features[i]);
+	for (i = 0; i < sizeof(test_specs) / sizeof(test_specs[0]); i++) {
+		if (!test_specs[i].feature)
+			printf("command %s\n", test_specs[i].name);
+		else if (has_feature(test_specs[i].feature, images))
+			printf("command %s %s\n", test_specs[i].name, test_specs[i].feature);
+	}
+	return 0;
 }
 #endif
 
@@ -653,7 +1146,6 @@ static struct {
 	uint64_t offset, read_max, min_bytes;
 	char fixture[4200];
 	unsigned int direct;		/* inline requests so far */
-	char dir[4096];			/* the case's fixture directory */
 	struct reply *reply;
 } host;
 
@@ -729,7 +1221,7 @@ static unsigned char *host_file(const char *suffix, size_t *len)
 	char path[8400];
 	FILE *f;
 
-	snprintf(path, sizeof(path), "%s/%s%s", host.dir, host.fixture, suffix);
+	snprintf(path, sizeof(path), "%s/%s%s", fixture_dir, host.fixture, suffix);
 	f = fopen(path, "rb");
 	if (!f)
 		return NULL;
@@ -865,10 +1357,27 @@ static void vte_feed(struct tsm_vte *vte, const char *data, size_t len)
  * Feeds @len bytes to the vte. Where the fork has images, a test command in
  * them runs in its place; a command must lie wholly between two checkpoints.
  */
+#ifdef TSM_SCREEN_IMAGES
+static const char intro[] = "\x1b_tsm-test;";
+
+/* exits 2 when the cut at @cut falls inside a test command's introducer */
+static void check_cut(const char *data, size_t len, size_t cut)
+{
+	size_t k;
+
+	for (k = 1; k < sizeof(intro) - 1 && k <= cut; k++) {
+		if (cut - k + sizeof(intro) - 1 <= len &&
+		    !memcmp(data + cut - k, intro, sizeof(intro) - 1)) {
+			fprintf(stderr, "tsm-replay: cut %zu inside a test command\n", cut);
+			exit(2);
+		}
+	}
+}
+#endif
+
 static void feed(struct tsm_screen *screen, struct tsm_vte *vte, const char *data, size_t len)
 {
 #ifdef TSM_SCREEN_IMAGES
-	static const char intro[] = "\x1b_tsm-test;";
 	const char *start, *end;
 
 	while ((start = find_bytes(data, len, intro, sizeof(intro) - 1))) {
@@ -889,10 +1398,6 @@ static void feed(struct tsm_screen *screen, struct tsm_vte *vte, const char *dat
 }
 
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
-/* the palette the --draw2 view resolves through, set explicitly so a change of
- * libtsm's default palette shows as a change here */
-#define DRAW2_PALETTE "legacy"
-
 static bool color_equal(const struct tsm_screen_color *a, const struct tsm_screen_color *b)
 {
 	return a->r == b->r && a->g == b->g && a->b == b->b;
@@ -922,7 +1427,7 @@ static void dump_draw2(struct tsm_screen *screen, struct tsm_vte *vte)
 	def.bg.g = attr.bg;
 	def.bg.b = attr.bb;
 	def.ul = def.fg;
-	printf("palette %s fg=#%02x%02x%02x bg=#%02x%02x%02x\n", DRAW2_PALETTE,
+	printf("palette %s fg=#%02x%02x%02x bg=#%02x%02x%02x\n", palette,
 	       def.fg.r, def.fg.g, def.fg.b, def.bg.r, def.bg.g, def.bg.b);
 
 	cells = tsm_screen_draw2(screen);
@@ -1040,7 +1545,7 @@ static void dump_frame(struct tsm_screen *screen, struct tsm_vte *vte)
 	def.bg.g = attr.bg;
 	def.bg.b = attr.bb;
 	def.ul = def.fg;
-	printf("palette %s fg=#%02x%02x%02x bg=#%02x%02x%02x\n", DRAW2_PALETTE,
+	printf("palette %s fg=#%02x%02x%02x bg=#%02x%02x%02x\n", palette,
 	       def.fg.r, def.fg.g, def.fg.b, def.bg.r, def.bg.g, def.bg.b);
 
 	for (i = 0; i < (size_t)f->cols * f->rows; i++)
@@ -1179,20 +1684,22 @@ static void dump(struct tsm_screen *screen, struct tsm_vte *vte, struct grid *gr
 #endif
 }
 
+/* CUTS: one offset a line, each a decimal number from the last up to @len */
 static size_t *read_cuts(const char *path, size_t len, size_t *count)
 {
-	FILE *f = fopen(path, "r");
-	size_t *cuts = NULL, cap = 0, prev = 0;
-	unsigned long long v;
+	size_t flen, cap = 0, prev = 0, at, n;
+	char *buf = (char *)read_file(path, &flen), *nl;
+	size_t *cuts = NULL;
+	long long v;
 
-	if (!f) {
-		fprintf(stderr, "tsm-replay: %s: %s\n", path, strerror(errno));
-		exit(2);
-	}
 	*count = 0;
-	while (fscanf(f, "%llu", &v) == 1) {
-		if (v < prev || v > len) {
-			fprintf(stderr, "tsm-replay: %s: offset %llu out of order or past end\n", path, v);
+	for (at = 0; at < flen; at += n + 1) {
+		nl = memchr(buf + at, '\n', flen - at);
+		n = nl ? (size_t)(nl - (buf + at)) : flen - at;
+		v = decimal(buf + at, n, len);
+		if (v < 0 || (size_t)v < prev) {
+			fprintf(stderr, "tsm-replay: %s: line %zu is not an offset from %zu to %zu\n",
+				path, *count + 1, prev, len);
 			exit(2);
 		}
 		if (*count == cap) {
@@ -1205,7 +1712,7 @@ static size_t *read_cuts(const char *path, size_t len, size_t *count)
 		}
 		cuts[(*count)++] = prev = (size_t)v;
 	}
-	fclose(f);
+	free(buf);
 	return cuts;
 }
 
@@ -1218,6 +1725,7 @@ int main(int argc, char **argv)
 	unsigned char *data;
 	size_t len, pos = 0, ncuts = 0, i;
 	size_t *cuts = NULL;
+	long long cols, rows;
 	enum view view = VIEW_DRAW;
 
 #ifdef TSM_MODE_TRACE
@@ -1225,6 +1733,14 @@ int main(int argc, char **argv)
 		tsm_mode_trace_test(getenv("TSM_MODE_TRACE_TEST"));
 #endif
 
+	if (argc == 2 && !strcmp(argv[1], "--describe")) {
+#ifdef TSM_SCREEN_IMAGES
+		return describe();
+#else
+		fprintf(stderr, "tsm-replay: --describe needs the fork's libtsm\n");
+		return 2;
+#endif
+	}
 	if (argc > 1 && !strcmp(argv[1], "--draw2")) {
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
 		view = VIEW_DRAW2;
@@ -1245,16 +1761,24 @@ int main(int argc, char **argv)
 #endif
 	}
 	if (argc != 4 && argc != 5) {
-		fprintf(stderr, "usage: tsm-replay [--draw2 | --frame] COLS ROWS FILE [CUTS]\n");
+		fprintf(stderr, "usage: tsm-replay [--draw2 | --frame] COLS ROWS FILE [CUTS]\n"
+				"       tsm-replay --describe\n");
 		return 2;
 	}
-	grid.cols = (unsigned int)strtoul(argv[1], NULL, 10);
-	grid.rows = (unsigned int)strtoul(argv[2], NULL, 10);
-	if (!grid.cols || !grid.rows) {
-		fprintf(stderr, "tsm-replay: bad size %sx%s\n", argv[1], argv[2]);
+	cols = decimal(argv[1], strlen(argv[1]), MAX_COLS);
+	rows = decimal(argv[2], strlen(argv[2]), MAX_ROWS);
+	if (cols < 1 || rows < 1) {
+		fprintf(stderr, "tsm-replay: size %sx%s is not 1-%d by 1-%d\n", argv[1], argv[2],
+			MAX_COLS, MAX_ROWS);
 		return 2;
 	}
+	grid.cols = cols;
+	grid.rows = rows;
 	grid.cells = calloc((size_t)grid.cols * grid.rows, sizeof(*grid.cells));
+	if (!grid.cells) {
+		perror("calloc");
+		return 2;
+	}
 	data = read_file(argv[3], &len);
 
 	if (tsm_screen_new(&screen, NULL, NULL) < 0 ||
@@ -1282,18 +1806,20 @@ int main(int argc, char **argv)
 	/* a fixed XTVERSION reply, so no golden carries libtsm's version */
 	tsm_vte_set_version(vte, "tsm-replay");
 #endif
-#ifdef TSM_VTE_IMAGE_HOST
+#ifdef TSM_SCREEN_IMAGES
 	/* the fixtures beside the stream: cases/<case>.files/ */
 	i = strlen(argv[3]);
 	if (i >= 4 && !strcmp(argv[3] + i - 4, ".bin"))
 		i -= 4;
-	snprintf(host.dir, sizeof(host.dir), "%.*s.files", (int)i, argv[3]);
+	snprintf(fixture_dir, sizeof(fixture_dir), "%.*s.files", (int)i, argv[3]);
+#endif
+#ifdef TSM_VTE_IMAGE_HOST
 	host.reply = &reply;
 	tsm_vte_set_image_cb(vte, host_cb, NULL);
 #endif
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
-	if (view != VIEW_DRAW && tsm_vte_set_palette(vte, DRAW2_PALETTE) < 0) {
-		fprintf(stderr, "tsm-replay: cannot set palette %s\n", DRAW2_PALETTE);
+	if (view != VIEW_DRAW && tsm_vte_set_palette(vte, palette) < 0) {
+		fprintf(stderr, "tsm-replay: cannot set palette %s\n", palette);
 		return 2;
 	}
 #endif
@@ -1302,6 +1828,9 @@ int main(int argc, char **argv)
 		cuts = read_cuts(argv[4], len, &ncuts);
 
 	for (i = 0; i < ncuts; i++) {
+#ifdef TSM_SCREEN_IMAGES
+		check_cut((const char *)data, len, cuts[i]);
+#endif
 		feed(screen, vte, (const char *)data + pos, cuts[i] - pos);
 		pos = cuts[i];
 		printf("checkpoint %zu\n", pos);

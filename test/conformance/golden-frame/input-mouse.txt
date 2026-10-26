@@ -1,0 +1,94 @@
+checkpoint 54
+size 20x4
+cursor 0,0
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 80
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+checkpoint 294
+size 20x4
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b4d2023221b5b4d222322
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+checkpoint 646
+size 20x4
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b4d2021211b5b4d2321211b5b4d6021211b5b4d312423
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+checkpoint 768
+size 20x4
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b4d402422
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+checkpoint 935
+size 20x4
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b4d4326231b5b4d432723
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+checkpoint 1231
+size 20x4
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b3c303b353b334d1b5b3c303b353b336d1b5b3c36353b353b334d1b5b3c33333b383b344d1b5b3c31343b32303b344d
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+checkpoint 1438
+size 20x4
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b3c303b3130313b34314d1b5b3c33353b3130323b34314d1b5b3c33353b3130333b34314d
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||
+checkpoint 1524
+size 20x4
+cursor 0,0
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+row 2 ||
+row 3 ||

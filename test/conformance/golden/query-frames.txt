@@ -1,0 +1,36 @@
+test frame-since 0 changed 20
+test frame-since 0 changed 0
+test frame-since 7 changed 20
+checkpoint 101
+size 10x2
+cursor 2,0
+flags AUTO_WRAP
+row 0 |ab|
+row 1 ||
+test frame-since 0 changed 2
+test frame-since 1 changed 20
+test frame-since 0 changed 0
+checkpoint 201
+size 10x2
+cursor 3,0
+flags AUTO_WRAP
+row 0 |abc|
+row 1 ||
+test sync-frames 0
+test sync-frames 1
+test sync-frames 2
+test sync-frames 3
+checkpoint 376
+size 10x2
+cursor 0,0
+flags AUTO_WRAP
+row 0 ||
+row 1 ||
+test frame-since 0 changed 24
+test frame-since 1 changed 24
+checkpoint 470
+size 12x2
+cursor 0,0
+flags AUTO_WRAP
+row 0 ||
+row 1 ||
