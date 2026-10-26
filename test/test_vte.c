@@ -26,6 +26,7 @@
 #include "libtsm-int.h"
 #include "libtsm.h"
 #include "test_common.h"
+#include "tsm-version.h"
 
 #include <xkbcommon/xkbcommon-keysyms.h>
 #include <stdio.h>
@@ -2786,6 +2787,26 @@ START_TEST(test_vte_csi_q_not_decll)
 }
 END_TEST
 
+/* XTVERSION (CSI > q, CSI > 0 q) replies and leaves the LEDs alone, which
+ * it cleared as DECLL before aaronsb/libtsm#63 (#23) */
+START_TEST(test_vte_csi_xtversion_not_decll)
+{
+	static const char *const seqs[] = { "\e[>q", "\e[>0q", NULL };
+	const char *const *seq;
+
+	for (seq = seqs; *seq; ++seq) {
+		pfx_input(*seq);
+		ck_assert_msg(!strncmp(pfx_out, "\eP>|", 4), "%s: replied \"%s\"", *seq + 1,
+			      pfx_out + 1);
+		pfx_len = 0;
+		pfx_out[0] = 0;
+		pfx_assert_untouched(*seq);
+	}
+	pfx_input("\e[1q");
+	ck_assert_uint_eq(pfx_led_calls, 1);
+}
+END_TEST
+
 /* XTFMTKEYS (CSI > Pp ; Pv f) is not HVP */
 START_TEST(test_vte_csi_xtfmtkeys_not_hvp)
 {
@@ -3398,6 +3419,368 @@ START_TEST(test_vte_led_data)
 }
 END_TEST
 
+/*
+ * XTVERSION (CSI > Ps q) and XTGETTCAP (DCS + q names ST), xterm's
+ * identification queries (#23). The replies are xterm 411's, observed under
+ * Xvfb: XTVERSION answers DCS > | text ST for Ps 0 or omitted; XTGETTCAP
+ * answers once per request, DCS 1 + r name=value;... ST with each name as
+ * sent and each value in upper-case hex, ends the list at the first name it
+ * cannot answer, after the ';' before it, and answers DCS 0 + r ST when that
+ * is the first. These run in the build without images too.
+ */
+static struct tsm_screen *id_screen;
+static struct tsm_vte *id_vte;
+static char id_out[8192];
+static size_t id_len;
+
+static void id_write(struct tsm_vte *vte, const char *u8, size_t len, void *data)
+{
+	UNUSED(vte);
+	UNUSED(data);
+	ck_assert_uint_lt(id_len + len, sizeof(id_out));
+	memcpy(id_out + id_len, u8, len);
+	id_len += len;
+	id_out[id_len] = 0;
+}
+
+static void id_clear(void)
+{
+	id_len = 0;
+	id_out[0] = 0;
+}
+
+static void id_input(const char *s)
+{
+	tsm_vte_input(id_vte, s, strlen(s));
+}
+
+/* @query replies exactly @reply */
+static void id_assert_reply(const char *query, const char *reply)
+{
+	id_clear();
+	id_input(query);
+	ck_assert_msg(!strcmp(id_out, reply), "%s: replied \"%s\", not \"%s\"", query + 1,
+		      id_out + 1, reply + 1);
+}
+
+/* a 256-byte value, TSM_VTE_TERMCAP_VALUE_MAX */
+static char id_big[TSM_VTE_TERMCAP_VALUE_MAX + 1];
+
+static const struct tsm_vte_termcap id_caps[] = {
+	{ "TN", "kmscon" },
+	{ "Co", "256" },
+	{ "Tc", NULL },
+	{ "Smulx", "\033[4:%p1%dm" },
+	{ "kcuu1", "\033OA" },
+	{ "big", id_big },
+};
+
+static void id_setup(void)
+{
+	memset(id_big, 'a', TSM_VTE_TERMCAP_VALUE_MAX);
+	id_big[TSM_VTE_TERMCAP_VALUE_MAX] = 0;
+	ck_assert_int_eq(tsm_screen_new(&id_screen, log_cb, NULL), 0);
+	ck_assert_int_eq(tsm_screen_resize(id_screen, 20, 5), 0);
+	ck_assert_int_eq(tsm_vte_new(&id_vte, id_screen, id_write, NULL, log_cb, NULL), 0);
+	ck_assert_int_eq(tsm_vte_set_termcap(id_vte, id_caps,
+					     sizeof(id_caps) / sizeof(*id_caps)), 0);
+	id_clear();
+}
+
+static void id_teardown(void)
+{
+	tsm_vte_unref(id_vte);
+	tsm_screen_unref(id_screen);
+}
+
+/* libtsm and the meson project version until the host sets a text */
+START_TEST(test_vte_xtversion_default)
+{
+	static const char reply[] = "\eP>|libtsm(" LIBTSM_VERSION ")\e\\";
+
+	id_assert_reply("\e[>q", reply);
+	id_assert_reply("\e[>0q", reply);
+	/* xterm reads only the first parameter */
+	id_assert_reply("\e[>0;0q", reply);
+	id_assert_reply("\e[>1q", "");
+	id_assert_reply("\e[>2q", "");
+	id_assert_reply("\e[>0:1q", "");
+}
+END_TEST
+
+START_TEST(test_vte_xtversion_set)
+{
+	char max[TSM_VTE_VERSION_MAX + 2];
+	char reply[TSM_VTE_VERSION_MAX + 8];
+
+	ck_assert_int_eq(tsm_vte_set_version(id_vte, "kmscon(9.1.0)"), 0);
+	id_assert_reply("\e[>q", "\eP>|kmscon(9.1.0)\e\\");
+	/* the host's text survives RIS and DECSTR */
+	id_input("\ec\e[!p");
+	id_assert_reply("\e[>q", "\eP>|kmscon(9.1.0)\e\\");
+
+	ck_assert_int_eq(tsm_vte_set_version(id_vte, ""), 0);
+	id_assert_reply("\e[>q", "\eP>|\e\\");
+
+	/* exactly TSM_VTE_VERSION_MAX bytes, then one more */
+	memset(max, 'v', TSM_VTE_VERSION_MAX);
+	max[TSM_VTE_VERSION_MAX] = 0;
+	ck_assert_int_eq(tsm_vte_set_version(id_vte, max), 0);
+	snprintf(reply, sizeof(reply), "\eP>|%s\e\\", max);
+	id_assert_reply("\e[>q", reply);
+	max[TSM_VTE_VERSION_MAX] = 'v';
+	max[TSM_VTE_VERSION_MAX + 1] = 0;
+	ck_assert_int_eq(tsm_vte_set_version(id_vte, max), -EINVAL);
+	id_assert_reply("\e[>q", reply);
+
+	ck_assert_int_eq(tsm_vte_set_version(id_vte, NULL), 0);
+	id_assert_reply("\e[>q", "\eP>|libtsm(" LIBTSM_VERSION ")\e\\");
+}
+END_TEST
+
+/* a byte that could end or break the DCS string is refused, and the text in
+ * force stays */
+START_TEST(test_vte_xtversion_reject)
+{
+	static const char *const bad[] = {
+		"a\033\\b", "a\x9c", "tab\there", "nl\n", "del\x7f", "caf\xc3\xa9", NULL
+	};
+	const char *const *s;
+
+	ck_assert_int_eq(tsm_vte_set_version(NULL, "x"), -EINVAL);
+	ck_assert_int_eq(tsm_vte_set_version(id_vte, "kept"), 0);
+	for (s = bad; *s; ++s)
+		ck_assert_int_eq(tsm_vte_set_version(id_vte, *s), -EINVAL);
+	id_assert_reply("\e[>q", "\eP>|kept\e\\");
+}
+END_TEST
+
+/* TN = kmscon */
+START_TEST(test_vte_xtgettcap_found)
+{
+	id_assert_reply("\eP+q544e\e\\", "\eP1+r544e=6B6D73636F6E\e\\");
+	/* the name echoes as sent, upper-case hex included */
+	id_assert_reply("\eP+q544E\e\\", "\eP1+r544E=6B6D73636F6E\e\\");
+	/* parameterised and escape-bearing strings, as tigetstr gives them */
+	id_assert_reply("\eP+q536d756c78\e\\", "\eP1+r536d756c78=1B5B343A25703125646D\e\\");
+	id_assert_reply("\eP+q6b63757531\e\\", "\eP1+r6b63757531=1B4F41\e\\");
+	/* the table survives RIS and DECSTR */
+	id_input("\ec\e[!p");
+	id_assert_reply("\eP+q436f\e\\", "\eP1+r436f=323536\e\\");
+}
+END_TEST
+
+/* a boolean is its name alone */
+START_TEST(test_vte_xtgettcap_boolean)
+{
+	id_assert_reply("\eP+q5463\e\\", "\eP1+r5463\e\\");
+	id_assert_reply("\eP+q5463;544e\e\\", "\eP1+r5463;544e=6B6D73636F6E\e\\");
+}
+END_TEST
+
+/* an unknown name first: DCS 0 + r ST, the name not repeated */
+START_TEST(test_vte_xtgettcap_unknown)
+{
+	id_assert_reply("\eP+q626f677573\e\\", "\eP0+r\e\\");
+	id_assert_reply("\eP+q626f677573;544e\e\\", "\eP0+r\e\\");
+	/* names are case-sensitive */
+	id_assert_reply("\eP+q746e\e\\", "\eP0+r\e\\");
+	/* without a table every name is unknown */
+	ck_assert_int_eq(tsm_vte_set_termcap(id_vte, NULL, 0), 0);
+	id_assert_reply("\eP+q544e\e\\", "\eP0+r\e\\");
+}
+END_TEST
+
+/* several names, one reply; the first it cannot answer ends the list after
+ * the ';' before it */
+START_TEST(test_vte_xtgettcap_multiple)
+{
+	id_assert_reply("\eP+q544e;436f\e\\", "\eP1+r544e=6B6D73636F6E;436f=323536\e\\");
+	id_assert_reply("\eP+q544e;544e\e\\", "\eP1+r544e=6B6D73636F6E;544e=6B6D73636F6E\e\\");
+	id_assert_reply("\eP+q544e;626f677573;436f\e\\", "\eP1+r544e=6B6D73636F6E;\e\\");
+	id_assert_reply("\eP+q544e;;436f\e\\", "\eP1+r544e=6B6D73636F6E;\e\\");
+	id_assert_reply("\eP+q544e;\e\\", "\eP1+r544e=6B6D73636F6E;\e\\");
+	id_assert_reply("\eP+q544e;436\e\\", "\eP1+r544e=6B6D73636F6E;\e\\");
+}
+END_TEST
+
+/* a name that is not hex for a printable name is refused as unknown */
+START_TEST(test_vte_xtgettcap_invalid)
+{
+	static const char *const bad[] = {
+		"\eP+q\e\\",		/* no name */
+		"\eP+q;544e\e\\",	/* an empty first name */
+		"\eP+q544\e\\",		/* odd length */
+		"\eP+q54zz\e\\",	/* not hex */
+		"\eP+q54 4e\e\\",	/* a space inside */
+		"\eP+q544e\r\e\\",	/* a control inside */
+		"\eP+q0102\e\\",	/* decodes to controls */
+		"\eP+q5420\e\\",	/* decodes to a space */
+		"\eP+q54\xc3\xa9" "4e\e\\",	/* past ASCII */
+		/* 33 bytes, past TSM_VTE_TERMCAP_NAME_MAX */
+		"\eP+q616161616161616161616161616161616161616161616161616161616161616161\e\\",
+		NULL
+	};
+	const char *const *s;
+
+	for (s = bad; *s; ++s)
+		id_assert_reply(*s, "\eP0+r\e\\");
+	/* the next request is answered */
+	id_assert_reply("\eP+q544e\e\\", "\eP1+r544e=6B6D73636F6E\e\\");
+}
+END_TEST
+
+/* a payload past 1024 bytes is refused whole; 16 names are answered, and a
+ * reply stops before it passes 4096 bytes */
+START_TEST(test_vte_xtgettcap_bounds)
+{
+	char query[2048], reply[1024];
+	size_t len, i;
+	const char *p;
+
+	/* "544e" and 204 more ";544e": 1024 bytes, answered for 16 names */
+	len = snprintf(query, sizeof(query), "\eP+q544e");
+	for (i = 0; i < 204; ++i)
+		len += snprintf(query + len, sizeof(query) - len, ";544e");
+	snprintf(query + len, sizeof(query) - len, "\e\\");
+	len = snprintf(reply, sizeof(reply), "\eP1+r");
+	for (i = 0; i < 16; ++i)
+		len += snprintf(reply + len, sizeof(reply) - len, "544e=6B6D73636F6E;");
+	snprintf(reply + len, sizeof(reply) - len, "\e\\");
+	id_assert_reply(query, reply);
+
+	/* one byte more */
+	len = strlen(query) - 2;
+	snprintf(query + len, sizeof(query) - len, ";\e\\");
+	id_assert_reply(query, "\eP0+r\e\\");
+
+	/* 16 names of the 256-byte value: each pair is 520 bytes with its
+	 * ';', and the eighth would pass 4096 */
+	len = snprintf(query, sizeof(query), "\eP+q626967");
+	for (i = 1; i < 16; ++i)
+		len += snprintf(query + len, sizeof(query) - len, ";626967");
+	snprintf(query + len, sizeof(query) - len, "\e\\");
+	id_clear();
+	id_input(query);
+	ck_assert_uint_le(id_len, 4096);
+	ck_assert(!strncmp(id_out, "\eP1+r626967=6161", 16));
+	for (i = 0, p = id_out; (p = strstr(p, "626967=")); ++p)
+		++i;
+	ck_assert_uint_eq(i, 7);
+	ck_assert_uint_eq(id_len, 5 + 7 * (6 + 1 + 512 + 1) + 2);
+	ck_assert(!strcmp(id_out + id_len - 3, ";\e\\"));
+}
+END_TEST
+
+/* CAN, SUB, and an ESC not followed by '\', drop the request; ST, 7-bit or
+ * as U+009C, answers it */
+START_TEST(test_vte_xtgettcap_end)
+{
+	unsigned int x;
+
+	id_assert_reply("\eP+q544e\x18", "");
+	id_assert_reply("\eP+q544e\x1a", "");
+	/* the CSI after the ESC runs */
+	x = tsm_screen_get_cursor_x(id_screen);
+	id_assert_reply("\eP+q544e\e[2C", "");
+	ck_assert_uint_eq(tsm_screen_get_cursor_x(id_screen), x + 2);
+	id_assert_reply("\eP+q544e\xc2\x9c", "\eP1+r544e=6B6D73636F6E\e\\");
+	/* the ESC of the dropped request is not left waiting for a '\' */
+	id_assert_reply("\eP+q544e\e\e\\", "");
+	/* DCS + q with a parameter is not XTGETTCAP */
+	id_assert_reply("\eP1+q544e\e\\", "");
+	id_assert_reply("\eP>+q544e\e\\", "");
+	id_assert_reply("\eP+$q544e\e\\", "");
+}
+END_TEST
+
+/* a request split across input calls, at every byte */
+START_TEST(test_vte_xtgettcap_split)
+{
+	static const char query[] = "\eP+q544e;436f\e\\";
+	size_t i;
+
+	id_clear();
+	for (i = 0; query[i]; ++i)
+		tsm_vte_input(id_vte, query + i, 1);
+	ck_assert_str_eq(id_out, "\eP1+r544e=6B6D73636F6E;436f=323536\e\\");
+}
+END_TEST
+
+/* the table is copied, sanity-bounded, and a refused one leaves the table in
+ * force */
+START_TEST(test_vte_xtgettcap_set)
+{
+	char name[TSM_VTE_TERMCAP_NAME_MAX + 2], value[TSM_VTE_TERMCAP_VALUE_MAX + 2];
+	struct tsm_vte_termcap caps[2], one;
+	static struct tsm_vte_termcap many[TSM_VTE_TERMCAP_MAX + 1];
+	const struct tsm_vte_termcap bad[][2] = {
+		{ { NULL, "x" } },
+		{ { "", "x" } },
+		{ { "a b", "x" } },
+		{ { "a\tb", "x" } },
+		{ { "\xc3\xa9", "x" } },
+		{ { "TN", "a" }, { "TN", "b" } },
+	};
+	size_t i;
+
+	ck_assert_int_eq(tsm_vte_set_termcap(NULL, NULL, 0), -EINVAL);
+	ck_assert_int_eq(tsm_vte_set_termcap(id_vte, NULL, 1), -EINVAL);
+	for (i = 0; i < sizeof(bad) / sizeof(*bad); ++i)
+		ck_assert_int_eq(tsm_vte_set_termcap(id_vte, bad[i], bad[i][1].name ? 2 : 1),
+				 -EINVAL);
+
+	/* names and values at their bounds, then one byte past */
+	memset(name, 'n', sizeof(name));
+	name[TSM_VTE_TERMCAP_NAME_MAX] = 0;
+	memset(value, 'v', sizeof(value));
+	value[TSM_VTE_TERMCAP_VALUE_MAX] = 0;
+	caps[0] = (struct tsm_vte_termcap){ name, value };
+	caps[1] = (struct tsm_vte_termcap){ "TN", "kmscon" };
+	ck_assert_int_eq(tsm_vte_set_termcap(id_vte, caps, 2), 0);
+	name[TSM_VTE_TERMCAP_NAME_MAX] = 'n';
+	name[TSM_VTE_TERMCAP_NAME_MAX + 1] = 0;
+	ck_assert_int_eq(tsm_vte_set_termcap(id_vte, caps, 2), -EINVAL);
+	name[TSM_VTE_TERMCAP_NAME_MAX] = 0;
+	value[TSM_VTE_TERMCAP_VALUE_MAX] = 'v';
+	value[TSM_VTE_TERMCAP_VALUE_MAX + 1] = 0;
+	ck_assert_int_eq(tsm_vte_set_termcap(id_vte, caps, 2), -EINVAL);
+
+	/* too many entries */
+	for (i = 0; i < TSM_VTE_TERMCAP_MAX + 1; ++i)
+		many[i] = (struct tsm_vte_termcap){ "x", NULL };
+	ck_assert_int_eq(tsm_vte_set_termcap(id_vte, many, TSM_VTE_TERMCAP_MAX + 1),
+			 -EINVAL);
+
+	/* every refusal left the two-entry table */
+	id_assert_reply("\eP+q544e\e\\", "\eP1+r544e=6B6D73636F6E\e\\");
+	id_assert_reply("\eP+q436f\e\\", "\eP0+r\e\\");
+
+	/* libtsm keeps its own copy */
+	strcpy(value, "bar");
+	one = (struct tsm_vte_termcap){ value, value };
+	ck_assert_int_eq(tsm_vte_set_termcap(id_vte, &one, 1), 0);
+	strcpy(value, "baz");
+	id_assert_reply("\eP+q626172\e\\", "\eP1+r626172=626172\e\\");
+}
+END_TEST
+
+TEST_DEFINE_CASE(identify)
+	CHECKED_FIXTURE(id_setup, id_teardown)
+	TEST(test_vte_xtversion_default)
+	TEST(test_vte_xtversion_set)
+	TEST(test_vte_xtversion_reject)
+	TEST(test_vte_xtgettcap_found)
+	TEST(test_vte_xtgettcap_boolean)
+	TEST(test_vte_xtgettcap_unknown)
+	TEST(test_vte_xtgettcap_multiple)
+	TEST(test_vte_xtgettcap_invalid)
+	TEST(test_vte_xtgettcap_bounds)
+	TEST(test_vte_xtgettcap_end)
+	TEST(test_vte_xtgettcap_split)
+	TEST(test_vte_xtgettcap_set)
+TEST_END_CASE
+
 TEST_DEFINE_CASE(prefixes)
 	CHECKED_FIXTURE(pfx_setup, pfx_teardown)
 	TEST(test_vte_csi_sl_not_ich)
@@ -3406,6 +3789,7 @@ TEST_DEFINE_CASE(prefixes)
 	TEST(test_vte_csi_xttitlepos_not_su)
 	TEST(test_vte_csi_xtrmtitle_not_sd)
 	TEST(test_vte_csi_q_not_decll)
+	TEST(test_vte_csi_xtversion_not_decll)
 	TEST(test_vte_csi_xtfmtkeys_not_hvp)
 	TEST(test_vte_csi_xtqfmtkeys_not_tbc)
 	TEST(test_vte_csi_deccara_not_decstbm)
@@ -3437,6 +3821,7 @@ TEST_DEFINE(
 		TEST_CASE(led),
 		TEST_CASE(prefixes),
 		TEST_CASE(modkeys),
+		TEST_CASE(identify),
 		TEST_END
 	)
 )
