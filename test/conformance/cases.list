@@ -153,6 +153,14 @@ kit-host-errors-nohook 12 4
 kit-host-requests-nohook 12 4
 kit-host-outcomes-nohook 12 4
 kit-host-lengths-nohook 12 4
+# The host's side of the replay interface (INTERFACE.md), through its test commands:
+input-key 20 2
+input-mouse 20 4
+input-paste 20 2
+input-focus 20 2
+host-palette 18 2
+host-identify 20 2
+query-frames 10 2
 # Real programs, recorded by record-programs.py (checkpoints in cases/<name>.cuts):
 prog-shell 80 24
 prog-less 80 24

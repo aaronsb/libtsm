@@ -1,0 +1,80 @@
+checkpoint 158
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 6141e282acd181
+palette legacy fg=#e5e5e5 bg=#000000
+changed 40
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 270
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 010300
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 385
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b611b011b0d
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 624
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 0d08091b5b5a1b1b5b337e1b4f501b5b31357e1b5b32387e
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 805
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b411b5b313b35411b5b313b33411b5b313b32411b4f411b4f48
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 919
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 0d1b4f4d1b4f710d0a
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 1049
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b32373b353b34397e011b5b32373b333b39377e
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 1183
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b32373b323b397e1b5b32373b353b39377e1b5b32373b373b34397e1b5b3e343b326d
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||

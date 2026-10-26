@@ -1,0 +1,60 @@
+checkpoint 55
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b3f313030343b322479
+palette legacy fg=#e5e5e5 bg=#000000
+changed 40
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 72
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b3f313030343b312479
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 141
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b491b5b4f1b5b4f
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 177
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b3f313030343b322479
+palette legacy fg=#e5e5e5 bg=#000000
+changed 40
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 219
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b3f313030343b322479
+palette legacy fg=#e5e5e5 bg=#000000
+changed 40
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||
+checkpoint 267
+size 20x2
+cursor 0,0
+flags AUTO_WRAP
+reply 1b5b3f313030343b322479
+palette legacy fg=#e5e5e5 bg=#000000
+changed 0
+frame-cursor 0,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 ||
+row 1 ||

@@ -217,6 +217,20 @@ test(
            '--frame'] + no_images_arg,
 )
 
+# The replay interface, the contract vtium's replay implementation meets
+# (INTERFACE.md lists what replay-interface checks), exported as
+# replay_spec for the capability probes.
+replay_spec = files('conformance/INTERFACE.md')
+test(
+    'replay-interface',
+    find_program('python3'),
+    args: [files('conformance/interface-check.py')] + no_images_arg + [
+        replay_spec,
+        tsm_replay,
+        meson.current_source_dir() / 'conformance',
+    ],
+)
+
 # Every supported mode is set and reset by a test its row names, and every
 # test a row names exists (ADR-201); the test build's mode trace shows which.
 test(
