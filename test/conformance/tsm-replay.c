@@ -117,6 +117,8 @@ static void on_write(struct tsm_vte *vte, const char *u8, size_t len, void *data
 	struct reply *r = data;
 
 	(void)vte;
+	if (!len)
+		return;
 	if (r->len + len > r->cap) {
 		r->cap = (r->len + len) * 2;
 		r->buf = realloc(r->buf, r->cap);
