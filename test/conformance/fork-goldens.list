@@ -159,3 +159,10 @@ kit-host-errors-nohook # kit-host-errors with the host removed
 kit-host-requests-nohook # kit-host-requests with the host removed
 kit-host-outcomes-nohook # kit-host-outcomes with the host removed
 kit-host-lengths-nohook # kit-host-lengths with the host removed
+#
+# The UTF-8 decoder follows Unicode Table 3-7 and replaces each maximal
+# subpart of an ill-formed sequence (Unicode 3.9). Upstream decodes overlong
+# forms on a signed char (C0 9B is ESC), surrogates and values past U+10FFFF,
+# drops a continuation byte alone, and loses the byte that ends an ill-formed
+# sequence:
+utf8-ill-formed             # one U+FFFD per maximal subpart; the breaking byte read again; no overlong ESC
