@@ -75,7 +75,7 @@ Every implementation of interface 1 has the commands with no feature. A command'
 | `paste` | `hex`: the pasted bytes, two hex digits each, none of them 00 | `input` | Pastes the bytes, as a host does. |
 | `focus` | `in`: flag | `focus` | Reports that the terminal gained (1) or lost (0) focus. |
 | `palette` | `name`: name, one of the palettes below | `palette` | Chooses the palette, as a host does. The `palette` line of the draw2 and frame views names it. |
-| `frame-since` | `caller`: decimal, 0 to 7 | `query` | Takes a frame for caller `caller` and prints `test frame-since K changed N`, K being the caller and N the number of cells that changed since that caller's previous frame. Each caller keeps its own frame age, starting with none, so its first frame counts every cell. |
+| `frame-since` | `caller`: decimal, 0 to 7 | `query` | Takes a frame for caller `caller` and prints `test frame-since K changed N`, K being the caller and N the number of cells that changed since that caller's previous frame. Each caller keeps its own frame age, starting with none, so its first frame counts every cell. N follows the age rule of `changed N` and is informative (Comparing with the goldens). |
 
 The modifier bits of `mods` are 1 Shift, 2 Lock, 4 Ctrl, 8 Alt and 16 Logo.
 
@@ -169,7 +169,7 @@ Rows are numbered from 0 at the top of the view and printed in order, as many as
 
 ### Comparing with the goldens
 
-A runner compares an implementation's output with a golden byte for byte. A `changed N` line and a placement's ` changed` flag follow the C reference's age rule, which another implementation may draw differently and still draw correctly, so unless both the implementation and the reference declare the feature `damage-exact`, the runner masks those lines and flags on both sides. The reference declares it.
+A runner compares an implementation's output with a golden byte for byte. The N of a `changed N` line and of a `test frame-since K changed N` line, and a placement's ` changed` flag, follow the C reference's age rule, which another implementation may draw differently and still draw correctly. Unless both the implementation and the reference declare the feature `damage-exact`, the runner masks them on both sides before comparing: each such N greater than 0 becomes the letter `N`, and each placement's ` changed` flag is removed. Zero against nonzero stays comparable, so a probe can still check that each frame-since caller keeps its own changes. The reference declares `damage-exact`.
 
 ### Grammar
 
@@ -317,7 +317,7 @@ command frame-since query
 | `focus` | `focus`. |
 | `palette` | `palette`. |
 | `query` | `frame-since`. |
-| `damage-exact` | `changed N` lines and placement `changed` flags follow the C reference's age rule, so a runner compares them. An implementation may decline it. |
+| `damage-exact` | `changed N` lines, frame-since counts and placement `changed` flags follow the C reference's age rule, so a runner compares them unmasked. An implementation may decline it. |
 
 Interface 1 makes every feature mandatory except `view-draw2`, whose goldens retire with the draw2 view, `damage-exact`, and the image features `images`, `sixel`, `kitty-graphics` and `image-host`, which an implementation built with images owes.
 
