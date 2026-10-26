@@ -217,9 +217,9 @@ test(
            '--frame'] + no_images_arg,
 )
 
-# The replay interface, the contract vtium's replay implementation meets:
-# the reference implementation's --describe, every golden and the worked
-# examples agree with the spec, exported as replay_spec for the probes.
+# The replay interface, the contract vtium's replay implementation meets
+# (INTERFACE.md lists what replay-interface checks), exported as
+# replay_spec for the capability probes.
 replay_spec = files('conformance/INTERFACE.md')
 test(
     'replay-interface',

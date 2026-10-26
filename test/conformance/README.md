@@ -5,8 +5,8 @@ Tier 1 of the kmscon fork's conformance harness (ADR-301 in aaronsb/kmscon). Rec
 | Path | What it is |
 |---|---|
 | `INTERFACE.md` | The replay interface, the contract vtium's replay implementation meets: the command line, the input, the test commands, the reference host and the output. |
-| `tsm-replay.c` | The reference implementation of the interface in the frozen C code, the source of the goldens: size, cursor, flags, replies, then each row's text and attribute runs. With a `.cuts` file it prints the screen at every checkpoint. |
-| `interface-check.py` | Checks `tsm-replay --describe`, every golden and the spec's worked examples against `INTERFACE.md` (meson test `replay-interface`). |
+| `tsm-replay.c` | The reference implementation of INTERFACE.md in the frozen C code, the source of the goldens. |
+| `interface-check.py` | The meson test `replay-interface`; `INTERFACE.md` lists what it checks. |
 | `cases.list` | One case per line: name, columns, rows. |
 | `fork-goldens.list` | The cases whose golden comes from a fork commit, each with the change of behaviour it judges. |
 | `images-cases.list` | The cases that need images (sixel strings, kitty commands, or a reply that says sixel is on). A build with `-Dimages=false` leaves them out (`check.py --no-images`), and each must differ there from its golden. |
@@ -45,7 +45,7 @@ Upstream `v4.8.0`, as its goldens recorded before the fork changed these cases, 
 
 ## The draw2 view
 
-`tsm-replay --draw2` prints each screen through `tsm_screen_draw2`, the cells a renderer such as kmscon reads, in place of `tsm_screen_draw`. Colours appear resolved to RGB through the palette, with bold-as-bright, reverse video, dim and the underline colour applied, so tier 1 judges what the screen looks like as well as what it holds (aaronsb/kmscon#26). The view starts in the `legacy` palette and prints the palette in force with its default colours. Rows show the codepoint each cell carries, and `cells` lines show runs that differ from the default cell. `INTERFACE.md` gives the format.
+`tsm-replay --draw2` prints each screen through `tsm_screen_draw2`, the cells a renderer such as kmscon read, in place of `tsm_screen_draw`. Colours appear resolved to RGB through the palette, with bold-as-bright, reverse video, dim and the underline colour applied, so tier 1 judges what the screen looks like as well as what it holds (aaronsb/kmscon#26). The view starts in the `legacy` palette and prints the palette in force with its default colours. Rows show the codepoint each cell carries, and `cells` lines show runs that differ from the default cell. `INTERFACE.md` gives the format.
 
 The meson test `conformance-draw2` runs every case through this view and compares it with `golden-draw2/`. Only the fork's libtsm has the view, so that whole set is fork-sourced: a fork `REF` writes all of it, and `REF=v4.8.0` none. The view is a separate set of files, not a section added to `golden/`, so every file still has one source. A section in `golden/` would have mixed upstream output with fork output in one file, and every upstream-sourced golden would have needed a fork run as well.
 
@@ -71,7 +71,7 @@ The `six-*` cases judge sixel itself: the cursor after a picture, mode 8452, scr
 
 ## The replay interface
 
-`INTERFACE.md` defines tier 1's input and output by behaviour, as the contract vtium's replay program meets. The goldens came from `tsm-replay`, the reference implementation. Its fenced blocks are machine-readable, and the meson test `replay-interface` checks that `tsm-replay --describe` prints the spec's version, views, features and commands, that every line of every golden parses under the spec's grammar, that each worked example replays to the output shown, and that each palette in the spec is the one the frame view resolves. With `--no-images` the image features are left out of `--describe`'s expected lines, as a build with `-Dimages=false` leaves them out. The subproject exports the spec and `tsm-replay` as `replay_spec` and `tsm_replay`, for the capability probes to read.
+`INTERFACE.md` defines tier 1's input and output by behaviour, as the contract vtium's replay program meets. The goldens came from `tsm-replay`, the reference implementation. The meson test `replay-interface` checks the spec against `tsm-replay` and the goldens, as the spec's opening lists. The subproject exports the spec and `tsm-replay` as `replay_spec` and `tsm_replay`, for the capability probes to read.
 
 The test commands cover the host's side as well as images: the `input-*` cases press keys, report the pointer, paste and report focus, as a host passes them; `host-palette` chooses each palette, `host-identify` sets the XTVERSION text and the XTGETTCAP table and turns sixel and kitty graphics off and on, and `query-frames` asks for each caller's changed cells and the count of mode 2026 frames. `gen-synthetic.py` cuts these streams into checkpoints, one per step, so each step's replies are a line of their own.
 
