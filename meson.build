@@ -74,6 +74,12 @@ config_h = configure_file(configuration: config, output: 'config.h')
 abs_config_h = meson.current_build_dir() / '@0@'.format('config.h')
 add_project_arguments('-include', abs_config_h, language: 'c')
 
+# Sixel and the kitty graphics protocol (ADR-103 in aaronsb/kmscon), at the
+# top level so a project that has libtsm as a subproject can read it with
+# get_variable('images'): kmscon fails its configure when the libtsm it
+# builds disagrees with its own images option
+images = get_option('images')
+
 subdir('external')
 subdir('src')
 
