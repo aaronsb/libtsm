@@ -442,6 +442,15 @@ START_TEST(test_mode_mouse_pixel)
 	ck_assert(tsm_vte_handle_mouse(vte, 1, 2, 17, 40, 0, TSM_MOUSE_EVENT_PRESSED, 0));
 	ck_assert_str_eq(out, "\e[<0;18;41M");
 
+	/* the top left pixel is 1,1, as xterm reports it (aaronsb/libtsm#67) */
+	out_clear();
+	ck_assert(tsm_vte_handle_mouse(vte, 0, 0, 0, 0, 0, TSM_MOUSE_EVENT_PRESSED, 0));
+	ck_assert_str_eq(out, "\e[<0;1;1M");
+
+	/* a wheel step in pixels */
+	ck_assert(mouse_sends(1, TSM_MOUSE_BUTTON_WHEEL_UP, TSM_MOUSE_EVENT_PRESSED));
+	ck_assert_str_eq(out, "\e[<64;10;41M");
+
 	/* reset, cells in the X10 encoding, still tracking */
 	input("\e[?1016l");
 	ck_assert_uint_eq(tsm_vte_get_mouse_mode(vte), 1000);
