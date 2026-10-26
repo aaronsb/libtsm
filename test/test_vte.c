@@ -930,6 +930,116 @@ START_TEST(test_vte_8bit_c1)
 }
 END_TEST
 
+static void input_str(struct tsm_vte *vte, const char *s)
+{
+	tsm_vte_input(vte, s, strlen(s));
+}
+
+/*
+ * Ill-formed UTF-8 prints U+FFFD and never decodes to a control: an overlong
+ * ESC (C0 9B, E0 80 9B, F0 80 80 9B) starts no escape sequence, so text with
+ * every 0x1B byte stripped stays text. The byte that breaks a sequence is
+ * read again, so the ESC after a truncated E2 still starts its sequence.
+ */
+START_TEST(test_vte_utf8_ill_formed)
+{
+	static const struct {
+		const char *in;
+		const char *cells;	/* 'F' for U+FFFD; 'B' bold */
+	} rows[] = {
+		{ "\xc0\x9b[1mx", "FF[1mx" },
+		{ "\xe0\x80\x9b[1mx", "FFF[1mx" },
+		{ "\xf0\x80\x80\x9b[1mx", "FFFF[1mx" },
+		{ "\xc1\x9b" "1mx", "FF1mx" },
+		{ "\xed\xa0\x80x", "FFFx" },
+		{ "\xf4\x90\x80\x80x", "FFFFx" },
+		{ "\x80x", "Fx" },
+		{ "\xe2\x1b[1mx", "FB" },
+		{ "\xe2" "A", "FA" },
+		{ "\xf0\x9f" "A", "FA" },
+		{ "\xc2\x9b" "1mx", "B" },
+	};
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_screen_cell *cells;
+	size_t i, x;
+	char c;
+	int r;
+
+	for (i = 0; i < sizeof(rows) / sizeof(*rows); ++i) {
+		r = tsm_screen_new(&screen, log_cb, NULL);
+		ck_assert_int_eq(r, 0);
+		r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+		ck_assert_int_eq(r, 0);
+		tsm_vte_input(vte, rows[i].in, strlen(rows[i].in));
+
+		cells = tsm_screen_draw2(screen);
+		ck_assert_ptr_ne(cells, NULL);
+		for (x = 0; (c = rows[i].cells[x]); ++x) {
+			if (c == 'F')
+				ck_assert_msg(cells[x].ch == TSM_UCS4_REPLACEMENT,
+					      "row %zu cell %zu: U+%04X", i, x, (unsigned)cells[x].ch);
+			else if (c == 'B')
+				ck_assert_msg(cells[x].ch == 'x' && cells[x].attr2.bold,
+					      "row %zu cell %zu: U+%04X bold %d", i, x,
+					      (unsigned)cells[x].ch, cells[x].attr2.bold);
+			else
+				ck_assert_msg(cells[x].ch == (uint32_t)c && !cells[x].attr2.bold,
+					      "row %zu cell %zu: U+%04X bold %d", i, x,
+					      (unsigned)cells[x].ch, cells[x].attr2.bold);
+		}
+		ck_assert_msg(cells[x].ch == ' ', "row %zu cell %zu: U+%04X", i, x,
+			      (unsigned)cells[x].ch);
+
+		tsm_vte_unref(vte);
+		tsm_screen_unref(screen);
+	}
+}
+END_TEST
+
+/*
+ * A sequence unfinished at the end of one input call is finished by the
+ * next. tsm_vte_reset and tsm_vte_hard_reset discard it without a U+FFFD.
+ * RIS arrives as bytes, so its ESC ends the sequence with a U+FFFD, which
+ * RIS then erases.
+ */
+START_TEST(test_vte_utf8_pending)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_screen_cell *cells;
+	int r, i;
+
+	for (i = 0; i < 4; ++i) {
+		r = tsm_screen_new(&screen, log_cb, NULL);
+		ck_assert_int_eq(r, 0);
+		r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+		ck_assert_int_eq(r, 0);
+
+		input_str(vte, "\xe2\x82");
+		if (i == 0)
+			input_str(vte, "\xac");
+		else if (i == 1)
+			tsm_vte_reset(vte);
+		else if (i == 2)
+			tsm_vte_hard_reset(vte);
+		else
+			input_str(vte, "\ec");
+		if (i)
+			input_str(vte, "A");
+
+		cells = tsm_screen_draw2(screen);
+		ck_assert_ptr_ne(cells, NULL);
+		ck_assert_msg(cells[0].ch == (i ? 'A' : 0x20ac), "%d: U+%04X", i,
+			      (unsigned)cells[0].ch);
+		ck_assert_msg(cells[1].ch == ' ', "%d: U+%04X after", i, (unsigned)cells[1].ch);
+
+		tsm_vte_unref(vte);
+		tsm_screen_unref(screen);
+	}
+}
+END_TEST
+
 /* ESC # 8 is DECALN, which libtsm does not implement; with the '#' dropped
  * it ran as ESC 8, DECRC, and moved the cursor back (aaronsb/libtsm#59) */
 START_TEST(test_vte_esc_hash_not_decrc)
@@ -979,11 +1089,6 @@ START_TEST(test_vte_draw2_cluster_base)
 	tsm_screen_unref(screen);
 }
 END_TEST
-
-static void input_str(struct tsm_vte *vte, const char *s)
-{
-	tsm_vte_input(vte, s, strlen(s));
-}
 
 /* the cluster table holds only what the screen and scrollback hold: every
  * way a cell is overwritten, erased or dropped releases its cluster */
@@ -3291,6 +3396,8 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_underline_color_dim)
 	TEST(test_vte_modkeys_not_sgr)
 	TEST(test_vte_8bit_c1)
+	TEST(test_vte_utf8_ill_formed)
+	TEST(test_vte_utf8_pending)
 	TEST(test_vte_esc_hash_not_decrc)
 	TEST(test_vte_draw2_cluster_base)
 	TEST(test_vte_cluster_release)

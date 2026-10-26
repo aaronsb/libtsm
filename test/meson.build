@@ -30,6 +30,7 @@ test_selection = executable(
     dependencies: test_deps,
 )
 test_symbol = executable('test_symbol', 'test_symbol.c', dependencies: test_deps)
+test_utf8 = executable('test_utf8', 'test_utf8.c', dependencies: test_deps)
 test_valgrind = executable(
     'test_valgrind',
     'test_valgrind.c',
@@ -78,6 +79,7 @@ test('image', test_image)
 test('screen', test_screen)
 test('selection', test_selection)
 test('symbol', test_symbol)
+test('utf8', test_utf8)
 # In a build with -Db_sanitize=address, LeakSanitizer must catch the leak
 # test_valgrind makes on purpose: a pass there means leak checking is off.
 test('valgrind', test_valgrind,

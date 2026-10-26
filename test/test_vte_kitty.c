@@ -540,6 +540,31 @@ START_TEST(test_kitty_c1)
 END_TEST
 
 /*
+ * A payload run takes bytes straight to the kitty parser only while the
+ * UTF-8 machine is idle: after an unfinished E2, the payload's first byte
+ * ends it with a U+FFFD, which the payload refuses, in one call or split
+ * across two
+ */
+START_TEST(test_kitty_utf8_pending)
+{
+	static const char head[] = "\033_Ga=T,f=24,s=1,v=1,i=1;\xe2";
+	static const char tail[] = "/wAA\033\\";
+	char in[sizeof(head) + sizeof(tail)];
+
+	snprintf(in, sizeof(in), "%s%s", head, tail);
+	input(in);
+	ck_assert_str_eq(reply, "\033_Gi=1;EINVAL:invalid argument\033\\");
+	ck_assert_uint_eq(placements(), 0);
+
+	fresh();
+	input(head);
+	input(tail);
+	ck_assert_str_eq(reply, "\033_Gi=1;EINVAL:invalid argument\033\\");
+	ck_assert_uint_eq(placements(), 0);
+}
+END_TEST
+
+/*
  * A large upload under the bounded call: each call stops once its work is
  * done, and the rest arrives over later calls
  */
@@ -1717,6 +1742,7 @@ TEST_DEFINE_CASE(kitty)
 	TEST(test_kitty_pad_split)
 	TEST(test_kitty_payload_invalid)
 	TEST(test_kitty_c1)
+	TEST(test_kitty_utf8_pending)
 	TEST(test_kitty_bounded)
 	TEST(test_kitty_upload_bytes)
 	TEST(test_kitty_host_budget)

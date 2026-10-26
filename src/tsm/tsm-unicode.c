@@ -671,39 +671,37 @@ char *tsm_ucs4_to_utf8_alloc(const uint32_t *ucs4, size_t len, size_t *len_out)
  *
  * tsm_uft8_mach_feed(): Feed one byte of the UTF8 input stream into the
  * state-machine. This function returns the new state of the state-machine after
- * this character has been parsed. If it is TSM_UTF8_ACCEPT or TSM_UTF8_REJECT,
- * then there is a pending UCS4 character that you should retrieve via
- * tsm_utf8_mach_get(). If it is TSM_UTF8_ACCEPT, then a character was
- * successfully parsed. If it is TSM_UTF8_REJECT, the input was invalid UTF8 and
- * some error recovery was tried or a replacement character was choosen. All
- * other states mean that the machine needs more input to parse the stream.
+ * this byte has been parsed. If it is TSM_UTF8_ACCEPT, a character was parsed
+ * and tsm_utf8_mach_get() returns it. If it is TSM_UTF8_REJECT or
+ * TSM_UTF8_RETRY, the input was ill-formed and tsm_utf8_mach_get() returns
+ * U+FFFD; after TSM_UTF8_RETRY the byte was not consumed and the caller feeds
+ * the same byte again. All other states mean that the machine needs more input
+ * to parse the stream.
  *
  * tsm_utf8_mach_get(): Returns the last parsed character. It has no effect on
  * the state machine so you can call it multiple times.
  *
- * Internally, we use TSM_UTF8_START whenever the state-machine is reset. This
- * can be used to ignore the last read input or to simply reset the machine.
+ * Internally, we use TSM_UTF8_START whenever the state-machine is reset.
  * TSM_UTF8_EXPECT* is used to remember how many bytes are still to be read to
  * get a full UTF8 sequence.
- * If an error occurs during reading, we go to state TSM_UTF8_REJECT and the
- * user will read a replacement character. If further errors occur, we go to
- * state TSM_UTF8_START to avoid printing multiple replacement characters for a
- * single misinterpreted UTF8 sequence. However, under some circumstances it may
- * happen that we stay in TSM_UTF8_REJECT and a next replacement character is
- * returned.
- * It is difficult to decide how to interpret wrong input but this machine seems
- * to be quite good at deciding what to do. Generally, we prefer discarding or
- * replacing input instead of trying to decipher ASCII values from the invalid
- * data. This guarantees that we do not send wrong values to the terminal
- * emulator. Some might argue that an ASCII fallback would be better. However,
- * this means that we might send very weird escape-sequences to the VTE layer.
- * Especially with C1 codes applications can really break many terminal features
- * so we avoid any non-ASCII+non-UTF8 input to prevent this.
+ * Well-formed sequences are those of Unicode Table 3-7. Anything else is
+ * replaced as Unicode 3.9 recommends ("U+FFFD Substitution of Maximal
+ * Subparts"): each maximal subpart of an ill-formed sequence, the longest run
+ * that starts a well-formed sequence, is one U+FFFD, and so is each byte that
+ * can neither start nor continue a sequence (80-BF alone, C0, C1, F5-FF).
+ * Overlong forms, surrogates and values above U+10FFFF are ill-formed, so no
+ * ill-formed input decodes to a control: C0 9B is not ESC. The byte that ends
+ * an ill-formed sequence (TSM_UTF8_RETRY) is read again from the start state,
+ * so the ESC of E2 1B still starts its escape sequence.
  */
 
 struct tsm_utf8_mach {
 	int state;
 	uint32_t ch;
+	/* the range of the next byte, narrower than 80-BF after E0, ED, F0
+	 * and F4 (Table 3-7) */
+	uint8_t lo;
+	uint8_t hi;
 };
 
 int tsm_utf8_mach_new(struct tsm_utf8_mach **out)
@@ -739,59 +737,66 @@ int tsm_utf8_mach_feed(struct tsm_utf8_mach *mach, char ci)
 	if (!mach)
 		return TSM_UTF8_START;
 
-	c = ci;
+	/* the byte's value, whether char is signed or not */
+	c = (unsigned char)ci;
 
 	switch (mach->state) {
 	case TSM_UTF8_START:
 	case TSM_UTF8_ACCEPT:
 	case TSM_UTF8_REJECT:
-		if (c == 0xC0 || c == 0xC1) {
-			/* overlong encoding for ASCII, reject */
-			mach->state = TSM_UTF8_REJECT;
-		} else if ((c & 0x80) == 0) {
+	case TSM_UTF8_RETRY:
+		mach->lo = 0x80;
+		mach->hi = 0xBF;
+		if (c < 0x80) {
 			/* single byte, accept */
 			mach->ch = c;
 			mach->state = TSM_UTF8_ACCEPT;
-		} else if ((c & 0xC0) == 0x80) {
-			/* parser out of sync, ignore byte */
-			mach->state = TSM_UTF8_START;
-		} else if ((c & 0xE0) == 0xC0) {
+		} else if (c >= 0xC2 && c <= 0xDF) {
 			/* start of two byte sequence */
-			mach->ch = (c & 0x1F) << 6;
+			mach->ch = c & 0x1F;
 			mach->state = TSM_UTF8_EXPECT1;
-		} else if ((c & 0xF0) == 0xE0) {
-			/* start of three byte sequence */
-			mach->ch = (c & 0x0F) << 12;
+		} else if (c >= 0xE0 && c <= 0xEF) {
+			/* start of three byte sequence; E0 80-9F is overlong,
+			 * ED A0-BF a surrogate */
+			if (c == 0xE0)
+				mach->lo = 0xA0;
+			else if (c == 0xED)
+				mach->hi = 0x9F;
+			mach->ch = c & 0x0F;
 			mach->state = TSM_UTF8_EXPECT2;
-		} else if ((c & 0xF8) == 0xF0) {
-			/* start of four byte sequence */
-			mach->ch = (c & 0x07) << 18;
+		} else if (c >= 0xF0 && c <= 0xF4) {
+			/* start of four byte sequence; F0 80-8F is overlong,
+			 * F4 90-BF above U+10FFFF */
+			if (c == 0xF0)
+				mach->lo = 0x90;
+			else if (c == 0xF4)
+				mach->hi = 0x8F;
+			mach->ch = c & 0x07;
 			mach->state = TSM_UTF8_EXPECT3;
 		} else {
-			/* overlong encoding, reject */
+			/* continuation byte alone, C0 and C1 (overlong) or
+			 * F5-FF (above U+10FFFF), reject */
 			mach->state = TSM_UTF8_REJECT;
 		}
 		break;
 	case TSM_UTF8_EXPECT3:
-		mach->ch |= (c & 0x3F) << 12;
-		if ((c & 0xC0) == 0x80)
-			mach->state = TSM_UTF8_EXPECT2;
-		else
-			mach->state = TSM_UTF8_REJECT;
-		break;
 	case TSM_UTF8_EXPECT2:
-		mach->ch |= (c & 0x3F) << 6;
-		if ((c & 0xC0) == 0x80)
+	case TSM_UTF8_EXPECT1:
+		if (c < mach->lo || c > mach->hi) {
+			/* the sequence so far is ill-formed, and @c is read
+			 * again from the start */
+			mach->state = TSM_UTF8_RETRY;
+			break;
+		}
+		mach->ch = mach->ch << 6 | (c & 0x3F);
+		mach->lo = 0x80;
+		mach->hi = 0xBF;
+		if (mach->state == TSM_UTF8_EXPECT3)
+			mach->state = TSM_UTF8_EXPECT2;
+		else if (mach->state == TSM_UTF8_EXPECT2)
 			mach->state = TSM_UTF8_EXPECT1;
 		else
-			mach->state = TSM_UTF8_REJECT;
-		break;
-	case TSM_UTF8_EXPECT1:
-		mach->ch |= c & 0x3F;
-		if ((c & 0xC0) == 0x80)
 			mach->state = TSM_UTF8_ACCEPT;
-		else
-			mach->state = TSM_UTF8_REJECT;
 		break;
 	default:
 		mach->state = TSM_UTF8_REJECT;
@@ -804,7 +809,8 @@ int tsm_utf8_mach_feed(struct tsm_utf8_mach *mach, char ci)
 bool tsm_utf8_mach_idle(struct tsm_utf8_mach *mach)
 {
 	return !mach || mach->state == TSM_UTF8_START ||
-	       mach->state == TSM_UTF8_ACCEPT || mach->state == TSM_UTF8_REJECT;
+	       mach->state == TSM_UTF8_ACCEPT || mach->state == TSM_UTF8_REJECT ||
+	       mach->state == TSM_UTF8_RETRY;
 }
 
 uint32_t tsm_utf8_mach_get(struct tsm_utf8_mach *mach)

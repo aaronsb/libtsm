@@ -6,10 +6,10 @@ sequences. The streams are committed; rerun this script only to add or change
 a case, and review the resulting goldens as their own change.
 
 Usage: gen-synthetic.py CASES_DIR
-Writes CASES_DIR/<name>.bin, the checkpoints of a case that has them into
-CASES_DIR/<name>.cuts, and the fixtures tsm-replay serves a case into
-CASES_DIR/<name>.files/, and prints one "<name> <cols> <rows>" line per
-case, which belongs in cases.list.
+Writes CASES_DIR/<name>.bin (a case's text in UTF-8, or its bytes), the
+checkpoints of a case that has them into CASES_DIR/<name>.cuts, and the
+fixtures tsm-replay serves a case into CASES_DIR/<name>.files/, and prints
+one "<name> <cols> <rows>" line per case, which belongs in cases.list.
 
 SPDX-License-Identifier: MIT
 """
@@ -451,6 +451,30 @@ def _():
 @case("reset", 20, 4)
 def _():
     return sgr(1, 31) + "red" + CSI + "?1049h" + CSI + "3;4r" + ESC + "c" + "clean"
+
+
+@case("utf8-ill-formed")
+def _():
+    # UTF-8 as Unicode Table 3-7 defines it, one labelled line per rule:
+    # well-formed sequences at the table's bounds; each byte that starts
+    # nothing, and each maximal subpart of an ill-formed sequence, one
+    # U+FFFD (Unicode 3.9, Table 3-8 among them); the byte that ends one
+    # read again, so E2 ESC [1m sets bold; overlongs, surrogates and values
+    # past U+10FFFF ill-formed, so an overlong ESC (C0 9B, E0 80 9B,
+    # F0 80 80 9B) neither inverts, asks DSR 6 nor resets; and C1 CSI
+    # through C2 9B still a control. The stream is bytes, not text.
+    lines = [
+        b"wf " + "\u00e9\u07ff\u0800\ud7ff\ue000\ufffd\U00010000\U0010ffff".encode(),
+        b"lone \x80|\xbf|\xc0|\xc1|\xf5|\xff|\x80\x80",
+        b"trunc \xc3a\xe2\x82a\xf0\x9f\x98a\xe2\x82\xe2\x82\xac",
+        b"3-8 \x61\xf1\x80\x80\xe1\x80\xc2\x62\x80\x63\x80\xbf\x64",
+        b"keep \xe2\x1b[1mbold\x1b[0m \xe2A \xf0\x9fA \xe2\xc3\xa9",
+        b"overlong \xc0\x9b[7mx \xe0\x80\x9b[6n \xf0\x80\x80\x9bc \xc1\xbf",
+        b"surrogate \xed\xa0\x80 \xed\xbf\xbf \xed\x9f\xbf",
+        b"above \xf4\x90\x80\x80 \xf5\x80\x80\x80 \xf4\x8f\xbf\xbf",
+        b"c1 \xc2\x9b" b"1mbold\xc2\x9b" b"0m plain",
+    ]
+    return b"\r\n".join(lines)
 
 
 # Images (ADR-103 step 3a in aaronsb/kmscon). Each img-* case judges one row of
@@ -1771,7 +1795,11 @@ def main():
     out = Path(sys.argv[1])
     out.mkdir(parents=True, exist_ok=True)
     for name, (cols, rows, fn) in CASES.items():
-        parts = [part.encode("utf-8") for part in fn().split(CUT)]
+        data = fn()
+        if isinstance(data, str):
+            parts = [part.encode("utf-8") for part in data.split(CUT)]
+        else:
+            parts = [data]
         (out / f"{name}.bin").write_bytes(b"".join(parts))
         if len(parts) > 1:
             cuts = itertools.accumulate(len(part) for part in parts[:-1])

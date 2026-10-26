@@ -169,3 +169,10 @@ input-focus         # focus changes under mode 1004, and its reset by DECSTR, RI
 host-palette        # each palette's colours and OSC 4, 10 and 11 replies, and the erase a palette change makes
 host-identify       # the XTVERSION text, the XTGETTCAP table, and DA1 and a kitty query with sixel and kitty graphics off and on
 query-frames        # each frame-since caller's changed cells, a resize's, and the count of mode 2026 frames
+#
+# The UTF-8 decoder follows Unicode Table 3-7 and replaces each maximal
+# subpart of an ill-formed sequence (Unicode 3.9). Upstream decodes overlong
+# forms on a signed char (C0 9B is ESC), surrogates and values past U+10FFFF,
+# drops a continuation byte alone, and loses the byte that ends an ill-formed
+# sequence:
+utf8-ill-formed             # one U+FFFD per maximal subpart; the breaking byte read again; no overlong ESC

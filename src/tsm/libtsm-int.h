@@ -104,6 +104,8 @@ enum tsm_utf8_mach_state {
 	TSM_UTF8_START,
 	TSM_UTF8_ACCEPT,
 	TSM_UTF8_REJECT,
+	/* ill-formed, and the byte fed was not consumed: feed it again */
+	TSM_UTF8_RETRY,
 	TSM_UTF8_EXPECT1,
 	TSM_UTF8_EXPECT2,
 	TSM_UTF8_EXPECT3,

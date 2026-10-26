@@ -51,6 +51,7 @@ dcs-sixel 80 24
 apc-kitty-graphics 80 24
 scrollback 20 5
 reset 20 4
+utf8-ill-formed 80 24
 # Images (ADR-103 step 3a), made by tsm-replay's test commands:
 img-print 12 4
 img-sixel-over 12 4

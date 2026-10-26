@@ -1,0 +1,32 @@
+size 80x24
+cursor 13,8
+flags AUTO_WRAP
+palette legacy fg=#e5e5e5 bg=#000000
+changed 1920
+frame-cursor 13,8 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+row 0 |wf é߿ࠀ퟿�𐀀􏿿|
+row 1 |lone �|�|�|�|�|�|��|
+row 2 |trunc �a�a�a�€|
+row 3 |3-8 a���b�c��d|
+row 4 |keep �bold �A �A �é|
+cells 4 6-9 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 bold
+row 5 |overlong ��[7mx ���[6n ����c ��|
+row 6 |surrogate ��� ��� ퟿|
+row 7 |above ���� ���� 􏿿|
+row 8 |c1 bold plain|
+cells 8 3-6 w=1 fg=#e5e5e5 bg=#000000 ul=#e5e5e5 bold
+row 9 ||
+row 10 ||
+row 11 ||
+row 12 ||
+row 13 ||
+row 14 ||
+row 15 ||
+row 16 ||
+row 17 ||
+row 18 ||
+row 19 ||
+row 20 ||
+row 21 ||
+row 22 ||
+row 23 ||
