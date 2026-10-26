@@ -1236,7 +1236,8 @@ void tsm_vte_set_kitty_graphics(struct tsm_vte *vte, bool enable);
 /*
  * Whether the host blinks the cursor in the styles that blink (the default
  * and the odd DECSCUSR styles). DECRQM of mode 12 reports the cursor as
- * blinking only while this is on. On by default. Defined when
+ * blinking only while this is on. On the default style, ?12h and ?12l leave
+ * blinking to this setting. On by default. Defined when
  * tsm_vte_set_cursor_blink exists.
  */
 #define TSM_VTE_SET_CURSOR_BLINK 1

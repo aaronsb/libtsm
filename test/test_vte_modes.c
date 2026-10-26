@@ -978,6 +978,10 @@ START_TEST(test_mode_cursor_blink)
 	input("\e[?12h");
 	assert_cursor_style(TSM_SCREEN_CURSOR_VBAR_BLINK);
 
+	/* an RM under the default style does not carry to the next chosen one */
+	input("\e[2 q\e[?12h\e[0 q\e[?12l\e[2 q");
+	assert_cursor_style(TSM_SCREEN_CURSOR_BLOCK_STEADY);
+
 	/* DECSTR and RIS return the default style, and the host's blink */
 	input("\e[?12l\e[!p");
 	assert_cursor_style(TSM_SCREEN_CURSOR_DEFAULT);

@@ -896,9 +896,10 @@ static void modes_reset(struct tsm_vte *vte, enum mode_reset reset)
 
 /*
  * Reset VTE state
- * This performs a soft reset of the VTE. That is, everything is reset to the
- * same state as when the VTE was created. This does not affect the console,
- * though.
+ * This performs a soft reset of the VTE, as DECSTR and RIS do: everything is
+ * reset to the same state as when the VTE was created. On the screen it
+ * resets the modes, the margins and the tab stops (tsm_screen_reset) and the
+ * cursor style, but leaves the cells and the scrollback.
  */
 SHL_EXPORT
 void tsm_vte_reset(struct tsm_vte *vte)
