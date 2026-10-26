@@ -11,7 +11,7 @@
  * meets the interface in libtsm's terms.
  *
  * Each part needs a declaration in libtsm.h and is left out without it:
- *   --frame                   TSM_SCREEN_FRAME (tsm_screen_frame)
+ *   --frame, damage-exact     TSM_SCREEN_FRAME (tsm_screen_frame)
  *   --draw2                   TSM_SCREEN_CELL_UNDERLINE_COLOR (tsm_screen_draw2)
  *   underline=, ul=, strike   TSM_SCREEN_ATTR_UNDERLINE_STYLE
  *   placement, image lines    TSM_SCREEN_IMAGES (tsm_screen_frame_image)
@@ -35,8 +35,9 @@
  *   host                      tsm_vte_set_image_cb (TSM_VTE_IMAGE_HOST)
  *   sync                      tsm_vte_set_sync (TSM_VTE_SYNC)
  *   sync-frames               tsm_vte_get_sync_frames (TSM_VTE_SYNC)
- *   version                   tsm_vte_set_version (TSM_VTE_XTVERSION)
- *   termcap                   tsm_vte_set_termcap (TSM_VTE_TERMCAP)
+ *   version                   tsm_vte_set_version (TSM_VTE_XTVERSION and
+ *                             TSM_VTE_TERMCAP, the identify feature's pair)
+ *   termcap                   tsm_vte_set_termcap (the same pair)
  *   key                       tsm_vte_handle_keyboard, the modifier bits as
  *                             TSM_*_MASK
  *   mouse                     tsm_vte_handle_mouse, a move with a button held
@@ -54,8 +55,8 @@
  * --draw2 and --frame (libtsm's default elsewhere, the same palette). Where
  * libtsm declares TSM_VTE_IMAGE_HOST, the fixture host is the image hook:
  * the stream goes through tsm_vte_input_bounded, and each request is
- * answered with tsm_vte_image_reply before the rest is fed, the path the C
- * reference's kmscon takes; elsewhere through tsm_vte_input. A request's fields print as the
+ * answered with tsm_vte_image_reply before the rest is fed, the path kmscon
+ * took; elsewhere through tsm_vte_input. A request's fields print as the
  * host: line: ID is the request's id, M its medium, F its flags (inflate,
  * png, exact, discard as TSM_VTE_IMAGE_INFLATE, _PNG, _EXACT, _DISCARD),
  * then offset, read_max, min_bytes, name and data_len; the outcomes are
@@ -79,6 +80,9 @@ void tsm_mode_trace_test(const char *name);
 #endif
 
 #define MAX_CP 32
+/* the largest screen INTERFACE.md takes */
+#define MAX_COLS 2048
+#define MAX_ROWS 1024
 #define INTERFACE_VERSION "1.0"
 
 #ifdef TSM_SCREEN_CELL_UNDERLINE_COLOR
@@ -345,6 +349,23 @@ static unsigned char *read_file(const char *path, size_t *len)
 	return buf;
 }
 
+/* the @len bytes at @s as a decimal number from 0 to @max, with no sign or
+ * leading zero, or -1 */
+static long long decimal(const char *s, size_t len, long long max)
+{
+	long long n = 0;
+	size_t i;
+
+	if (!len || (len > 1 && s[0] == '0'))
+		return -1;
+	for (i = 0; i < len; i++) {
+		if (s[i] < '0' || s[i] > '9' || s[i] - '0' > max || n > (max - (s[i] - '0')) / 10)
+			return -1;
+		n = n * 10 + (s[i] - '0');
+	}
+	return n;
+}
+
 #ifdef TSM_SCREEN_IMAGES
 /* images the test commands made, by the number the stream gives them */
 #define TEST_IMAGES 64
@@ -458,10 +479,8 @@ static const struct test_spec {
 	{ "sync", "sync", { "on" } },
 	{ "sync-frames", "sync", { NULL } },
 #endif
-#ifdef TSM_VTE_XTVERSION
+#if defined(TSM_VTE_XTVERSION) && defined(TSM_VTE_TERMCAP)
 	{ "version", "identify", { "text" } },
-#endif
-#ifdef TSM_VTE_TERMCAP
 	{ "termcap", "identify", { "file" } },
 #endif
 	{ "key", "input", { "sym", "ascii", "unicode", "mods" } },
@@ -537,6 +556,8 @@ static uint64_t parse_num(const struct test_cmd *c, const char *key, const char 
 
 	if (!*v)
 		test_fail(c, key, "empty");
+	if (!hex && v[0] == '0' && v[1])
+		test_fail(c, key, "has a leading zero");
 	for (; *v; v++) {
 		d = hex_digit(*v);
 		if (d < 0 || (unsigned int)d >= base)
@@ -758,7 +779,7 @@ static void test_paste_cmd(struct tsm_vte *vte, const struct test_cmd *c)
 	tsm_vte_paste(vte, data);
 }
 
-#ifdef TSM_VTE_TERMCAP
+#if defined(TSM_VTE_XTVERSION) && defined(TSM_VTE_TERMCAP)
 /* a termcap fixture: one capability a line, NAME or NAME=HEX */
 static int test_termcap_cmd(struct tsm_vte *vte, const struct test_cmd *c)
 {
@@ -835,6 +856,17 @@ static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
 		fprintf(stderr, "tsm-replay: test command over %d bytes\n", TEST_CMD_MAX);
 		exit(2);
 	}
+	for (i = 0; i < len; i++) {
+		if (cmd[i] < 0x20 || cmd[i] > 0x7e) {
+			fprintf(stderr, "tsm-replay: test command holds byte 0x%02x\n",
+				(unsigned char)cmd[i]);
+			exit(2);
+		}
+	}
+	if (len && cmd[0] == ';') {
+		fprintf(stderr, "tsm-replay: test command starts with ;\n");
+		exit(2);
+	}
 	memcpy(buf, cmd, len);
 	buf[len] = 0;
 	name = strtok_r(buf, ";", &save);
@@ -856,6 +888,8 @@ static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
 		if (!eq)
 			test_fail(&c, tok, "has no value");
 		*eq = 0;
+		if (strchr(eq + 1, '='))
+			test_fail(&c, tok, "has = in its value");
 		for (k = 0; k < TEST_KEYS && c.spec->keys[k] && strcmp(c.spec->keys[k], tok); k++)
 			;
 		if (k == TEST_KEYS || !c.spec->keys[k])
@@ -875,8 +909,12 @@ static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
 	} else if (!strcmp(name, "sb-max")) {
 		tsm_screen_set_max_sb(screen, test_uint(&c, "n", -1, UINT32_MAX));
 	} else if (!strcmp(name, "resize")) {
-		r = tsm_screen_resize(screen, test_uint(&c, "c", -1, UINT32_MAX),
-				      test_uint(&c, "r", -1, UINT32_MAX));
+		unsigned int cols = test_uint(&c, "c", -1, MAX_COLS);
+		unsigned int rows = test_uint(&c, "r", -1, MAX_ROWS);
+
+		if (!cols || !rows)
+			test_fail(&c, cols ? "r" : "c", "out of range");
+		r = tsm_screen_resize(screen, cols, rows);
 	} else if (!strcmp(name, "sb-up")) {
 		tsm_screen_sb_up(screen, test_uint(&c, "n", 1, UINT32_MAX));
 	} else if (!strcmp(name, "sb-down")) {
@@ -912,7 +950,7 @@ static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
 		printf("test sync-frames %llu\n",
 		       (unsigned long long)tsm_vte_get_sync_frames(vte));
 #endif
-#ifdef TSM_VTE_XTVERSION
+#if defined(TSM_VTE_XTVERSION) && defined(TSM_VTE_TERMCAP)
 	} else if (!strcmp(name, "version")) {
 		const char *text = test_str(&c, "text");
 
@@ -922,8 +960,6 @@ static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
 			if (text[i] < 0x20 || text[i] > 0x7e)
 				test_fail(&c, "text", "holds a byte outside 0x20-0x7e");
 		r = tsm_vte_set_version(vte, text);
-#endif
-#ifdef TSM_VTE_TERMCAP
 	} else if (!strcmp(name, "termcap")) {
 		r = test_termcap_cmd(vte, &c);
 #endif
@@ -944,8 +980,11 @@ static void test_command(struct tsm_screen *screen, struct tsm_vte *vte,
 			"solarized-white", "soft-black", "base16-dark", "base16-light", NULL,
 		};
 
-		palette = palettes[test_name(&c, "name", palettes)];
-		r = tsm_vte_set_palette(vte, palette);
+		const char *chosen = palettes[test_name(&c, "name", palettes)];
+
+		r = tsm_vte_set_palette(vte, chosen);
+		if (r >= 0)
+			palette = chosen;
 #endif
 #ifdef TSM_SCREEN_FRAME_SINCE
 	} else if (!strcmp(name, "frame-since")) {
@@ -1008,6 +1047,9 @@ static const char *const features[] = {
 #endif
 #ifdef TSM_SCREEN_FRAME_SINCE
 	"query",
+#endif
+#ifdef TSM_SCREEN_FRAME
+	"damage-exact",
 #endif
 };
 
@@ -1310,10 +1352,27 @@ static void vte_feed(struct tsm_vte *vte, const char *data, size_t len)
  * Feeds @len bytes to the vte. Where the fork has images, a test command in
  * them runs in its place; a command must lie wholly between two checkpoints.
  */
+#ifdef TSM_SCREEN_IMAGES
+static const char intro[] = "\x1b_tsm-test;";
+
+/* exits 2 when the cut at @cut falls inside a test command's introducer */
+static void check_cut(const char *data, size_t len, size_t cut)
+{
+	size_t k;
+
+	for (k = 1; k < sizeof(intro) - 1 && k <= cut; k++) {
+		if (cut - k + sizeof(intro) - 1 <= len &&
+		    !memcmp(data + cut - k, intro, sizeof(intro) - 1)) {
+			fprintf(stderr, "tsm-replay: cut %zu inside a test command\n", cut);
+			exit(2);
+		}
+	}
+}
+#endif
+
 static void feed(struct tsm_screen *screen, struct tsm_vte *vte, const char *data, size_t len)
 {
 #ifdef TSM_SCREEN_IMAGES
-	static const char intro[] = "\x1b_tsm-test;";
 	const char *start, *end;
 
 	while ((start = find_bytes(data, len, intro, sizeof(intro) - 1))) {
@@ -1620,20 +1679,22 @@ static void dump(struct tsm_screen *screen, struct tsm_vte *vte, struct grid *gr
 #endif
 }
 
+/* CUTS: one offset a line, each a decimal number from the last up to @len */
 static size_t *read_cuts(const char *path, size_t len, size_t *count)
 {
-	FILE *f = fopen(path, "r");
-	size_t *cuts = NULL, cap = 0, prev = 0;
-	unsigned long long v;
+	size_t flen, cap = 0, prev = 0, at, n;
+	char *buf = (char *)read_file(path, &flen), *nl;
+	size_t *cuts = NULL;
+	long long v;
 
-	if (!f) {
-		fprintf(stderr, "tsm-replay: %s: %s\n", path, strerror(errno));
-		exit(2);
-	}
 	*count = 0;
-	while (fscanf(f, "%llu", &v) == 1) {
-		if (v < prev || v > len) {
-			fprintf(stderr, "tsm-replay: %s: offset %llu out of order or past end\n", path, v);
+	for (at = 0; at < flen; at += n + 1) {
+		nl = memchr(buf + at, '\n', flen - at);
+		n = nl ? (size_t)(nl - (buf + at)) : flen - at;
+		v = decimal(buf + at, n, len);
+		if (v < 0 || (size_t)v < prev) {
+			fprintf(stderr, "tsm-replay: %s: line %zu is not an offset from %zu to %zu\n",
+				path, *count + 1, prev, len);
 			exit(2);
 		}
 		if (*count == cap) {
@@ -1646,7 +1707,7 @@ static size_t *read_cuts(const char *path, size_t len, size_t *count)
 		}
 		cuts[(*count)++] = prev = (size_t)v;
 	}
-	fclose(f);
+	free(buf);
 	return cuts;
 }
 
@@ -1659,6 +1720,7 @@ int main(int argc, char **argv)
 	unsigned char *data;
 	size_t len, pos = 0, ncuts = 0, i;
 	size_t *cuts = NULL;
+	long long cols, rows;
 	enum view view = VIEW_DRAW;
 
 #ifdef TSM_MODE_TRACE
@@ -1698,14 +1760,20 @@ int main(int argc, char **argv)
 				"       tsm-replay --describe\n");
 		return 2;
 	}
-	grid.cols = (unsigned int)strtoul(argv[1], NULL, 10);
-	grid.rows = (unsigned int)strtoul(argv[2], NULL, 10);
-	if (!grid.cols || !grid.rows || strspn(argv[1], "0123456789") != strlen(argv[1]) ||
-	    strspn(argv[2], "0123456789") != strlen(argv[2])) {
-		fprintf(stderr, "tsm-replay: bad size %sx%s\n", argv[1], argv[2]);
+	cols = decimal(argv[1], strlen(argv[1]), MAX_COLS);
+	rows = decimal(argv[2], strlen(argv[2]), MAX_ROWS);
+	if (cols < 1 || rows < 1) {
+		fprintf(stderr, "tsm-replay: size %sx%s is not 1-%d by 1-%d\n", argv[1], argv[2],
+			MAX_COLS, MAX_ROWS);
 		return 2;
 	}
+	grid.cols = cols;
+	grid.rows = rows;
 	grid.cells = calloc((size_t)grid.cols * grid.rows, sizeof(*grid.cells));
+	if (!grid.cells) {
+		perror("calloc");
+		return 2;
+	}
 	data = read_file(argv[3], &len);
 
 	if (tsm_screen_new(&screen, NULL, NULL) < 0 ||
@@ -1755,6 +1823,9 @@ int main(int argc, char **argv)
 		cuts = read_cuts(argv[4], len, &ncuts);
 
 	for (i = 0; i < ncuts; i++) {
+#ifdef TSM_SCREEN_IMAGES
+		check_cut((const char *)data, len, cuts[i]);
+#endif
 		feed(screen, vte, (const char *)data + pos, cuts[i] - pos);
 		pos = cuts[i];
 		printf("checkpoint %zu\n", pos);

@@ -2,7 +2,7 @@
 
 Interface 1.0. This document is the contract a replay implementation meets, and the implementation it is written for is vtium's. A replay implementation plays a byte stream, as a program wrote it to a terminal, into a terminal implementation and prints the screen state that results as text. The goldens in `golden/`, `golden-draw2/` and `golden-frame/` are that text for the streams in `cases/`, made by `tsm-replay`, the reference implementation in the frozen C code, whose header holds the C notes. This document defines the command line, the input, the test commands, the reference host and the output by what they do. The goldens define the terminal's behaviour.
 
-The fenced blocks named `describe`, `grammar`, `palettes`, `example` and `output` are machine-readable. The meson test `replay-interface` (`interface-check.py`) checks the reference implementation's `--describe` against the describe block, every golden against the grammar, the palettes against the frame view, and every example against its output.
+The fenced blocks named `describe`, `grammar`, `palettes`, `example` and `output` are machine-readable. The meson test `replay-interface` (`interface-check.py`) checks the reference implementation's `--describe` against the describe block, every golden against the grammar and the numbering rules, the palettes against the frame view, every example against its output, and the exit status of malformed and edge inputs. It also checks itself: the grammar must reject a fixed set of bad outputs on every run.
 
 ## Command line
 
@@ -11,33 +11,33 @@ IMPL [--draw2 | --frame] COLS ROWS FILE [CUTS]
 IMPL --describe
 ```
 
-The first form replays FILE into a screen of COLS columns and ROWS rows, both positive decimal numbers, and prints the screen view, or the draw2 or frame view the flag names. The second prints what the implementation offers (Versioning and features).
+The first form replays FILE into a screen of COLS columns, 1 to 2048, and ROWS rows, 1 to 1024, each a decimal number with no sign or leading zero, and prints the screen view, or the draw2 or frame view the flag names. The second prints what the implementation offers (Versioning and features).
 
 | Exit | Meaning |
 |---|---|
 | 0 | The output is the result. |
-| 2 | Usage: a wrong argument, a file that does not read, CUTS out of order or past the end of FILE, a view or test command the implementation lacks, or a malformed test command. |
-| 3 | The implementation cannot print what it holds: a cell of more than 32 codepoints in the screen view, input that stops with no host request out, or another internal failure. |
+| 2 | Usage: a wrong argument, a size out of bounds, a file that does not read, a CUTS line that is not an offset, CUTS out of order or past the end of FILE, a cut inside a test command, a view or test command the implementation lacks, or a malformed test command. |
+| 3 | The implementation cannot print what it holds: a cell it cannot hold (the reference's bound is 32 codepoints, in the screen view), input that stops with no host request out, or another internal failure. |
 
 Output goes to standard output. Standard error is free-form.
 
 ## Input
 
-FILE is fed to the terminal byte by byte, in order. CUTS, when given, holds decimal byte offsets into FILE, one per line, each at least the one before it and at most FILE's length. The implementation prints a block at each offset and at the end of FILE, each headed by a `checkpoint` line. Without CUTS it prints one block, with no `checkpoint` line.
+FILE is fed to the terminal byte by byte, in order. CUTS, when given, holds byte offsets into FILE, one per line, each a decimal number with no sign or leading zero and nothing else on the line, at least the one before it and at most FILE's length. The implementation prints a block at each offset and at the end of FILE, each headed by a `checkpoint` line. Without CUTS it prints one block, with no `checkpoint` line.
 
 The fixture directory is FILE with a final `.bin` removed and `.files` appended. It holds the files that the `termcap` command and the fixture host read.
 
 ### Test commands
 
-A test command is the bytes `ESC _ tsm-test;` (1b 5f, then the ASCII text `tsm-test;`), the command's text, and `ESC \` (1b 5c). The implementation runs the command at the point the stream reaches it, in place of feeding those bytes to the terminal. A command lies wholly between two cut offsets, and one without its closing `ESC \` exits 2.
+A test command is the bytes `ESC _ tsm-test;` (1b 5f, then the ASCII text `tsm-test;`), the command's text, and `ESC \` (1b 5c). The implementation runs the command at the point the stream reaches it, in place of feeding those bytes to the terminal. A cut inside a test command, its introducer included, exits 2, and so does a command without its closing `ESC \`.
 
-The text is at most 511 bytes: the command's name, then fields `KEY=VALUE`, all separated by `;`. Empty fields are ignored, so a value holds no `;`. An unknown command, a key the command does not take, a key given twice, a missing required key, a field with no `=` and a value outside its range each exit 2.
+The text is at most 511 bytes, each 0x20 to 0x7e: the command's name, then fields `KEY=VALUE`, all separated by `;`. The text starts with the name, and empty fields after it are ignored. A value holds no `;` and no `=`. A byte outside 0x20 to 0x7e, a leading `;`, an unknown command, a key the command does not take, a key given twice, a missing required key, a field with no `=`, an `=` inside a value and a value outside its range each exit 2.
 
 Values take these forms:
 
 | Form | Syntax |
 |---|---|
-| decimal | digits `0-9`, within the range the command gives |
+| decimal | digits `0-9` with no sign or leading zero, within the range the command gives |
 | signed | an optional `-`, then digits, from -2147483648 to 2147483647 |
 | hex | digits `0-9`, `a-f`, `A-F`, within the range the command gives |
 | flag | `0` or `1` |
@@ -52,7 +52,7 @@ Every implementation of interface 1 has the commands with no feature. A command'
 
 | Command | Keys | Feature | What it does |
 |---|---|---|---|
-| `resize` | `c`, `r`: decimal, 0 to 4294967295 | | Resizes the screen to `c` columns and `r` rows, as a host does when its window changes. |
+| `resize` | `c`: decimal, 1 to 2048; `r`: decimal, 1 to 1024 | | Resizes the screen to `c` columns and `r` rows, as a host does when its window changes. |
 | `sb-max` | `n`: decimal, 0 to 4294967295 | | Sets the most lines the scrollback holds. |
 | `sb-up` | `n`: decimal, 0 to 4294967295, default 1 | | Scrolls the view `n` lines up into the scrollback. |
 | `sb-down` | `n`: decimal, 0 to 4294967295, default 1 | | Scrolls the view `n` lines back down. |
@@ -143,7 +143,7 @@ A block is the screen at one point. Every view starts it with `size`, `cursor` a
 - draw2: `palette`, then for each row a `row` line and its `cells` lines; then `placement` and `image` lines.
 - frame: `palette`, `changed`, `frame-cursor`, then for each row a `row` line and its `cells` lines; then `placement` lines, each with its changed flag, and `image` lines.
 
-Rows are numbered from 0 at the top of the view and printed in order: in the draw2 and frame views as many as the screen has, and in the screen view the ROWS rows of the command line, each COLS cells wide, whatever size a `resize` has given the screen since, so that a cell past COLS is not printed there and a row past the screen's height is empty. A run is a maximal span of consecutive cells A to B on one row whose description is the same, and the view prints the runs that differ from its default cell, left to right. In the screen view a cell's description is its attributes, and a cell with no character drawn has none. In the draw2 and frame views it is everything the `cells` line prints. Placements are numbered from 0 in draw order and images from 0 in the order placements first show them, each image listed once.
+Rows are numbered from 0 at the top of the view and printed in order, as many as the screen has. In the screen view the C reference printed the ROWS rows of the command line instead, each COLS cells wide, whatever size a `resize` had given the screen since, so that a cell past COLS was not printed there and a row past the screen's height was empty; `img-resize` and `img-resize-shrink` record it, and an implementation may list it as a departure. A run is a maximal span of consecutive cells A to B on one row whose description is the same, and the view prints the runs that differ from its default cell, left to right. In the screen view a cell's description is its attributes: a cell outside the screen has none, and an empty cell keeps the attributes it was erased with. In the draw2 and frame views it is everything the `cells` line prints. Placements are numbered from 0 in draw order and images from 0 in the order placements first show them, each image listed once.
 
 ### Lines
 
@@ -151,13 +151,13 @@ Rows are numbered from 0 at the top of the view and printed in order: in the dra
 
 `row N |TEXT|` is a row's text. In the screen and frame views each cell prints all the codepoints it holds, an empty cell prints a space, and the cell after a wide character prints nothing. In the draw2 view each cell prints one codepoint: the first of its cluster, or a space for an empty cell and for the trailing half of a wide character. Each view trims the cells at the end of the row that hold nothing; draw2 and frame also trim spaces there.
 
-`attr N A-B KEY...` is a run of the screen view. Its keys come in this order, each only when it differs from the default: `fg=` and `bg=` with a colour code, `bold`, `italic`, `underline` or `underline=STYLE` (`double`, `curly`, `dotted` or `dashed`), `ul=` (the underline colour set by SGR 58) with a colour code, `inverse`, `protect`, `blink`, `dim`, `strike`. A colour code is a decimal palette index, 0 to 7 for SGR 30 to 37 and 8 to 15 for SGR 90 to 97, or `#rrggbb` in lowercase for every other colour.
+`attr N A-B KEY...` is a run of the screen view. Its keys come in this order, each only when it differs from the default: `fg=` and `bg=` with a colour code, `bold`, `italic`, `underline` or `underline=STYLE` (`double`, `curly`, `dotted` or `dashed`), `ul=` (the underline colour set by SGR 58) with a colour code, `inverse`, `protect`, `blink`, `dim`, `strike`. A colour code, for `fg=`, `bg=` and `ul=` alike, is the palette index 0 to 15 for a colour chosen by an index below 16 (SGR 30 to 37, 40 to 47, 90 to 97 or 100 to 107, or 38, 48 or 58 with 5 and an index below 16), and `#rrggbb` in lowercase for every other colour.
 
 `palette NAME fg=#rrggbb bg=#rrggbb` names the palette in force and its default colours. Every colour of the draw2 and frame views is `#rrggbb` in lowercase, resolved through that palette: indexes 0 to 15 and the defaults from the palettes block, 16 to 231 the 6x6x6 cube with levels 0, 95, 135, 175, 215 and 255, and 232 to 255 the grey ramp 8, 18, ..., 238. The goldens judge how bold, dim and inverse change the colours.
 
 `cells N A-B fg= bg= ul=[ ulset] FLAG...` is a run of the draw2 view: its colours after the palette, reverse video, dim and the underline colour are applied, `ulset` when SGR 58 set the underline colour, and its flags in the order `bold`, `italic`, `underline`, `blink`. The default cell has the default colours, an underline colour equal to the foreground, and no flag.
 
-`changed N` is the number of cells that changed since the frame view's previous block; the first block counts every cell. `frame-cursor X,Y STYLE visible|hidden[ CELL]` is where the cursor draws, its style (`default`, `block-blink`, `block-steady`, `underline-blink`, `underline-steady`, `bar-blink` or `bar-steady`) and, when visible, the cell as the cursor draws it.
+`changed N` is the number of cells the frame flags as changed since the view's previous block, by the C reference's age rule: a cell changes when it is written or erased, or when a whole-screen redraw such as a scroll, a resize or a palette change covers it, and the first block counts every cell. It is informative (Comparing with the goldens), as is a placement's `changed` flag. `frame-cursor X,Y STYLE visible|hidden[ CELL]` is where the cursor draws, its style (`default`, `block-blink`, `block-steady`, `underline-blink`, `underline-steady`, `bar-blink` or `bar-steady`) and, when visible, the cell as the cursor draws it.
 
 `cells N A-B CELL` is a run of the frame view, and CELL is `w=W fg= bg= ul=` then its keys in the order `ulset`, `underline=STYLE` (`single`, `double`, `curly`, `dotted` or `dashed`), `bold`, `italic`, `dim`, `blink`, `inverse`, `protect`, `strike`. W is 1 or 2, and 0 for the trailing half of a wide character. The default cell has width 1, the default colours, an underline colour equal to the foreground, and no key.
 
@@ -166,6 +166,10 @@ Rows are numbered from 0 at the top of the view and printed in order: in the dra
 `image M WxH digest HEX` is an image's size and the 32-bit FNV-1a hash (offset basis 2166136261, prime 16777619) of its pixels, rows top to bottom, each pixel as the four bytes A, R, G, B of its premultiplied colour, in eight lowercase hex digits.
 
 `checkpoint N` heads the block printed at offset N. `test ...` lines are under Test commands.
+
+### Comparing with the goldens
+
+A runner compares an implementation's output with a golden byte for byte. A `changed N` line and a placement's ` changed` flag follow the C reference's age rule, which another implementation may draw differently and still draw correctly, so unless both the implementation and the reference declare the feature `damage-exact`, the runner masks those lines and flags on both sides. The reference declares it.
 
 ### Grammar
 
@@ -237,7 +241,7 @@ base16-dark 000000 ab4642 a1b56c f7ca88 7cafc2 ba8baf 86c1b9 aaaaaa 555555 ab464
 base16-light 000000 ab4642 a1b56c f7ca88 7cafc2 ba8baf 86c1b9 aaaaaa 555555 ab4642 a1b56c f7ca88 7cafc2 ba8baf 86c1b9 ffffff 181818 d8d8d8
 ```
 
-Choosing a palette erases the screen and resets the current attributes (`host-palette`).
+The C reference erased the screen and reset the current attributes when a palette was chosen; `host-palette` records it, and an implementation may list it as a departure.
 
 ### Reserved keys
 
@@ -251,7 +255,7 @@ These keys belong to features interface 1 lacks. No implementation of interface 
 
 ## Versioning and features
 
-`--describe` prints `interface MAJOR.MINOR`, then a `view NAME` line for each view, a `feature NAME` line for each feature, and a `command NAME` line for each command, followed by the command's feature when it has one. An implementation with every feature prints:
+`--describe` prints `interface MAJOR.MINOR`, then a `view NAME` line for each view, a `feature NAME` line for each feature, and a `command NAME` line for each command, followed by the command's feature when it has one, in the order shown below, which is part of the contract. An implementation with every feature prints:
 
 ```describe
 interface 1.0
@@ -271,6 +275,7 @@ feature input
 feature focus
 feature palette
 feature query
+feature damage-exact
 command resize
 command sb-max
 command sb-up
@@ -312,8 +317,9 @@ command frame-since query
 | `focus` | `focus`. |
 | `palette` | `palette`. |
 | `query` | `frame-since`. |
+| `damage-exact` | `changed N` lines and placement `changed` flags follow the C reference's age rule, so a runner compares them. An implementation may decline it. |
 
-Every implementation owes the screen and frame views. The draw2 view is optional, and its goldens retire with it.
+Interface 1 makes every feature mandatory except `view-draw2`, whose goldens retire with the draw2 view, `damage-exact`, and the image features `images`, `sixel`, `kitty-graphics` and `image-host`, which an implementation built with images owes.
 
 A change that adds a command, a key, a feature, or a line that only a new command or feature prints raises MINOR, and every existing golden stays as it is. A change to an existing line raises MAJOR, and the goldens re-made for it land in a commit of their own. A runner refuses an implementation of another MAJOR. A probe that needs a feature the implementation does not declare fails as absent.
 
@@ -325,6 +331,7 @@ The screen view: attributes in runs, a wide character, and a reply.
 
 ```example screen
 size 12 3
+needs attrs-extended
 send "\e[1;31mred\e[0m \e[4:3;58:2::0:128:255mwavy\e[0m\r\n中x\e[6n"
 ```
 
@@ -376,6 +383,7 @@ The frame view: a reverse-video cell, a wide character and its trailing half, an
 ```example frame
 size 6 2
 view frame
+needs view-frame
 send "\e[7mx\e[0m中e\xcc\x81"
 ```
 
@@ -417,7 +425,7 @@ A kitty image of one cell, placed by test commands.
 ```example image
 size 4 1
 view frame
-needs images
+needs images view-frame
 cmd image;n=1;w=8;h=16;kitty=1;fill=ff0000ff
 cmd place;img=1;col=1;row=0
 ```
