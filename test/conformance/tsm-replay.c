@@ -82,6 +82,9 @@
  *                              or kitty; changed only in the --frame view)
  *   image M WxH digest HEX    (FNV-1a of the pixels, each as A, R, G, B)
  *
+ * Against a libtsm that declares TSM_VTE_XTVERSION, XTVERSION replies
+ * "tsm-replay", whatever libtsm's version.
+ *
  * Against a libtsm that declares TSM_VTE_SIXEL, sixel is on, so a stream's
  * sixel strings make placements and DA1 replies with attribute 4. Against
  * one that declares TSM_VTE_KITTY_GRAPHICS, kitty graphics are on too.
@@ -1274,6 +1277,10 @@ int main(int argc, char **argv)
 #ifdef TSM_VTE_SYNC
 	/* a host that presents by mode 2026 */
 	tsm_vte_set_sync(vte, true);
+#endif
+#ifdef TSM_VTE_XTVERSION
+	/* a fixed XTVERSION reply, so no golden carries libtsm's version */
+	tsm_vte_set_version(vte, "tsm-replay");
 #endif
 #ifdef TSM_VTE_IMAGE_HOST
 	/* the fixtures beside the stream: cases/<case>.files/ */

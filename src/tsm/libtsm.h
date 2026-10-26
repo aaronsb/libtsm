@@ -1478,6 +1478,73 @@ void tsm_vte_paste(struct tsm_vte *vte, const char *data);
  */
 #define TSM_VTE_HANDLE_FOCUS 1
 bool tsm_vte_handle_focus(struct tsm_vte *vte, bool focused);
+
+/*
+ * XTVERSION (xterm ctlseqs): a program sends CSI > q or CSI > 0 q and libtsm
+ * replies DCS > | text ST, the terminal's name and version. Defined when
+ * tsm_vte_set_version exists.
+ *
+ * tsm_vte_set_version copies @str as the text: at most TSM_VTE_VERSION_MAX
+ * bytes, each printable ASCII (0x20 to 0x7e), as xterm's "XTerm(411)" is. An
+ * empty string is allowed. NULL restores the default, "libtsm(VERSION)" with
+ * libtsm's own version. The text survives RIS and DECSTR.
+ *
+ * @retval 0 on success.
+ * @retval -EINVAL if vte is NULL, or @str is longer than TSM_VTE_VERSION_MAX
+ * or holds a byte outside 0x20 to 0x7e; the text in force stays.
+ */
+#define TSM_VTE_XTVERSION 1
+#define TSM_VTE_VERSION_MAX 64
+int tsm_vte_set_version(struct tsm_vte *vte, const char *str);
+
+/*
+ * XTGETTCAP (xterm ctlseqs): a program sends DCS + q names ST to read
+ * capabilities of the terminal description, each name hex encoded (two
+ * digits a byte), several separated by ';'. Programs use it to learn TN,
+ * Co, RGB and the like when the remote terminfo database lacks the
+ * terminal. Defined when tsm_vte_set_termcap exists, in every build.
+ *
+ * libtsm answers from a table the host gives it, which it copies. Without
+ * one, every name is unknown. Each entry names a capability (1 to
+ * TSM_VTE_TERMCAP_NAME_MAX bytes of printable ASCII other than space,
+ * 0x21-0x7e) and gives its value: the string capability as tigetstr()
+ * returns it, with terminfo's source escapes (\E, ^X, \n, octal) already
+ * decoded to their bytes and a parameterised string's % sequences left as
+ * they are, e.g. "\033[%i%p1%d;%p2%dH" for cup; a numeric capability as
+ * decimal text, "256" for Co; NULL for a boolean. TN is the terminal's
+ * name, as xterm reports it. A value is at most TSM_VTE_TERMCAP_VALUE_MAX
+ * bytes and holds no NUL, and a table at most TSM_VTE_TERMCAP_MAX entries,
+ * no two with one name. NULL with @n 0 clears the table. The table
+ * survives RIS and DECSTR.
+ *
+ * The reply is xterm's: one DCS 1 + r name=value;name=value ST for the
+ * request, each name as the program spelled it and each value hex encoded
+ * in upper case; a boolean is its name alone, with no '='. A name the table
+ * lacks, or one that is not hex for such a name, ends the list after the ';'
+ * before it; as the first name, the reply is DCS 0 + r ST, the name not
+ * repeated. At most 16 names are answered, the reply is at most 4096 bytes,
+ * and a payload over 1039 bytes (16 hex names of TSM_VTE_TERMCAP_NAME_MAX
+ * bytes and their separators) is answered DCS 0 + r ST. CAN, SUB, or ESC
+ * not followed by '\', drop the request with no reply. DCS + q with a
+ * parameter gets no reply, as in xterm.
+ *
+ * @retval 0 on success.
+ * @retval -EINVAL if vte is NULL, @caps is NULL with @n not 0, or an entry
+ * is outside the bounds above; the table in force stays.
+ * @retval -ENOMEM if the copy cannot be allocated; the table in force stays.
+ */
+#define TSM_VTE_TERMCAP 1
+#define TSM_VTE_TERMCAP_MAX 1024
+#define TSM_VTE_TERMCAP_NAME_MAX 32
+#define TSM_VTE_TERMCAP_VALUE_MAX 256
+
+struct tsm_vte_termcap {
+	const char *name;
+	const char *value;
+};
+
+int tsm_vte_set_termcap(struct tsm_vte *vte, const struct tsm_vte_termcap *caps,
+			size_t n);
 /** @} */
 
 #ifdef __cplusplus

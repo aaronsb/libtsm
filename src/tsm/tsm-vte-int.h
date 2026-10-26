@@ -30,6 +30,16 @@
 /* max length of an OSC code */
 #define OSC_MAX_LEN 128
 
+/* the names one XTGETTCAP request is answered for, and the max length of
+ * its payload: that many names of TSM_VTE_TERMCAP_NAME_MAX bytes, hex
+ * encoded, and the ';' between each two (1039 bytes) */
+#define XTGETTCAP_NAMES 16
+#define XTGETTCAP_MAX_LEN \
+	(XTGETTCAP_NAMES * (2 * TSM_VTE_TERMCAP_NAME_MAX + 1) - 1)
+
+/* an entry of the host's XTGETTCAP table (tsm-vte.c) */
+struct vte_termcap;
+
 struct vte_saved_state {
 	unsigned int cursor_x;
 	unsigned int cursor_y;
@@ -57,6 +67,10 @@ struct tsm_vte {
 	unsigned long parse_cnt;
 
 	unsigned int state;
+	/* the DCS string in progress: enum dcs_kind in tsm-vte.c */
+	unsigned int dcs;
+	/* an ESC ended the string, which is ST only if '\' comes next */
+	bool dcs_esc;
 	unsigned int csi_argc;
 	int csi_argv[CSI_ARG_MAX];
 	/* Sub-parameters: "4:3" is csi_argv 4 with csi_subargc 1 and
@@ -94,6 +108,16 @@ struct tsm_vte {
 	tsm_vte_led_cb led_cb;
 	void *led_data;
 	unsigned int led_state;
+
+	/* XTVERSION's text, the host's or the default */
+	char version[TSM_VTE_VERSION_MAX + 1];
+	/* XTGETTCAP: the host's table, sorted by name, and the request in
+	 * progress, whose payload past XTGETTCAP_MAX_LEN sets tcap_over */
+	struct vte_termcap *termcap;
+	size_t termcap_n;
+	char tcap_buf[XTGETTCAP_MAX_LEN];
+	size_t tcap_len;
+	bool tcap_over;
 
 	uint8_t (*custom_palette_storage)[3];
 	uint8_t (*palette)[3];
@@ -162,7 +186,8 @@ void vte_modes_reset_hard(struct tsm_vte *vte);
  * vte_image_reset is RIS for the glue, and vte_image_cancel drops a string in
  * progress when the vte resets. vte_sixel_on says whether sixel is on, turned
  * on and with a budget (DA1, XTSMGRAPHICS and the HOST_SIXEL modes read it).
- * The DCS and APC actions feed sixel and kitty commands, vte_xtsmgraphics
+ * The DCS actions take a DCS q, the only DCS tsm-vte.c routes here, and
+ * feed it to sixel; the APC actions feed kitty commands. vte_xtsmgraphics
  * answers XTSMGRAPHICS, and vte_sixel_run and vte_kitty_run take a run of
  * payload bytes in DCS passthrough or an APC, returning 0 when they take
  * none. vte_image_paused is true while a kitty request waits for the host's

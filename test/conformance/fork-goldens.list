@@ -41,7 +41,7 @@ vs16-insert-mode            # VS16 widening in insert mode shifts the line
 insert-wide-one-column      # insert mode with wide cells on a one-column screen
 colour-resolve              # colours, dim and reverse with underline colours (ADR-102 step 2)
 wide-chars                  # a wide character with one column left wraps; it is not cut at the margin
-prog-tmux                   # cells tmux's status line erases take its background colour only, not its foreground; DECRQM answers its 2026 query
+prog-tmux                   # cells tmux's status line erases take its background colour only, not its foreground; DECRQM answers its 2026 query; XTVERSION answers its CSI > q (#23)
 #
 # ADR-103 step 3c: sixel is on in tsm-replay, so DA1 carries attribute 4,
 # and XTWINOPS 14 and 16 are answered:

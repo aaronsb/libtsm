@@ -244,3 +244,9 @@ LIBTSM_4_8_FORK12 {
 global:
 	tsm_vte_handle_focus;
 } LIBTSM_4_8_FORK11;
+
+LIBTSM_4_8_FORK13 {
+global:
+	tsm_vte_set_version;
+	tsm_vte_set_termcap;
+} LIBTSM_4_8_FORK12;
