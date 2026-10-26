@@ -3,7 +3,8 @@
 # Every step runs in the fork/dev.Dockerfile image as the invoking user, with
 # this checkout bind-mounted, so the host needs only docker and make.
 #
-#   make test          build, then run the unit tests and the conformance replay
+#   make test          build, then run the unit tests and the conformance replay, in a
+#                      build with images and one without (-Dimages=false, ADR-103)
 #   make cases         rewrite the synthetic streams from gen-synthetic.py
 #   make record        re-record the real-program streams (record-programs.py)
 #   make golden        rewrite the goldens from upstream libtsm REF (default v4.8.0)
@@ -53,9 +54,13 @@ image-fuzz: ## Build the dev image with clang, for make fuzz
 	docker build -t $(FUZZ_IMAGE) --target fuzz --build-arg BASE=$(DEV_BASE) --build-arg ARCHIVE_DATE=$(DEV_ARCHIVE) \
 		-f fork/dev.Dockerfile fork
 
+# The build without images (ADR-103 in aaronsb/kmscon, libtsm's images option)
+# goes in $(BUILD)-noimages and runs every suite that needs no decoder.
 .PHONY: test
-test: image ## Build, then run unit tests and the conformance replay
-	$(RUN) sh -c '[ -f $(BUILD)/build.ninja ] || meson setup $(BUILD); meson compile -C $(BUILD) && meson test -C $(BUILD) --print-errorlogs'
+test: image ## Build, then run unit tests and the conformance replay, with images and without
+	$(RUN) sh -c '[ -f $(BUILD)/build.ninja ] || meson setup $(BUILD); meson compile -C $(BUILD) && meson test -C $(BUILD) --print-errorlogs && \
+		{ [ -f $(BUILD)-noimages/build.ninja ] || meson setup $(BUILD)-noimages -Dimages=false; } && \
+		meson compile -C $(BUILD)-noimages && meson test -C $(BUILD)-noimages --print-errorlogs'
 
 .PHONY: asan
 asan: image ## Build with ASan and UBSan into fork/build-asan and run every suite (leak control must fail)

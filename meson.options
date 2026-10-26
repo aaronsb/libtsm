@@ -7,3 +7,8 @@ option('gtktsm', type: 'boolean', value: false,
   description: 'tests using gtktsm')
 option('fuzz', type: 'boolean', value: false,
   description: 'Build libFuzzer targets (clang only; see make fuzz)')
+# Off leaves the sixel decoder and the kitty parser out of the build, which
+# upstream libtsm builds in every build: a departure (ADR-303 in
+# aaronsb/kmscon), recorded in ADR-103's Notes of 2026-10-25
+option('images', type: 'boolean', value: true,
+  description: 'Sixel and the kitty graphics protocol (ADR-103 in aaronsb/kmscon)')

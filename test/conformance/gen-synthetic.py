@@ -405,7 +405,15 @@ def _():
 
 @case("replies")
 def _():
-    return "q" + CSI + "c" + CSI + ">c" + CSI + "5n" + cup(3, 7) + CSI + "6n"
+    return "q" + CSI + ">c" + CSI + "5n" + cup(3, 7) + CSI + "6n"
+
+
+# DA1 on its own: whether it offers sixel (attribute 4) depends on the build,
+# so a build without images leaves this case out (images-cases.list) and
+# still checks the other replies
+@case("replies-da1")
+def _():
+    return "q" + CSI + "c"
 
 
 @case("dec-graphics")

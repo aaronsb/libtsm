@@ -49,6 +49,7 @@ The following options are available:
 | tests | Whether build the test suite | ON |
 | extra_debug | Whether to enable several non-standard debug options | OFF |
 | gtktsm | Whether to build the gtktsm example. This is linux-only as it uses epoll and friends. Therefore, is disabled by default. | OFF |
+| images | Sixel and the kitty graphics protocol. Off leaves their decoders out; the calls stay and do nothing (ADR-103 in aaronsb/kmscon) | ON |
 
 ## Dependencies
 ### Required

@@ -2,7 +2,7 @@
 """Fail when a mode's row names no test, or a test that does not set and reset it.
 
 Usage:
-  modes-tests.py GEN-MODES TEST-DIR TSM-REPLAY CONFORMANCE-DIR BINARY...
+  modes-tests.py [--no-images] GEN-MODES TEST-DIR TSM-REPLAY CONFORMANCE-DIR BINARY...
 
 ADR-201 in aaronsb/kmscon. Reads the mode table through GEN-MODES (its tsv
 output) and checks each row's tests column:
@@ -15,6 +15,11 @@ output) and checks each row's tests column:
   named tier 1 case through TSM-REPLAY runs with TSM_MODE_TRACE set; the test
   build appends each row's set and reset to that file with the running
   test's name.
+
+With --no-images, for a libtsm built with -Dimages=false (ADR-103), the
+rows of sixel's (host sixel) are left out of the last check: their tests are
+sixel's, which that build does not have. The count of rows left out is
+printed.
 
 SPDX-License-Identifier: MIT
 """
@@ -53,17 +58,24 @@ def cases(conf_dir):
 
 
 def main():
-    if len(sys.argv) < 6:
+    args = sys.argv[1:]
+    no_images = bool(args) and args[0] == "--no-images"
+    if no_images:
+        args = args[1:]
+    if len(args) < 5:
         print(__doc__, file=sys.stderr)
         return 2
-    gen, test_dir, replay, conf_dir = sys.argv[1:5]
-    binaries = {Path(b).name: b for b in sys.argv[5:]}
+    gen, test_dir, replay, conf_dir = args[:4]
+    binaries = {Path(b).name: b for b in args[4:]}
 
     rows = table(gen)
     units = unit_tests(test_dir)
     tier1 = cases(conf_dir)
     errors = []
     named = {}
+    sixel_rows = [r for r in rows if no_images and r["host"] == "sixel"]
+    if no_images and not sixel_rows:
+        errors.append("--no-images, but no row's host is sixel")
     for r in rows:
         label = f"{r['kind']} {r['number']} {r['name']} ({r['status']})"
         tests = r["tests"].split()
@@ -73,7 +85,8 @@ def main():
             for t in tests:
                 if t not in units and t not in tier1:
                     errors.append(f"{label} names {t}, which is neither a START_TEST nor a tier 1 case")
-                named.setdefault(t, []).append(r)
+                if r not in sixel_rows:
+                    named.setdefault(t, []).append(r)
 
     with tempfile.TemporaryDirectory() as tmp:
         trace = os.path.join(tmp, "trace.tsv")
@@ -100,7 +113,7 @@ def main():
 
     checked = 0
     for r in rows:
-        if r["status"] != "supported":
+        if r["status"] != "supported" or r in sixel_rows:
             continue
         checked += 1
         tests = r["tests"].split()
@@ -114,7 +127,9 @@ def main():
     if errors:
         return 1
     print(f"modes-tests: {checked} supported rows each set and reset by a test they name; "
-          f"{len(seen)} distinct traced sets and resets")
+          f"{len(seen)} distinct traced sets and resets"
+          + (f"; {len(sixel_rows)} rows of sixel's left out, a build without images"
+             if no_images else ""))
     return 0
 
 

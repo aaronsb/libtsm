@@ -745,26 +745,22 @@ END_TEST
 
 START_TEST(test_mode_decrqm_set)
 {
-	/* each supported row reports set after SM, reset after RM; sixel's
-	 * rows with sixel on, as they report their fixed state while it is off
-	 * (test_mode_decrqm_sixel_off) */
-	tsm_screen_set_image_limit(screen, 1 << 20);
-	tsm_vte_set_sixel(vte, true);
-	input("\e[4;20h\e[?1;5;6;80;2004;8452h");
+	/* each supported row reports set after SM, reset after RM; sixel's rows
+	 * report their fixed state here, with sixel off
+	 * (test_mode_decrqm_sixel_off), and set and reset with it on in
+	 * test_vte_sixel.c (test_sixel_decrqm) */
+	input("\e[4;20h\e[?1;5;6;2004h");
 	assert_decrqm(false, 4, 1);
 	assert_decrqm(false, 20, 1);
 	assert_decrqm(true, 1, 1);
 	assert_decrqm(true, 5, 1);
 	assert_decrqm(true, 6, 1);
-	assert_decrqm(true, 80, 1);
 	assert_decrqm(true, 2004, 1);
-	assert_decrqm(true, 8452, 1);
-	input("\e[12;4;20l\e[?7;25;1070;2027l");
+	input("\e[12;4;20l\e[?7;25;2027l");
 	assert_decrqm(false, 12, 2);
 	assert_decrqm(false, 4, 2);
 	assert_decrqm(true, 7, 2);
 	assert_decrqm(true, 25, 2);
-	assert_decrqm(true, 1070, 2);
 	assert_decrqm(true, 2027, 2);
 
 	/* ignored and refused rows keep their fixed state */
@@ -809,10 +805,11 @@ START_TEST(test_mode_decrqm_set)
 END_TEST
 
 /*
- * Sixel's modes reply their fixed state whichever way sixel is off: not
- * turned on, turned on with no image budget, or turned off again. SM and RM
- * still store them, and the stored state shows once sixel is on (ADR-103,
- * Replies stay truthful).
+ * Sixel's modes reply their fixed state while sixel is off, in every build:
+ * not turned on, or turned on with no image budget, and after an SM or RM,
+ * which they still store (ADR-103, Replies stay truthful). With sixel on,
+ * test_vte_sixel.c (test_sixel_decrqm); in a build without images,
+ * test_vte_image_none.c.
  */
 START_TEST(test_mode_decrqm_sixel_off)
 {
@@ -826,22 +823,6 @@ START_TEST(test_mode_decrqm_sixel_off)
 	assert_decrqm(true, 80, 4);
 	assert_decrqm(true, 1070, 3);
 	assert_decrqm(true, 8452, 4);
-
-	/* on, with a budget: the stored state */
-	tsm_screen_set_image_limit(screen, 1 << 20);
-	assert_decrqm(true, 80, 1);
-	assert_decrqm(true, 1070, 2);
-	assert_decrqm(true, 8452, 1);
-
-	/* off again */
-	tsm_vte_set_sixel(vte, false);
-	assert_decrqm(true, 80, 4);
-	assert_decrqm(true, 1070, 3);
-	assert_decrqm(true, 8452, 4);
-
-	/* 1070's fixed state follows private-color-registers */
-	ck_assert_int_eq(tsm_vte_set_sixel_registers(vte, 0, false), 0);
-	assert_decrqm(true, 1070, 4);
 }
 END_TEST
 

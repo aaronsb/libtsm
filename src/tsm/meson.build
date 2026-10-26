@@ -2,15 +2,22 @@
 
 libtsm_srcs = [
     'tsm-image.c',
-    'tsm-kitty.c',
     'tsm-render.c',
     'tsm-screen.c',
     'tsm-selection.c',
-    'tsm-sixel.c',
     'tsm-unicode.c',
     'tsm-vte-charsets.c',
     'tsm-vte.c',
 ]
+
+# Sixel and the kitty graphics protocol: the decoders and the vte's glue to
+# them, or, with -Dimages=false, glue that has none (ADR-103 in
+# aaronsb/kmscon, libtsm's images option; tsm-vte-int.h)
+if get_option('images')
+    libtsm_srcs += ['tsm-kitty.c', 'tsm-sixel.c', 'tsm-vte-image.c']
+else
+    libtsm_srcs += ['tsm-vte-image-none.c']
+endif
 
 # The fork's ABI differs from upstream's (ADR-102 in aaronsb/kmscon): struct
 # tsm_screen_attr grew from 12 to 16 bytes (fork.1), struct tsm_screen_cell
