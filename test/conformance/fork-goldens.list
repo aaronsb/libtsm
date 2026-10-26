@@ -161,7 +161,7 @@ kit-host-outcomes-nohook # kit-host-outcomes with the host removed
 kit-host-lengths-nohook # kit-host-lengths with the host removed
 #
 # The replay interface (INTERFACE.md): test commands for the host's side,
-# which upstream feeds to its vte, which ignores them.
+# which upstream v4.8.0 fed to its vte, which ignored them.
 input-key           # keys as a host passes them: characters, Ctrl and Alt, editing, function, cursor and keypad keys, LNM, modifyOtherKeys 1 and 2
 input-mouse         # pointer events under X10, 1000, 1002, 1003, SGR and pixel reporting, and with none
 input-paste         # plain and bracketed pastes

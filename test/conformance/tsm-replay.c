@@ -2,12 +2,13 @@
  * tsm-replay - replay a recorded byte stream into libtsm and print the
  * resulting screen state as text.
  *
- * The text is the conformance contract (ADR-301 tier 1 in the kmscon fork).
- * INTERFACE.md, beside this file, defines it in terms any implementation can
- * meet: the command line, the input, the test commands, the reference host
- * and the output. Only the public API is used, so the tool builds against any
- * libtsm, including upstream releases. What follows is how this one meets the
- * interface in libtsm's terms.
+ * The text is the conformance contract (ADR-301 tier 1). INTERFACE.md, beside
+ * this file, defines it as the contract vtium's replay implementation meets:
+ * the command line, the input, the test commands, the reference host and the
+ * output. This file is the reference implementation in the frozen C code, the
+ * source of the goldens. Only the public API is used, so it builds against any
+ * libtsm, including upstream releases. What follows are its C notes: how it
+ * meets the interface in libtsm's terms.
  *
  * Each part needs a declaration in libtsm.h and is left out without it:
  *   --frame                   TSM_SCREEN_FRAME (tsm_screen_frame)
@@ -53,8 +54,8 @@
  * --draw2 and --frame (libtsm's default elsewhere, the same palette). Where
  * libtsm declares TSM_VTE_IMAGE_HOST, the fixture host is the image hook:
  * the stream goes through tsm_vte_input_bounded, and each request is
- * answered with tsm_vte_image_reply before the rest is fed, the path kmscon
- * takes; elsewhere through tsm_vte_input. A request's fields print as the
+ * answered with tsm_vte_image_reply before the rest is fed, the path the C
+ * reference's kmscon takes; elsewhere through tsm_vte_input. A request's fields print as the
  * host: line: ID is the request's id, M its medium, F its flags (inflate,
  * png, exact, discard as TSM_VTE_IMAGE_INFLATE, _PNG, _EXACT, _DISCARD),
  * then offset, read_max, min_bytes, name and data_len; the outcomes are

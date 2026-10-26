@@ -217,9 +217,9 @@ test(
            '--frame'] + no_images_arg,
 )
 
-# The replay interface, so that another implementation is judged by the
-# same goldens: tsm-replay --describe, every golden and the worked examples
-# agree with the spec, exported as replay_spec for the capability probes.
+# The replay interface, the contract vtium's replay implementation meets:
+# the reference implementation's --describe, every golden and the worked
+# examples agree with the spec, exported as replay_spec for the probes.
 replay_spec = files('conformance/INTERFACE.md')
 test(
     'replay-interface',

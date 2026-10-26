@@ -1,8 +1,8 @@
 # The replay interface
 
-Interface 1.0. A replay implementation plays a byte stream, as a program wrote it to a terminal, into a terminal implementation and prints the screen state that results as text. The goldens in `golden/`, `golden-draw2/` and `golden-frame/` are that text for the streams in `cases/`, so every implementation that meets this document is judged by them: vtium through its own replay program, and the C reference through `tsm-replay`, whose header maps each part to the C calls. This document defines the command line, the input, the test commands, the reference host and the output by what they do. The goldens define the terminal's behaviour.
+Interface 1.0. This document is the contract a replay implementation meets, and the implementation it is written for is vtium's. A replay implementation plays a byte stream, as a program wrote it to a terminal, into a terminal implementation and prints the screen state that results as text. The goldens in `golden/`, `golden-draw2/` and `golden-frame/` are that text for the streams in `cases/`, made by `tsm-replay`, the reference implementation in the frozen C code, whose header holds the C notes. This document defines the command line, the input, the test commands, the reference host and the output by what they do. The goldens define the terminal's behaviour.
 
-The fenced blocks named `describe`, `grammar`, `palettes`, `example` and `output` are machine-readable. The meson test `replay-interface` (`interface-check.py`) checks `tsm-replay --describe` against the describe block, every golden against the grammar, the palettes against the frame view, and every example against its output.
+The fenced blocks named `describe`, `grammar`, `palettes`, `example` and `output` are machine-readable. The meson test `replay-interface` (`interface-check.py`) checks the reference implementation's `--describe` against the describe block, every golden against the grammar, the palettes against the frame view, and every example against its output.
 
 ## Command line
 
