@@ -1431,6 +1431,12 @@ void tsm_vte_set_backspace_sends_delete(struct tsm_vte *vte, bool enable);
 bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 			     uint32_t ascii, unsigned int mods,
 			     uint32_t unicode);
+/*
+ * Reports a pointer event at cell @cell_x, @cell_y and pixel @pixel_x,
+ * @pixel_y, each counted from 0 at the top left. The reports count from 1,
+ * as xterm's do: the top left cell, and under mode 1016 the top left pixel,
+ * is 1,1.
+ */
 bool tsm_vte_handle_mouse(struct tsm_vte *vte, unsigned int cell_x,
         unsigned int cell_y, unsigned int pixel_x, unsigned int pixel_y,
         unsigned int button, unsigned int event, unsigned char flags);

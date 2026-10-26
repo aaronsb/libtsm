@@ -295,19 +295,19 @@ START_TEST(test_mouse_pixels)
 	tsm_vte_input(vte, msg, strlen(msg));
 
 	tsm_vte_handle_mouse(vte, 0, 0, 236, 120, 0, TSM_MOUSE_EVENT_MOVED, 0);
-	expected = "\e[<35;236;120M";
+	expected = "\e[<35;237;121M";
 	r = memcmp(&write_buffer, expected, strlen(expected));
 	ck_assert_int_eq(r, 0);
 
 	memset(&write_buffer, 0, sizeof(write_buffer));
 	tsm_vte_handle_mouse(vte, 0, 0, 236, 120, 0, TSM_MOUSE_EVENT_PRESSED, 0);
-	expected = "\e[<0;236;120M";
+	expected = "\e[<0;237;121M";
 	r = memcmp(&write_buffer, expected, strlen(expected));
 	ck_assert_int_eq(r, 0);
 
 	memset(&write_buffer, 0, sizeof(write_buffer));
 	tsm_vte_handle_mouse(vte, 0, 0, 236, 120, 0, TSM_MOUSE_EVENT_RELEASED, 0);
-	expected = "\e[<0;236;120m";
+	expected = "\e[<0;237;121m";
 	r = memcmp(&write_buffer, expected, strlen(expected));
 	ck_assert_int_eq(r, 0);
 }

@@ -4084,8 +4084,9 @@ bool tsm_vte_handle_mouse(struct tsm_vte *vte, unsigned int cell_x,
 			 cell_y + 1, released ? 'm' : 'M');
 		break;
 	case TSM_VTE_MOUSE_MODE_PIXEL:
-		snprintf(buffer, sizeof(buffer), "\e[<%u;%u;%u%c", cb, pixel_x, pixel_y,
-			 released ? 'm' : 'M');
+		/* the top left pixel is 1,1, as xterm sends it (aaronsb/libtsm#67) */
+		snprintf(buffer, sizeof(buffer), "\e[<%u;%u;%u%c", cb, pixel_x + 1,
+			 pixel_y + 1, released ? 'm' : 'M');
 		break;
 	default:
 		/* one byte each, plus 32: a release is button 3, and the cell
