@@ -124,6 +124,18 @@ enum parser_action {
 enum dcs_kind {
 	DCS_IGNORED,		/* consumed with no effect */
 	DCS_IMAGE,		/* sixel, the image glue's */
+	DCS_XTGETTCAP,		/* DCS + q, answered here */
+};
+
+/* the names one XTGETTCAP request is answered for, and its reply's size */
+#define XTGETTCAP_NAMES 16
+#define XTGETTCAP_REPLY_MAX 4096
+
+/* an entry of the host's XTGETTCAP table; value is NULL for a boolean */
+struct vte_termcap {
+	const char *name;
+	const char *value;
+	size_t value_len;
 };
 
 /* XTVERSION's text until the host sets one */
@@ -605,6 +617,7 @@ void tsm_vte_unref(struct tsm_vte *vte)
 
 	llog_debug(vte, "destroying vte object");
 	free(vte->palette_name);
+	free(vte->termcap);
 	/* a picture in progress gives its bytes back to the screen first */
 	vte_image_free(vte);
 	tsm_screen_unref(vte->con);
@@ -673,6 +686,85 @@ int tsm_vte_set_version(struct tsm_vte *vte, const char *str)
 			return -EINVAL;
 
 	memcpy(vte->version, str, len + 1);
+	return 0;
+}
+
+/* a capability name: 1 to TSM_VTE_TERMCAP_NAME_MAX bytes, each 0x21-0x7e */
+static bool termcap_name_ok(const char *name, size_t *len)
+{
+	size_t i;
+
+	*len = strnlen(name, TSM_VTE_TERMCAP_NAME_MAX + 1);
+	if (!*len || *len > TSM_VTE_TERMCAP_NAME_MAX)
+		return false;
+	for (i = 0; i < *len; ++i)
+		if ((unsigned char)name[i] < 0x21 || (unsigned char)name[i] > 0x7e)
+			return false;
+	return true;
+}
+
+static int termcap_cmp(const void *a, const void *b)
+{
+	const struct vte_termcap *x = a, *y = b;
+
+	return strcmp(x->name, y->name);
+}
+
+SHL_EXPORT
+int tsm_vte_set_termcap(struct tsm_vte *vte, const struct tsm_vte_termcap *caps,
+			size_t n)
+{
+	struct vte_termcap *table = NULL;
+	size_t i, size, len;
+	char *p;
+
+	if (!vte || (n && !caps) || n > TSM_VTE_TERMCAP_MAX)
+		return -EINVAL;
+
+	/* one block: the entries, then their strings */
+	size = n * sizeof(*table);
+	for (i = 0; i < n; ++i) {
+		if (!caps[i].name || !termcap_name_ok(caps[i].name, &len))
+			return -EINVAL;
+		size += len + 1;
+		if (caps[i].value) {
+			len = strnlen(caps[i].value, TSM_VTE_TERMCAP_VALUE_MAX + 1);
+			if (len > TSM_VTE_TERMCAP_VALUE_MAX)
+				return -EINVAL;
+			size += len + 1;
+		}
+	}
+
+	if (n) {
+		table = malloc(size);
+		if (!table)
+			return -ENOMEM;
+		p = (char *)(table + n);
+		for (i = 0; i < n; ++i) {
+			len = strlen(caps[i].name) + 1;
+			table[i].name = memcpy(p, caps[i].name, len);
+			p += len;
+			table[i].value = NULL;
+			table[i].value_len = 0;
+			if (caps[i].value) {
+				len = strlen(caps[i].value);
+				table[i].value = memcpy(p, caps[i].value, len + 1);
+				table[i].value_len = len;
+				p += len + 1;
+			}
+		}
+		qsort(table, n, sizeof(*table), termcap_cmp);
+		for (i = 1; i < n; ++i) {
+			if (!strcmp(table[i - 1].name, table[i].name)) {
+				free(table);
+				return -EINVAL;
+			}
+		}
+	}
+
+	free(vte->termcap);
+	vte->termcap = table;
+	vte->termcap_n = n;
 	return 0;
 }
 
@@ -953,6 +1045,7 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	 * upload in progress goes */
 	vte_image_cancel(vte);
 	vte->dcs = DCS_IGNORED;
+	vte->dcs_esc = false;
 	vte->state = STATE_GROUND;
 	vte->gl = &vte->g0;
 	vte->gr = &vte->g1;
@@ -2922,11 +3015,116 @@ static void do_osc_end(struct tsm_vte *vte, uint32_t val) {
 	vte->osc_cb(vte, vte->osc_arg, vte->osc_len, vte->osc_data);
 }
 
+static int hex_digit(char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+
+static int termcap_find(const void *key, const void *entry)
+{
+	const struct vte_termcap *cap = entry;
+
+	return strcmp(key, cap->name);
+}
+
+/*
+ * The host's entry for the hex name from @p up to the next ';' or @end,
+ * which @next is set to; NULL when the name is not even, hex, or a name
+ * termcap_name_ok takes, or the table has no such entry.
+ */
+static const struct vte_termcap *xtgettcap_lookup(struct tsm_vte *vte,
+						  const char *p, const char *end,
+						  const char **next)
+{
+	char name[TSM_VTE_TERMCAP_NAME_MAX + 1];
+	size_t i, len;
+	int hi, lo;
+
+	*next = memchr(p, ';', end - p);
+	if (!*next)
+		*next = end;
+	len = *next - p;
+	if (!len || len % 2 || len / 2 > TSM_VTE_TERMCAP_NAME_MAX)
+		return NULL;
+	for (i = 0; i < len / 2; ++i) {
+		hi = hex_digit(p[2 * i]);
+		lo = hex_digit(p[2 * i + 1]);
+		if (hi < 0 || lo < 0 || hi * 16 + lo < 0x21 || hi * 16 + lo > 0x7e)
+			return NULL;
+		name[i] = hi * 16 + lo;
+	}
+	name[i] = 0;
+	if (!vte->termcap_n)
+		return NULL;
+	return bsearch(name, vte->termcap, vte->termcap_n, sizeof(*vte->termcap),
+		       termcap_find);
+}
+
+/*
+ * XTGETTCAP, DCS + q names ST, answered as xterm answers it: one reply,
+ * DCS 1 + r name=value;name=value ST, each name as the request spelled it
+ * and each value hex encoded; a boolean is its name alone. A name the host's
+ * table lacks, or that is not hex for a name, ends the list there, after the
+ * ';' before it, and when it is the first the reply is DCS 0 + r ST. So does
+ * the name past the sixteenth, or one whose pair would take the reply past
+ * XTGETTCAP_REPLY_MAX. A payload longer than XTGETTCAP_MAX_LEN is refused
+ * whole, DCS 0 + r ST.
+ */
+static void dcs_xtgettcap(struct tsm_vte *vte)
+{
+	static const char hex[] = "0123456789ABCDEF";
+	char buf[XTGETTCAP_REPLY_MAX];
+	const char *p = vte->tcap_buf, *end = p + vte->tcap_len, *next;
+	const struct vte_termcap *cap;
+	size_t len, pair, i;
+	unsigned int n;
+
+	cap = vte->tcap_over ? NULL : xtgettcap_lookup(vte, p, end, &next);
+	if (!cap) {
+		vte_write(vte, "\eP0+r\e\\", 7);
+		return;
+	}
+
+	memcpy(buf, "\eP1+r", 5);
+	len = 5;
+	for (n = 1; ; ++n) {
+		/* the pair, a ';' after it and the ST that ends the reply */
+		pair = (next - p) + (cap->value ? 1 + 2 * cap->value_len : 0);
+		if (len + pair + 3 > sizeof(buf))
+			break;
+		memcpy(buf + len, p, next - p);
+		len += next - p;
+		if (cap->value) {
+			buf[len++] = '=';
+			for (i = 0; i < cap->value_len; ++i) {
+				buf[len++] = hex[(unsigned char)cap->value[i] >> 4];
+				buf[len++] = hex[(unsigned char)cap->value[i] & 0xf];
+			}
+		}
+		if (next == end)
+			break;
+		buf[len++] = ';';
+		p = next + 1;
+		if (n == XTGETTCAP_NAMES ||
+		    !(cap = xtgettcap_lookup(vte, p, end, &next)))
+			break;
+	}
+	memcpy(buf + len, "\e\\", 2);
+	vte_write(vte, buf, len + 2);
+}
+
 /*
  * DCS strings: the final byte and the collected prefixes and intermediates
  * pick the string's handler when its data starts, and its bytes and its end
  * go to that handler. DCS q with neither is sixel, which goes to the image
- * glue (tsm-vte-int.h); every other DCS is consumed with no effect.
+ * glue (tsm-vte-int.h); DCS + q without parameters is XTGETTCAP, answered
+ * here in every build; every other DCS is consumed with no effect.
  */
 static void do_dcs_start(struct tsm_vte *vte, uint32_t data)
 {
@@ -2934,20 +3132,41 @@ static void do_dcs_start(struct tsm_vte *vte, uint32_t data)
 	if (data == 'q' && !vte->csi_flags) {
 		vte->dcs = DCS_IMAGE;
 		vte_dcs_start(vte, data);
+	} else if (data == 'q' && vte->csi_flags == CSI_PLUS &&
+		   !vte->csi_argc && vte->csi_argv[0] < 0) {
+		vte->dcs = DCS_XTGETTCAP;
+		vte->tcap_len = 0;
+		vte->tcap_over = false;
 	}
 }
 
 static void do_dcs_collect(struct tsm_vte *vte, uint32_t data)
 {
-	if (vte->dcs == DCS_IMAGE)
+	if (vte->dcs == DCS_IMAGE) {
 		vte_dcs_collect(vte, data);
+	} else if (vte->dcs == DCS_XTGETTCAP) {
+		/* the payload is ASCII; anything else is kept as a byte no
+		 * name holds, so its name is refused */
+		if (vte->tcap_len < sizeof(vte->tcap_buf))
+			vte->tcap_buf[vte->tcap_len++] = data < 0x80 ? data : 0;
+		else
+			vte->tcap_over = true;
+	}
 }
 
 /* the end of the string: @data is what ended it */
 static void do_dcs_end(struct tsm_vte *vte, uint32_t data)
 {
-	if (vte->dcs == DCS_IMAGE)
+	if (vte->dcs == DCS_IMAGE) {
 		vte_dcs_end(vte, data);
+	} else if (vte->dcs == DCS_XTGETTCAP) {
+		/* ST answers it; ESC answers it if '\' follows (parse_data),
+		 * and CAN, SUB or another C1 control drops it, as xterm does */
+		if (data == 0x9c)
+			dcs_xtgettcap(vte);
+		else if (data == 0x1b)
+			vte->dcs_esc = true;
+	}
 	vte->dcs = DCS_IGNORED;
 }
 
@@ -3061,6 +3280,13 @@ static void do_trans(struct tsm_vte *vte, uint32_t data, int state, int act)
  */
 static void parse_data(struct tsm_vte *vte, uint32_t raw)
 {
+	/* an XTGETTCAP request that an ESC ended: ESC \ is ST */
+	if (vte->dcs_esc) {
+		vte->dcs_esc = false;
+		if (raw == '\\')
+			dcs_xtgettcap(vte);
+	}
+
 	/* events that may occur in any state */
 	switch (raw) {
 		case 0x18:
