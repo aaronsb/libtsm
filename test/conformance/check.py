@@ -109,7 +109,9 @@ def replay(tool, root, name, cols, rows, view=None):
     if result.returncode != 0:
         raise RuntimeError(f"{name}: tsm-replay exited {result.returncode}: "
                            f"{result.stderr.decode(errors='replace').strip()}")
-    return result.stdout.decode("utf-8", errors="replace")
+    # a byte that is not UTF-8 shows as \xNN, so it never passes for the
+    # U+FFFD a cell holds
+    return result.stdout.decode("utf-8", errors="backslashreplace")
 
 
 def main():
