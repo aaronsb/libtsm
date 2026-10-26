@@ -100,7 +100,7 @@ host: ID t=M flags=F O=OFFSET max=MAX min=MIN name=NAME len=LEN
 | NAME | For `f`, `t` and `s`, the path or name the payload gives, each byte outside 0x21 to 0x7e, and the backslash, written `\xNN`; empty for `d`. |
 | LEN | For `d`, the payload's length after base64 decoding; else 0. |
 
-The fixture a request names is the last `/`-separated part of NAME, or for `t=d` `direct-K` for the replay's Kth direct request, counting from 1. The host answers with an outcome, from the first of these that applies:
+The fixture a request names is the last `/`-separated part of its path or name as received, or for `t=d` `direct-K` for the replay's Kth direct request, counting from 1. The host answers with an outcome, from the first of these that applies:
 
 | Fixture | Answer |
 |---|---|
@@ -161,7 +161,7 @@ Rows are numbered from 0 at the top of the view and printed in order: in the dra
 
 `cells N A-B CELL` is a run of the frame view, and CELL is `w=W fg= bg= ul=` then its keys in the order `ulset`, `underline=STYLE` (`single`, `double`, `curly`, `dotted` or `dashed`), `bold`, `italic`, `dim`, `blink`, `inverse`, `protect`, `strike`. W is 1 or 2, and 0 for the trailing half of a wide character. The default cell has width 1, the default colours, an underline colour equal to the foreground, and no key.
 
-`placement N row R col C box CxR at X,Y size WxH src X,Y WxH cell WxH z Z BAND KIND image M[ opaque][ changed]` is a placement: its box's top left at visible row R (negative when it starts above the view) and column C, C by R cells; its picture's visible part, W by H pixels at X, Y from the box's top left, showing the source rectangle that follows, all measured in cells of the size after `cell`; its z order; its band, `below-bg`, `below-text` or `above-text`; its kind, `sixel` or `kitty`; and the image it shows. `opaque` means no pixel of the image is below full alpha. `changed` appears only in the frame view, for a placement added, moved, clipped or given new pixels since the previous block.
+`placement N row R col C box CxR at X,Y size WxH src X,Y WxH cell WxH z Z BAND KIND image M[ opaque][ changed]` is a placement: its box's top left at visible row R (negative when it starts above the view) and column C, C by R cells; its picture's visible part, W by H pixels at X, Y from the box's top left, showing the source rectangle that follows, all in pixels of the cell size after `cell`, the one the placement was made with; its z order; its band, `below-bg`, `below-text` or `above-text`; its kind, `sixel` or `kitty`; and the image it shows. `opaque` means no pixel of the image is below full alpha. `changed` appears only in the frame view, for a placement added, moved, clipped or given new pixels since the previous block.
 
 `image M WxH digest HEX` is an image's size and the 32-bit FNV-1a hash (offset basis 2166136261, prime 16777619) of its pixels, rows top to bottom, each pixel as the four bytes A, R, G, B of its premultiplied colour, in eight lowercase hex digits.
 
