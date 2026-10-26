@@ -1436,6 +1436,26 @@ bool tsm_vte_handle_mouse(struct tsm_vte *vte, unsigned int cell_x,
         unsigned int button, unsigned int event, unsigned char flags);
 
 void tsm_vte_paste(struct tsm_vte *vte, const char *data);
+
+/*
+ * Focus events, DEC private mode 1004 (xterm ctlseqs, FocusIn/FocusOut).
+ * Defined when tsm_vte_handle_focus exists.
+ *
+ * The host calls tsm_vte_handle_focus each time the terminal gains focus
+ * (@focused true) or loses it (@focused false): for a console, whenever the
+ * session gains or loses the display, by a VT switch or by another program
+ * taking the display over. While a program has set mode 1004, the call
+ * writes CSI I (focus in) or CSI O (focus out) to it and returns true;
+ * otherwise it writes nothing and returns false, as it does for a NULL vte.
+ *
+ * libtsm keeps no focus state of its own: it neither drops a repeat, which
+ * the host does, nor reports the current focus when a program sets the mode.
+ * Setting the mode writes nothing; the first event is the next change the
+ * host reports. RIS and DECSTR reset the mode, as do tsm_vte_reset and
+ * tsm_vte_hard_reset.
+ */
+#define TSM_VTE_HANDLE_FOCUS 1
+bool tsm_vte_handle_focus(struct tsm_vte *vte, bool focused);
 /** @} */
 
 #ifdef __cplusplus

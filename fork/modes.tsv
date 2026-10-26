@@ -22,6 +22,7 @@ dec	80	DECSDM	supported	4	1 2 4	reset	hard	sixel		ctlseqs DECSDM; ADR-103; offer
 dec	1000	VT200MOUSE	supported	2	1 2	reset	soft	input		ctlseqs, normal mouse tracking	test_mode_mouse_vt200 test_mode_mouse_decrqm_matches_reports
 dec	1002	BTNMOUSE	supported	2	1 2	reset	soft	input		ctlseqs, button-event tracking	test_mode_mouse_btn_event
 dec	1003	ANYMOUSE	supported	2	1 2	reset	soft	input		ctlseqs, any-event tracking	test_mode_mouse_any_event
+dec	1004	FOCUS	supported	2	1 2	reset	soft	input	fe fd	ctlseqs, FocusIn/FocusOut	test_mode_focus test_mode_focus_resets
 dec	1006	SGRMOUSE	supported	2	1 2	reset	soft	input	XM	ctlseqs, SGR mouse mode	test_mode_mouse_sgr
 dec	1016	PIXMOUSE	supported	2	1 2	reset	soft	input		ctlseqs, SGR-Pixels mouse mode	test_mode_mouse_pixel
 dec	1047	ALTBUF1047	supported	2	1 2	reset	soft	none		ctlseqs, alternate screen buffer	test_mode_altbuf_1047 img-alt-1047

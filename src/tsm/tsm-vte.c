@@ -1899,6 +1899,18 @@ static bool mode_ANYMOUSE_get(struct tsm_vte *vte)
 	return vte->mouse_track == TSM_VTE_MOUSE_EVENT_ANY;
 }
 
+/* focus events: tsm_vte_handle_focus reports while set; setting it sends
+ * nothing */
+static void mode_FOCUS_set(struct tsm_vte *vte, bool set)
+{
+	vte->focus_events = set;
+}
+
+static bool mode_FOCUS_get(struct tsm_vte *vte)
+{
+	return vte->focus_events;
+}
+
 static void mode_SGRMOUSE_set(struct tsm_vte *vte, bool set)
 {
 	mouse_encoding_set(vte, TSM_VTE_MOUSE_MODE_SGR, set);
@@ -4099,6 +4111,16 @@ bool tsm_vte_handle_mouse(struct tsm_vte *vte, unsigned int cell_x,
 	}
 
 	vte_write(vte, buffer, strlen(buffer));
+	return true;
+}
+
+SHL_EXPORT
+bool tsm_vte_handle_focus(struct tsm_vte *vte, bool focused)
+{
+	if (!vte || !vte->focus_events)
+		return false;
+
+	vte_write(vte, focused ? "\e[I" : "\e[O", 3);
 	return true;
 }
 

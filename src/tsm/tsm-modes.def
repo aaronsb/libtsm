@@ -73,6 +73,7 @@ MODE(DEC,  80,   DECSDM,     SUPPORTED, false, RESET_HARD, HOST_SIXEL, "",      
 MODE(DEC,  1000, VT200MOUSE, SUPPORTED, false, RESET_SOFT, HOST_INPUT, "",            "ctlseqs, normal mouse tracking",                 "test_mode_mouse_vt200 test_mode_mouse_decrqm_matches_reports")
 MODE(DEC,  1002, BTNMOUSE,   SUPPORTED, false, RESET_SOFT, HOST_INPUT, "",            "ctlseqs, button-event tracking",                 "test_mode_mouse_btn_event")
 MODE(DEC,  1003, ANYMOUSE,   SUPPORTED, false, RESET_SOFT, HOST_INPUT, "",            "ctlseqs, any-event tracking",                    "test_mode_mouse_any_event")
+MODE(DEC,  1004, FOCUS,      SUPPORTED, false, RESET_SOFT, HOST_INPUT, "fe fd",       "ctlseqs, FocusIn/FocusOut",                      "test_mode_focus test_mode_focus_resets")
 MODE(DEC,  1006, SGRMOUSE,   SUPPORTED, false, RESET_SOFT, HOST_INPUT, "XM",          "ctlseqs, SGR mouse mode",                        "test_mode_mouse_sgr")
 MODE(DEC,  1016, PIXMOUSE,   SUPPORTED, false, RESET_SOFT, HOST_INPUT, "",            "ctlseqs, SGR-Pixels mouse mode",                 "test_mode_mouse_pixel")
 MODE(DEC,  1047, ALTBUF1047, SUPPORTED, false, RESET_SOFT, HOST_NONE,  "",            "ctlseqs, alternate screen buffer",               "test_mode_altbuf_1047 img-alt-1047")
