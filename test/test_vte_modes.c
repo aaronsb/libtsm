@@ -772,7 +772,8 @@ static const struct mode_reply mode_defaults[] = {
 	{ true, 8452, 4 },
 	/* not recognised */
 	{ false, 0, 0 }, { false, 1, 0 }, { false, 3, 0 }, { false, 25, 0 },
-	{ false, 2004, 0 }, { true, 0, 0 }, { true, 10, 0 }, { true, 1005, 0 }, { true, 1015, 0 }, { true, 65535, 0 },
+	{ false, 2004, 0 }, { true, 0, 0 }, { true, 10, 0 }, { true, 1005, 0 },
+	{ true, 1015, 0 }, { true, 65535, 0 },
 };
 
 static void assert_decrqm(bool dec, unsigned int number, unsigned int value)
