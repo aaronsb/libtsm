@@ -5,7 +5,7 @@ flags AUTO_WRAP|ALTERNATE
 reply 1b5b3f36303b313b343b363b393b3135631b5b3e313b313b30631b5b3f323032363b3224791b5d31303b7267623a653565352f653565352f653565351b5c1b5d31313b7267623a303030302f303030302f303030301b5c1b5b383b32343b3830741b5b343b3338343b36343074
 palette legacy fg=#e5e5e5 bg=#000000
 changed 1920
-frame-cursor 13,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+frame-cursor 13,0 block-steady visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
 row 0 |user@host:~$|
 cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
 cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
@@ -42,7 +42,7 @@ cursor 13,2
 flags AUTO_WRAP|ALTERNATE
 palette legacy fg=#e5e5e5 bg=#000000
 changed 40
-frame-cursor 13,2 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+frame-cursor 13,2 block-steady visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
 row 0 |user@host:~$ echo left pane|
 cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
 cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
@@ -81,7 +81,7 @@ cursor 54,0
 flags AUTO_WRAP|ALTERNATE
 palette legacy fg=#e5e5e5 bg=#000000
 changed 1920
-frame-cursor 54,0 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+frame-cursor 54,0 block-steady visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
 row 0 |user@host:~$ echo left pane             │user@host:~$|
 cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
 cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
@@ -133,7 +133,7 @@ cursor 54,2
 flags AUTO_WRAP|ALTERNATE
 palette legacy fg=#e5e5e5 bg=#000000
 changed 41
-frame-cursor 54,2 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+frame-cursor 54,2 block-steady visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
 row 0 |user@host:~$ echo left pane             │user@host:~$ echo right pane|
 cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
 cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
@@ -187,7 +187,7 @@ cursor 54,12
 flags AUTO_WRAP|ALTERNATE
 palette legacy fg=#e5e5e5 bg=#000000
 changed 1920
-frame-cursor 54,12 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+frame-cursor 54,12 block-steady visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
 row 0 |user@host:~$ echo left pane             │user@host:~$ echo right pane|
 cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
 cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
@@ -244,7 +244,7 @@ cursor 54,18
 flags AUTO_WRAP|ALTERNATE
 palette legacy fg=#e5e5e5 bg=#000000
 changed 32
-frame-cursor 54,18 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+frame-cursor 54,18 block-steady visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
 row 0 |user@host:~$ echo left pane             │user@host:~$ echo right pane|
 cells 0 0-8 w=1 fg=#00ff00 bg=#000000 ul=#00ff00 bold
 cells 0 10-10 w=1 fg=#5c5cff bg=#000000 ul=#5c5cff bold
@@ -303,7 +303,7 @@ cursor 0,1
 flags AUTO_WRAP
 palette legacy fg=#e5e5e5 bg=#000000
 changed 1920
-frame-cursor 0,1 default visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
+frame-cursor 0,1 block-steady visible w=1 fg=#000000 bg=#e5e5e5 ul=#000000
 row 0 |[server exited]|
 row 1 ||
 row 2 ||
