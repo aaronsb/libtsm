@@ -23,7 +23,7 @@ Output goes to standard output. Standard error is free-form.
 
 ## Input
 
-FILE is fed to the terminal byte by byte, in order. CUTS, when given, holds byte offsets into FILE, one per line, each a decimal number with no sign or leading zero and nothing else on the line, at least the one before it and at most FILE's length. The implementation prints a block at each offset and at the end of FILE, each headed by a `checkpoint` line. Without CUTS it prints one block, with no `checkpoint` line.
+FILE is fed to the terminal byte by byte, in order. CUTS, when given, holds byte offsets into FILE, one per line, each a decimal number with no sign or leading zero and nothing else on the line, at least the one before it and at most FILE's length. The implementation prints a block at each offset and at the end of FILE, each headed by a `checkpoint` line. Without CUTS, or with an empty CUTS file, it prints one block, with no `checkpoint` line.
 
 The fixture directory is FILE with a final `.bin` removed and `.files` appended. It holds the files that the `termcap` command and the fixture host read.
 
@@ -38,7 +38,7 @@ Values take these forms:
 | Form | Syntax |
 |---|---|
 | decimal | digits `0-9` with no sign or leading zero, within the range the command gives |
-| signed | an optional `-`, then digits, from -2147483648 to 2147483647 |
+| signed | an optional `-`, then digits with no leading zero, from -2147483648 to 2147483647; `-0` exits 2 |
 | hex | digits `0-9`, `a-f`, `A-F`, within the range the command gives |
 | flag | `0` or `1` |
 | name | one of the words the command lists |

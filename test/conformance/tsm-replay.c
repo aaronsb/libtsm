@@ -598,8 +598,13 @@ static int32_t test_int(const struct test_cmd *c, const char *key, int32_t def)
 
 	if (!v)
 		return def;
-	if (*v == '-')
-		return (int32_t)-(int64_t)parse_num(c, key, v + 1, (uint64_t)INT32_MAX + 1, false);
+	if (*v == '-') {
+		uint64_t n = parse_num(c, key, v + 1, (uint64_t)INT32_MAX + 1, false);
+
+		if (!n)
+			test_fail(c, key, "is -0");
+		return (int32_t)-(int64_t)n;
+	}
 	return (int32_t)parse_num(c, key, v, INT32_MAX, false);
 }
 
