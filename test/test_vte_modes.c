@@ -633,6 +633,61 @@ START_TEST(test_mode_bracketed_paste_resets)
 }
 END_TEST
 
+/* Focus events */
+
+START_TEST(test_mode_focus)
+{
+	/* off at start: the host's calls write nothing */
+	ck_assert(!tsm_vte_handle_focus(vte, true));
+	ck_assert(!tsm_vte_handle_focus(vte, false));
+	ck_assert_uint_eq(out_len, 0);
+
+	/* setting the mode writes nothing of its own */
+	input("\e[?1004h");
+	ck_assert_uint_eq(out_len, 0);
+	ck_assert(tsm_vte_handle_focus(vte, true));
+	ck_assert_str_eq(out, "\e[I");
+	out_clear();
+	ck_assert(tsm_vte_handle_focus(vte, false));
+	ck_assert_str_eq(out, "\e[O");
+
+	/* libtsm drops no repeat: the host does */
+	out_clear();
+	ck_assert(tsm_vte_handle_focus(vte, false));
+	ck_assert_str_eq(out, "\e[O");
+
+	out_clear();
+	input("\e[?1004l");
+	ck_assert(!tsm_vte_handle_focus(vte, true));
+	ck_assert(!tsm_vte_handle_focus(vte, false));
+	ck_assert_uint_eq(out_len, 0);
+}
+END_TEST
+
+/* RIS and DECSTR turn focus events off */
+START_TEST(test_mode_focus_resets)
+{
+	input("\e[?1004h\ec");
+	out_clear();
+	ck_assert(!tsm_vte_handle_focus(vte, true));
+	ck_assert_uint_eq(out_len, 0);
+
+	input("\e[?1004h\e[!p");
+	out_clear();
+	ck_assert(!tsm_vte_handle_focus(vte, false));
+	ck_assert_uint_eq(out_len, 0);
+
+	/* and so do the host's resets */
+	input("\e[?1004h");
+	tsm_vte_reset(vte);
+	ck_assert(!tsm_vte_handle_focus(vte, true));
+	input("\e[?1004h");
+	tsm_vte_hard_reset(vte);
+	ck_assert(!tsm_vte_handle_focus(vte, true));
+	ck_assert_uint_eq(out_len, 0);
+}
+END_TEST
+
 /* XTRESTORE (CSI ? Pm r) is not DECSTBM: the scroll region stays
  * (aaronsb/libtsm#44) */
 START_TEST(test_mode_xtrestore_not_margins)
@@ -720,14 +775,15 @@ static const struct mode_reply mode_defaults[] = {
 	{ true, 9, 2 }, { true, 12, 1 }, { true, 18, 4 }, { true, 19, 4 },
 	{ true, 25, 1 }, { true, 42, 4 }, { true, 47, 2 }, { true, 80, 4 },
 	{ true, 1000, 2 }, { true, 1002, 2 }, { true, 1003, 2 },
-	{ true, 1006, 2 }, { true, 1016, 2 }, { true, 1047, 2 },
+	{ true, 1004, 2 }, { true, 1006, 2 }, { true, 1016, 2 },
+	{ true, 1047, 2 },
 	{ true, 1048, 2 }, { true, 1049, 2 }, { true, 1070, 3 },
 	{ true, 2004, 2 }, { true, 2026, 4 }, { true, 2027, 1 },
 	{ true, 8452, 4 },
 	/* not recognised */
 	{ false, 0, 0 }, { false, 1, 0 }, { false, 3, 0 }, { false, 25, 0 },
-	{ false, 2004, 0 }, { true, 0, 0 }, { true, 10, 0 }, { true, 1004, 0 },
-	{ true, 1005, 0 }, { true, 1015, 0 }, { true, 65535, 0 },
+	{ false, 2004, 0 }, { true, 0, 0 }, { true, 10, 0 }, { true, 1005, 0 },
+	{ true, 1015, 0 }, { true, 65535, 0 },
 };
 
 static void assert_decrqm(bool dec, unsigned int number, unsigned int value)
@@ -759,18 +815,20 @@ START_TEST(test_mode_decrqm_set)
 	 * report their fixed state here, with sixel off
 	 * (test_mode_decrqm_sixel_off), and set and reset with it on in
 	 * test_vte_sixel.c (test_sixel_decrqm) */
-	input("\e[4;20h\e[?1;5;6;2004h");
+	input("\e[4;20h\e[?1;5;6;1004;2004h");
 	assert_decrqm(false, 4, 1);
 	assert_decrqm(false, 20, 1);
 	assert_decrqm(true, 1, 1);
 	assert_decrqm(true, 5, 1);
 	assert_decrqm(true, 6, 1);
+	assert_decrqm(true, 1004, 1);
 	assert_decrqm(true, 2004, 1);
-	input("\e[12;4;20l\e[?7;25;2027l");
+	input("\e[12;4;20l\e[?7;25;1004;2027l");
 	assert_decrqm(false, 12, 2);
 	assert_decrqm(false, 4, 2);
 	assert_decrqm(true, 7, 2);
 	assert_decrqm(true, 25, 2);
+	assert_decrqm(true, 1004, 2);
 	assert_decrqm(true, 2027, 2);
 
 	/* ignored and refused rows keep their fixed state */
@@ -1195,6 +1253,8 @@ TEST_DEFINE_CASE(dec)
 	TEST(test_mode_altbuf_1049)
 	TEST(test_mode_bracketed_paste)
 	TEST(test_mode_bracketed_paste_resets)
+	TEST(test_mode_focus)
+	TEST(test_mode_focus_resets)
 	TEST(test_mode_ignored_legacy_flags)
 TEST_END_CASE
 

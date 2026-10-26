@@ -83,6 +83,8 @@ struct tsm_vte {
 	unsigned int mouse_last_col;
 	unsigned int mouse_last_row;
 	bool bracketed_paste;
+	/* mode 1004: the host's focus changes are reported */
+	bool focus_events;
 
 	tsm_vte_bell_cb bell_cb;
 	void *bell_data;
