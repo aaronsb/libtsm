@@ -132,14 +132,14 @@ enum parser_action {
 #define MODE_ACCESSORS_REFUSED(...)
 #define MODE_SET_SUPPORTED(name) mode_##name##_set(vte, set)
 #define MODE_SET_PARTIAL(name) mode_##name##_set(vte, set)
-/* an ignored row has no effect, but keeps its legacy flag for
+/* an ignored or refused row has no effect, but keeps its legacy flag for
  * tsm_vte_get_flags, upstream's API; MODE_FLAG_<name> is 0 for one without */
 #define MODE_SET_IGNORED(name) set_reset_flag(vte, set, MODE_FLAG_##name)
-#define MODE_SET_REFUSED(name)
+#define MODE_SET_REFUSED(name) set_reset_flag(vte, set, MODE_FLAG_##name)
 #define MODE_FLAG_KAM TSM_VTE_FLAG_KEYBOARD_ACTION_MODE
+#define MODE_FLAG_DECANM 0
 #define MODE_FLAG_DECCOLM 0
 #define MODE_FLAG_DECSCLM 0
-#define MODE_FLAG_DECARM TSM_VTE_FLAG_AUTO_REPEAT_MODE
 #define MODE_FLAG_DECPFF 0
 #define MODE_FLAG_DECPEX 0
 #define MODE_FLAG_DECNRCM TSM_VTE_FLAG_NATIONAL_CHARSET_MODE
@@ -907,10 +907,8 @@ void tsm_vte_reset(struct tsm_vte *vte)
 		return;
 
 	/* the modes' flags start reset, and modes_reset sets those whose
-	 * default is set; DECARM is an ignored row with no setter, so its
-	 * legacy flag is set here */
-	vte->flags = TSM_VTE_FLAG_AUTO_REPEAT_MODE |
-		     TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE;
+	 * default is set */
+	vte->flags = TSM_VTE_FLAG_BACKGROUND_COLOR_ERASE_MODE;
 	tsm_screen_reset(vte->con);
 
 	tsm_utf8_mach_reset(vte->mach);
@@ -1920,15 +1918,42 @@ static bool mode_PIXMOUSE_get(struct tsm_vte *vte)
 }
 
 /*
- * AT&T 610 cursor blink. DECRQM reports whether the cursor blinks: the host
- * blinks it (tsm_vte_set_cursor_blink) and the style is one that blinks, the
- * default or an odd DECSCUSR style, as kmscon draws them. SM and RM do
- * nothing yet (aaronsb/libtsm#57).
+ * DECARM: the host makes a held key's repeats, and stops them while the
+ * mode is reset (tsm_vte_get_mode)
+ */
+static void mode_DECARM_set(struct tsm_vte *vte, bool set)
+{
+	set_reset_flag(vte, set, TSM_VTE_FLAG_AUTO_REPEAT_MODE);
+}
+
+static bool mode_DECARM_get(struct tsm_vte *vte)
+{
+	return vte->flags & TSM_VTE_FLAG_AUTO_REPEAT_MODE;
+}
+
+/*
+ * AT&T 610 cursor blink, as xterm has it: set makes the cursor blink and
+ * reset makes it steady, in the shape DECSCUSR chose, which sets both. The
+ * odd DECSCUSR styles blink and the even ones are steady; the default draws
+ * as a blinking block, so reset makes it a steady block. DECRQM reports
+ * whether the cursor blinks: the host blinks it (tsm_vte_set_cursor_blink)
+ * and the style is one that blinks, as kmscon draws them.
  */
 static void mode_CURBLINK_set(struct tsm_vte *vte, bool set)
 {
-	(void)vte;
-	(void)set;
+	enum tsm_screen_cursor_style style = tsm_screen_get_cursor_style(vte->con);
+
+	if (style == TSM_SCREEN_CURSOR_DEFAULT)
+		style = TSM_SCREEN_CURSOR_BLOCK_BLINK;
+	if (style > TSM_SCREEN_CURSOR_VBAR_STEADY)
+		return;
+	if (set && !(style & 1))
+		--style;
+	else if (!set && (style & 1))
+		++style;
+	else
+		return;
+	tsm_screen_set_cursor_style(vte->con, style);
 }
 
 static bool mode_CURBLINK_get(struct tsm_vte *vte)
