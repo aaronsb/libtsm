@@ -671,11 +671,13 @@ START_TEST(test_mode_focus_resets)
 	out_clear();
 	ck_assert(!tsm_vte_handle_focus(vte, true));
 	ck_assert_uint_eq(out_len, 0);
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1004), 2);
 
 	input("\e[?1004h\e[!p");
 	out_clear();
 	ck_assert(!tsm_vte_handle_focus(vte, false));
 	ck_assert_uint_eq(out_len, 0);
+	ck_assert_int_eq(tsm_vte_get_mode(vte, true, 1004), 2);
 
 	/* and so do the host's resets */
 	input("\e[?1004h");
