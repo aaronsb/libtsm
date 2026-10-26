@@ -2896,6 +2896,345 @@ START_TEST(test_vte_csi_other_intermediates)
 }
 END_TEST
 
+/*
+ * xterm's modifyOtherKeys (aaronsb/libtsm#25): XTMODKEYS (CSI > 4 ; Pv m)
+ * sets the level, XTQMODKEYS (CSI ? 4 m) reports it, and at levels 1 and 2
+ * a modified key is sent as CSI 27 ; mod ; code ~ (ctlseqs, "Alt and Meta
+ * Keys"; xterm's "Modified Other Keys (us-pc105)" table). The host passes
+ * the keysym after Shift, so Shift+1 arrives as exclam and Shift+a as A.
+ */
+static struct tsm_screen *mok_screen;
+static struct tsm_vte *mok_vte;
+static char mok_out[64];
+static size_t mok_len;
+
+static void mok_write(struct tsm_vte *vte, const char *u8, size_t len, void *data)
+{
+	UNUSED(vte);
+	UNUSED(data);
+	ck_assert_uint_lt(mok_len + len, sizeof(mok_out));
+	memcpy(mok_out + mok_len, u8, len);
+	mok_len += len;
+	mok_out[mok_len] = 0;
+}
+
+static void mok_clear(void)
+{
+	mok_len = 0;
+	mok_out[0] = 0;
+}
+
+static void mok_setup(void)
+{
+	ck_assert_int_eq(tsm_screen_new(&mok_screen, log_cb, NULL), 0);
+	ck_assert_int_eq(tsm_screen_resize(mok_screen, 20, 5), 0);
+	ck_assert_int_eq(tsm_vte_new(&mok_vte, mok_screen, mok_write, NULL, log_cb, NULL), 0);
+	mok_clear();
+}
+
+static void mok_teardown(void)
+{
+	tsm_vte_unref(mok_vte);
+	tsm_screen_unref(mok_screen);
+}
+
+static void mok_input(const char *s)
+{
+	tsm_vte_input(mok_vte, s, strlen(s));
+}
+
+/* what XTQMODKEYS reports */
+static void mok_assert_level(const char *after, const char *want)
+{
+	mok_clear();
+	mok_input("\e[?4m");
+	ck_assert_msg(!strcmp(mok_out, want), "after %s: XTQMODKEYS replied \"%s\", want \"%s\"",
+		      after, mok_out + (mok_out[0] == '\e'), want + 1);
+}
+
+/* the key sends exactly @want_len bytes of @want */
+static void mok_key(const char *want, size_t want_len, uint32_t keysym, uint32_t ascii,
+		    unsigned int mods, uint32_t unicode)
+{
+	mok_clear();
+	ck_assert(tsm_vte_handle_keyboard(mok_vte, keysym, ascii, mods, unicode));
+	ck_assert_msg(mok_len == want_len && !memcmp(mok_out, want, want_len),
+		      "keysym 0x%x mods 0x%x sent \"%s\" (%zu bytes), want \"%s\"",
+		      keysym, mods, mok_out[0] == '\e' ? mok_out + 1 : mok_out, mok_len,
+		      want[0] == '\e' ? want + 1 : want);
+}
+
+/* a key whose keysym, ascii keysym and codepoint are the one character */
+#define MOK_CHAR(want, ch, mods) mok_key((want), sizeof(want) - 1, (ch), (ch), (mods), (ch))
+#define MOK_KEY(want, keysym, ascii, mods, unicode) \
+	mok_key((want), sizeof(want) - 1, (keysym), (ascii), (mods), (unicode))
+
+#define K_S TSM_SHIFT_MASK
+#define K_A TSM_ALT_MASK
+#define K_C TSM_CONTROL_MASK
+
+START_TEST(test_vte_modkeys_query)
+{
+	char reply[sizeof(mok_out)];
+
+	mok_assert_level("tsm_vte_new", "\e[>4;0m");
+	mok_input("\e[>4;1m");
+	mok_assert_level("CSI > 4;1 m", "\e[>4;1m");
+	mok_input("\e[>4;2m");
+	mok_assert_level("CSI > 4;2 m", "\e[>4;2m");
+	mok_input("\e[>4;0m");
+	mok_assert_level("CSI > 4;0 m", "\e[>4;0m");
+
+	/* level 3 is not supported, and other values are ignored */
+	mok_input("\e[>4;2m\e[>4;3m");
+	mok_assert_level("CSI > 4;3 m", "\e[>4;2m");
+	mok_input("\e[>4;9m");
+	mok_assert_level("CSI > 4;9 m", "\e[>4;2m");
+	/* other resources leave modifyOtherKeys */
+	mok_input("\e[>0;1m\e[>1;0m\e[>2;0m\e[>3;0m\e[>6;0m\e[>7;0m\e[>1m");
+	mok_assert_level("CSI > Pp m for other Pp", "\e[>4;2m");
+	/* the factor-out mask (a sub-parameter) is not supported */
+	mok_input("\e[>4:1;1m");
+	mok_assert_level("CSI > 4:1;1 m", "\e[>4;2m");
+	mok_input("\e[>4;1:1m");
+	mok_assert_level("CSI > 4;1:1 m", "\e[>4;2m");
+
+	/* Pv omitted resets modifyOtherKeys, no parameters reset all */
+	mok_input("\e[>4m");
+	mok_assert_level("CSI > 4 m", "\e[>4;0m");
+	mok_input("\e[>4;2m\e[>4;m");
+	mok_assert_level("CSI > 4; m", "\e[>4;0m");
+	mok_input("\e[>4;2m\e[>m");
+	mok_assert_level("CSI > m", "\e[>4;0m");
+
+	/* CSI > 4 n disables it; CSI > Ps n for another resource does not */
+	mok_input("\e[>4;1m\e[>2n\e[>n");
+	mok_assert_level("CSI > 2 n, CSI > n", "\e[>4;1m");
+	mok_input("\e[>4n");
+	mok_assert_level("CSI > 4 n", "\e[>4;0m");
+
+	/* DECSTR, RIS and DECSCL return it to 0 */
+	mok_input("\e[>4;2m\e[!p");
+	mok_assert_level("DECSTR", "\e[>4;0m");
+	mok_input("\e[>4;2m\ec");
+	mok_assert_level("RIS", "\e[>4;0m");
+	mok_input("\e[>4;1m\e[61\"p");
+	mok_assert_level("DECSCL", "\e[>4;0m");
+
+	/* the query answers only for modifyOtherKeys, and only plain */
+	mok_input("\e[>4;2m");
+	mok_clear();
+	mok_input("\e[?0m\e[?1m\e[?m\e[?4:1m\e[?>4m");
+	ck_assert_msg(mok_len == 0, "replied \"%s\"", mok_out + 1);
+	/* the reply, sent back, restores the level */
+	mok_assert_level("CSI > 4;2 m", "\e[>4;2m");
+	strcpy(reply, mok_out);
+	mok_input("\e[>4;0m");
+	mok_input(reply);
+	mok_assert_level("the reply sent back", "\e[>4;2m");
+}
+END_TEST
+
+/* level 0, the default, sends keys as libtsm always has */
+START_TEST(test_vte_modkeys_level0)
+{
+	static const char ctrl_keys[] = " 23[{4\\|5]}6`~7/?8";
+	static const char ctrl_bytes[] = "\0\0\x1b\x1b\x1b\x1c\x1c\x1c\x1d\x1d\x1d\x1e\x1e\x1e"
+					 "\x1f\x1f\x1f\x7f";
+	uint32_t ch;
+
+	MOK_CHAR("1", XKB_KEY_1, K_C);
+	MOK_CHAR("\ea", XKB_KEY_a, K_A);
+	MOK_CHAR("\x01", XKB_KEY_a, K_C);
+	MOK_CHAR("\x01", XKB_KEY_A, K_C | K_S);
+	MOK_CHAR("!", XKB_KEY_exclam, K_C | K_S);
+	MOK_CHAR("A", XKB_KEY_A, K_S);
+	MOK_CHAR("\e\x01", XKB_KEY_a, K_A | K_C);
+	MOK_CHAR("\0", XKB_KEY_space, K_C);
+	MOK_CHAR("\x1b", XKB_KEY_bracketleft, K_C);
+	MOK_KEY("\t", XKB_KEY_Tab, XKB_KEY_Tab, K_C, '\t');
+	MOK_KEY("\e[Z", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_S, '\t');
+	MOK_KEY("\r", XKB_KEY_Return, XKB_KEY_Return, K_S, '\r');
+	MOK_KEY("\e\x1b", XKB_KEY_Escape, XKB_KEY_Escape, K_A, 0x1b);
+	MOK_KEY("\x08", XKB_KEY_BackSpace, XKB_KEY_BackSpace, K_S, 0x08);
+
+	/* Ctrl's whole list: these printable keys become C0 bytes (DEL for
+	 * 8), every other one is sent as it is */
+	for (ch = 0x20; ch <= 0x7e; ++ch) {
+		const char *p = strchr(ctrl_keys, (int)ch);
+		char want = p ? ctrl_bytes[p - ctrl_keys] : (char)ch;
+
+		if (ch >= 'a' && ch <= 'z')
+			want = ch - 'a' + 1;
+		else if (ch >= 'A' && ch <= 'Z')
+			want = ch - 'A' + 1;
+		mok_key(&want, 1, ch, ch, K_C, ch);
+	}
+
+	/* a level set and reset leaves them so */
+	mok_input("\e[>4;2m\e[>4m");
+	MOK_CHAR("1", XKB_KEY_1, K_C);
+	MOK_CHAR("\ea", XKB_KEY_a, K_A);
+	mok_input("\e[>4;2m\e[!p");
+	MOK_CHAR("1", XKB_KEY_1, K_C);
+	MOK_CHAR("\x01", XKB_KEY_a, K_C);
+}
+END_TEST
+
+/* level 1: Alt encodes, Ctrl encodes a key libtsm has no control byte for,
+ * Shift alone never encodes */
+START_TEST(test_vte_modkeys_level1)
+{
+	mok_input("\e[>4;1m");
+
+	/* Ctrl keeps the control bytes */
+	MOK_CHAR("\x01", XKB_KEY_a, K_C);
+	MOK_CHAR("\x01", XKB_KEY_A, K_C | K_S);
+	MOK_CHAR("\x1a", XKB_KEY_z, K_C);
+	MOK_CHAR("\0", XKB_KEY_2, K_C);
+	MOK_CHAR("\x1b", XKB_KEY_3, K_C);
+	MOK_CHAR("\x7f", XKB_KEY_8, K_C);
+	MOK_CHAR("\x1b", XKB_KEY_bracketleft, K_C);
+	MOK_CHAR("\x1c", XKB_KEY_backslash, K_C);
+	MOK_CHAR("\x1f", XKB_KEY_slash, K_C);
+	MOK_CHAR("\0", XKB_KEY_space, K_C);
+	/* and encodes the keys without one */
+	MOK_CHAR("\e[27;5;49~", XKB_KEY_1, K_C);
+	MOK_CHAR("\e[27;5;57~", XKB_KEY_9, K_C);
+	MOK_CHAR("\e[27;5;48~", XKB_KEY_0, K_C);
+	MOK_CHAR("\e[27;5;44~", XKB_KEY_comma, K_C);
+	MOK_CHAR("\e[27;5;46~", XKB_KEY_period, K_C);
+	MOK_CHAR("\e[27;5;59~", XKB_KEY_semicolon, K_C);
+	MOK_CHAR("\e[27;6;33~", XKB_KEY_exclam, K_C | K_S);
+	MOK_CHAR("\e[27;6;35~", XKB_KEY_numbersign, K_C | K_S);
+	/* a key of a non-Latin layout: Ctrl reads the ASCII layout's keysym, so
+	 * Ctrl+es on a Russian layout (c on the ASCII one) keeps 0x03; with no
+	 * ASCII keysym it has no control byte and encodes its own character */
+	MOK_KEY("\x03", XKB_KEY_Cyrillic_es, XKB_KEY_c, K_C, 0x441);
+	MOK_KEY("\e[27;5;1089~", XKB_KEY_Cyrillic_es, XKB_KEY_NoSymbol, K_C, 0x441);
+	MOK_KEY("\e[27;3;1089~", XKB_KEY_Cyrillic_es, XKB_KEY_c, K_A, 0x441);
+
+	/* Alt encodes, with no ESC before it */
+	MOK_CHAR("\e[27;3;97~", XKB_KEY_a, K_A);
+	MOK_CHAR("\e[27;4;65~", XKB_KEY_A, K_A | K_S);
+	MOK_CHAR("\e[27;7;97~", XKB_KEY_a, K_A | K_C);
+	MOK_CHAR("\e[27;3;49~", XKB_KEY_1, K_A);
+	MOK_CHAR("\e[27;3;32~", XKB_KEY_space, K_A);
+	MOK_CHAR("\e[27;7;32~", XKB_KEY_space, K_A | K_C);
+	/* and the prefix is gone for the next key */
+	MOK_CHAR("b", XKB_KEY_b, 0);
+
+	/* Shift alone, and no modifier, send the character */
+	MOK_CHAR("A", XKB_KEY_A, K_S);
+	MOK_CHAR("!", XKB_KEY_exclam, K_S);
+	MOK_CHAR(" ", XKB_KEY_space, K_S);
+	MOK_CHAR("a", XKB_KEY_a, 0);
+	MOK_CHAR("A", XKB_KEY_A, TSM_LOCK_MASK);
+	MOK_CHAR("a", XKB_KEY_a, TSM_LOGO_MASK);
+
+	/* Tab and Return encode with any modifier */
+	MOK_KEY("\t", XKB_KEY_Tab, XKB_KEY_Tab, 0, '\t');
+	MOK_KEY("\e[27;5;9~", XKB_KEY_Tab, XKB_KEY_Tab, K_C, '\t');
+	MOK_KEY("\e[27;2;9~", XKB_KEY_Tab, XKB_KEY_Tab, K_S, '\t');
+	MOK_KEY("\e[27;3;9~", XKB_KEY_Tab, XKB_KEY_Tab, K_A, '\t');
+	MOK_KEY("\r", XKB_KEY_Return, XKB_KEY_Return, 0, '\r');
+	MOK_KEY("\e[27;2;13~", XKB_KEY_Return, XKB_KEY_Return, K_S, '\r');
+	MOK_KEY("\e[27;5;13~", XKB_KEY_Return, XKB_KEY_Return, K_C, '\r');
+	/* Shift+Tab (ISO_Left_Tab) is an edit key to xterm: CSI Z with any
+	 * modifier, Alt's ESC before it as always */
+	MOK_KEY("\e[Z", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_S, '\t');
+	MOK_KEY("\e[Z", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_C | K_S, '\t');
+	MOK_KEY("\e\e[Z", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_A | K_S, '\t');
+	/* Escape encodes only with Alt */
+	MOK_KEY("\x1b", XKB_KEY_Escape, XKB_KEY_Escape, K_C, 0x1b);
+	MOK_KEY("\x1b", XKB_KEY_Escape, XKB_KEY_Escape, K_S, 0x1b);
+	MOK_KEY("\e[27;3;27~", XKB_KEY_Escape, XKB_KEY_Escape, K_A, 0x1b);
+	/* BackSpace never */
+	MOK_KEY("\x08", XKB_KEY_BackSpace, XKB_KEY_BackSpace, K_S, 0x08);
+	MOK_KEY("\e\x08", XKB_KEY_BackSpace, XKB_KEY_BackSpace, K_A, 0x08);
+}
+END_TEST
+
+/* level 2: every Shift, Alt and Ctrl combination encodes, but Shift alone
+ * sends a character from ! to ? as it is */
+START_TEST(test_vte_modkeys_level2)
+{
+	mok_input("\e[>4;2m");
+
+	MOK_CHAR("\e[27;5;49~", XKB_KEY_1, K_C);
+	MOK_CHAR("\e[27;5;97~", XKB_KEY_a, K_C);
+	MOK_CHAR("\e[27;5;105~", XKB_KEY_i, K_C);
+	MOK_CHAR("\e[27;6;65~", XKB_KEY_A, K_C | K_S);
+	MOK_CHAR("\e[27;5;50~", XKB_KEY_2, K_C);
+	MOK_CHAR("\e[27;5;91~", XKB_KEY_bracketleft, K_C);
+	MOK_CHAR("\e[27;5;32~", XKB_KEY_space, K_C);
+	MOK_CHAR("\e[27;3;97~", XKB_KEY_a, K_A);
+	MOK_CHAR("\e[27;8;65~", XKB_KEY_A, K_A | K_C | K_S);
+	MOK_CHAR("\e[27;6;33~", XKB_KEY_exclam, K_C | K_S);
+	MOK_CHAR("\e[27;4;33~", XKB_KEY_exclam, K_A | K_S);
+
+	/* Shift alone encodes space and @ to ~, as xterm's table has it */
+	MOK_CHAR("\e[27;2;65~", XKB_KEY_A, K_S);
+	MOK_CHAR("\e[27;2;32~", XKB_KEY_space, K_S);
+	MOK_CHAR("\e[27;2;64~", XKB_KEY_at, K_S);
+	MOK_CHAR("\e[27;2;95~", XKB_KEY_underscore, K_S);
+	MOK_CHAR("\e[27;2;123~", XKB_KEY_braceleft, K_S);
+	MOK_CHAR("\e[27;2;126~", XKB_KEY_asciitilde, K_S);
+	/* and sends ! to ? and characters past ASCII as they are */
+	MOK_CHAR("!", XKB_KEY_exclam, K_S);
+	MOK_CHAR("?", XKB_KEY_question, K_S);
+	MOK_CHAR("(", XKB_KEY_parenleft, K_S);
+	MOK_KEY("\xc3\x89", XKB_KEY_Eacute, XKB_KEY_NoSymbol, K_S, 0xc9);
+
+	/* the codepoint past ASCII: from the keysym, else the host's */
+	MOK_KEY("\e[27;5;233~", XKB_KEY_eacute, XKB_KEY_NoSymbol, K_C, 0xe9);
+	MOK_KEY("\e[27;5;1072~", XKB_KEY_Cyrillic_a, XKB_KEY_f, K_C, 0x430);
+	MOK_KEY("\e[27;3;1072~", XKB_KEY_Cyrillic_a, XKB_KEY_f, K_A, 0x430);
+
+	/* no modifier, Caps Lock or the logo key: as always */
+	MOK_CHAR("a", XKB_KEY_a, 0);
+	MOK_CHAR(" ", XKB_KEY_space, 0);
+	MOK_CHAR("A", XKB_KEY_A, TSM_LOCK_MASK);
+	MOK_CHAR("a", XKB_KEY_a, TSM_LOGO_MASK);
+	MOK_KEY("\t", XKB_KEY_Tab, XKB_KEY_Tab, 0, '\t');
+	MOK_KEY("\r", XKB_KEY_Return, XKB_KEY_Return, 0, '\r');
+	MOK_KEY("\x1b", XKB_KEY_Escape, XKB_KEY_Escape, 0, 0x1b);
+	MOK_KEY("\x08", XKB_KEY_BackSpace, XKB_KEY_BackSpace, 0, 0x08);
+
+	/* Tab, Return and Escape encode with any modifier, Shift+Tab
+	 * (ISO_Left_Tab) included: CSI 27;2;9~ rather than CSI Z, as ctlseqs
+	 * has it */
+	MOK_KEY("\e[27;5;9~", XKB_KEY_Tab, XKB_KEY_Tab, K_C, '\t');
+	MOK_KEY("\e[27;2;9~", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_S, '\t');
+	MOK_KEY("\e[27;6;9~", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_C | K_S, '\t');
+	MOK_KEY("\e[27;4;9~", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_A | K_S, '\t');
+	MOK_KEY("\e[27;3;13~", XKB_KEY_Return, XKB_KEY_Return, K_A, '\r');
+	MOK_KEY("\e[27;2;27~", XKB_KEY_Escape, XKB_KEY_Escape, K_S, 0x1b);
+	MOK_KEY("\e[27;5;27~", XKB_KEY_Escape, XKB_KEY_Escape, K_C, 0x1b);
+	/* BackSpace too, but Ctrl alone keeps the plain byte */
+	MOK_KEY("\x08", XKB_KEY_BackSpace, XKB_KEY_BackSpace, K_C, 0x08);
+	MOK_KEY("\e[27;2;8~", XKB_KEY_BackSpace, XKB_KEY_BackSpace, K_S, 0x08);
+	MOK_KEY("\e[27;3;8~", XKB_KEY_BackSpace, XKB_KEY_BackSpace, K_A, 0x08);
+	tsm_vte_set_backspace_sends_delete(mok_vte, true);
+	MOK_KEY("\e[27;6;127~", XKB_KEY_BackSpace, XKB_KEY_BackSpace, K_C | K_S, 0x08);
+	MOK_KEY("\x7f", XKB_KEY_BackSpace, XKB_KEY_BackSpace, K_C, 0x08);
+
+	/* keypad, function, cursor and edit keys, and Linefeed, never encode */
+	MOK_KEY("1", XKB_KEY_KP_1, XKB_KEY_NoSymbol, K_C, '1');
+	MOK_KEY("\e+", XKB_KEY_KP_Add, XKB_KEY_NoSymbol, K_A, '+');
+	MOK_KEY("\r", XKB_KEY_KP_Enter, XKB_KEY_NoSymbol, K_C, '\r');
+	MOK_KEY("\t", XKB_KEY_KP_Tab, XKB_KEY_NoSymbol, K_S, '\t');
+	MOK_KEY("\eOP", XKB_KEY_F1, XKB_KEY_NoSymbol, K_C, TSM_VTE_INVALID);
+	MOK_KEY("\e[1;5A", XKB_KEY_Up, XKB_KEY_NoSymbol, K_C, TSM_VTE_INVALID);
+	MOK_KEY("\e[3~", XKB_KEY_Delete, XKB_KEY_NoSymbol, K_C, 0x7f);
+	MOK_KEY("\n", XKB_KEY_Linefeed, XKB_KEY_NoSymbol, K_C, '\n');
+}
+END_TEST
+
+#undef K_S
+#undef K_A
+#undef K_C
+
 TEST_DEFINE_CASE(misc)
 	TEST(test_vte_init)
 	TEST(test_vte_null)
@@ -3059,6 +3398,14 @@ TEST_DEFINE_CASE(prefixes)
 	TEST(test_vte_csi_other_intermediates)
 TEST_END_CASE
 
+TEST_DEFINE_CASE(modkeys)
+	CHECKED_FIXTURE(mok_setup, mok_teardown)
+	TEST(test_vte_modkeys_query)
+	TEST(test_vte_modkeys_level0)
+	TEST(test_vte_modkeys_level1)
+	TEST(test_vte_modkeys_level2)
+TEST_END_CASE
+
 TEST_DEFINE_CASE(led)
 	TEST(test_vte_led_decll)
 	TEST(test_vte_led_no_cb)
@@ -3072,6 +3419,7 @@ TEST_DEFINE(
 		TEST_CASE(bell),
 		TEST_CASE(led),
 		TEST_CASE(prefixes),
+		TEST_CASE(modkeys),
 		TEST_END
 	)
 )

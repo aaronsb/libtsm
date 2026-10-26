@@ -1430,6 +1430,19 @@ int tsm_vte_image_reply(struct tsm_vte *vte, uint64_t id,
  * @param enable Send ASCII delete if \c true, send ASCII backspace if \c false.
  */
 void tsm_vte_set_backspace_sends_delete(struct tsm_vte *vte, bool enable);
+
+/**
+ * @brief Send a key press to the client, encoded as the terminal's state asks.
+ *
+ * @keysym is the keysym after Shift, @ascii the keysym on an ASCII layout at
+ * the same level (or XKB_KEY_NoSymbol), @mods the TSM_*_MASK modifiers and
+ * @unicode the codepoint (or TSM_VTE_INVALID). Besides the cursor key and
+ * keypad modes, the client's modifyOtherKeys level (XTMODKEYS, CSI > 4 ; Pv m)
+ * changes the encoding: at levels 1 and 2 a key with Shift, Alt or Ctrl may
+ * be sent as CSI 27 ; mod ; code ~, as xterm sends it.
+ *
+ * @return true if the key was sent.
+ */
 bool tsm_vte_handle_keyboard(struct tsm_vte *vte, uint32_t keysym,
 			     uint32_t ascii, unsigned int mods,
 			     uint32_t unicode);
