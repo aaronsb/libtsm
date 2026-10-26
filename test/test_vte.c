@@ -3104,6 +3104,12 @@ START_TEST(test_vte_modkeys_level1)
 	MOK_CHAR("\e[27;5;59~", XKB_KEY_semicolon, K_C);
 	MOK_CHAR("\e[27;6;33~", XKB_KEY_exclam, K_C | K_S);
 	MOK_CHAR("\e[27;6;35~", XKB_KEY_numbersign, K_C | K_S);
+	/* a key of a non-Latin layout: Ctrl reads the ASCII layout's keysym, so
+	 * Ctrl+es on a Russian layout (c on the ASCII one) keeps 0x03; with no
+	 * ASCII keysym it has no control byte and encodes its own character */
+	MOK_KEY("\x03", XKB_KEY_Cyrillic_es, XKB_KEY_c, K_C, 0x441);
+	MOK_KEY("\e[27;5;1089~", XKB_KEY_Cyrillic_es, XKB_KEY_NoSymbol, K_C, 0x441);
+	MOK_KEY("\e[27;3;1089~", XKB_KEY_Cyrillic_es, XKB_KEY_c, K_A, 0x441);
 
 	/* Alt encodes, with no ESC before it */
 	MOK_CHAR("\e[27;3;97~", XKB_KEY_a, K_A);
@@ -3131,10 +3137,11 @@ START_TEST(test_vte_modkeys_level1)
 	MOK_KEY("\r", XKB_KEY_Return, XKB_KEY_Return, 0, '\r');
 	MOK_KEY("\e[27;2;13~", XKB_KEY_Return, XKB_KEY_Return, K_S, '\r');
 	MOK_KEY("\e[27;5;13~", XKB_KEY_Return, XKB_KEY_Return, K_C, '\r');
-	/* Shift+Tab is CSI Z, encoded only with another modifier */
+	/* Shift+Tab (ISO_Left_Tab) is an edit key to xterm: CSI Z with any
+	 * modifier, Alt's ESC before it as always */
 	MOK_KEY("\e[Z", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_S, '\t');
-	MOK_KEY("\e[27;6;9~", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_C | K_S, '\t');
-	MOK_KEY("\e[27;4;9~", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_A | K_S, '\t');
+	MOK_KEY("\e[Z", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_C | K_S, '\t');
+	MOK_KEY("\e\e[Z", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_A | K_S, '\t');
 	/* Escape encodes only with Alt */
 	MOK_KEY("\x1b", XKB_KEY_Escape, XKB_KEY_Escape, K_C, 0x1b);
 	MOK_KEY("\x1b", XKB_KEY_Escape, XKB_KEY_Escape, K_S, 0x1b);
@@ -3191,10 +3198,12 @@ START_TEST(test_vte_modkeys_level2)
 	MOK_KEY("\x1b", XKB_KEY_Escape, XKB_KEY_Escape, 0, 0x1b);
 	MOK_KEY("\x08", XKB_KEY_BackSpace, XKB_KEY_BackSpace, 0, 0x08);
 
-	/* Tab, Shift+Tab, Return and Escape encode with any modifier */
+	/* Tab, Return and Escape encode with any modifier; Shift+Tab
+	 * (ISO_Left_Tab) stays CSI Z with Shift alone */
 	MOK_KEY("\e[27;5;9~", XKB_KEY_Tab, XKB_KEY_Tab, K_C, '\t');
-	MOK_KEY("\e[27;2;9~", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_S, '\t');
+	MOK_KEY("\e[Z", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_S, '\t');
 	MOK_KEY("\e[27;6;9~", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_C | K_S, '\t');
+	MOK_KEY("\e[27;4;9~", XKB_KEY_ISO_Left_Tab, XKB_KEY_ISO_Left_Tab, K_A | K_S, '\t');
 	MOK_KEY("\e[27;3;13~", XKB_KEY_Return, XKB_KEY_Return, K_A, '\r');
 	MOK_KEY("\e[27;2;27~", XKB_KEY_Escape, XKB_KEY_Escape, K_S, 0x1b);
 	MOK_KEY("\e[27;5;27~", XKB_KEY_Escape, XKB_KEY_Escape, K_C, 0x1b);
