@@ -390,7 +390,8 @@ size_t vte_sixel_run(struct tsm_vte *vte, const char *u8, size_t len)
 	limit = start + vte->work_left < start ? UINT64_MAX : start + vte->work_left;
 	n = tsm_sixel_feed_some(vte->sixel, u8, n, limit);
 	sixel_charge(vte, sixel_work(vte) - work);
-	/* the UTF-8 machine ends where those bytes would have left it */
+	/* the UTF-8 machine ends where those bytes would have left it: from
+	 * idle, each is accepted, so none is rejected or fed again */
 	if (!(vte->flags & (TSM_VTE_FLAG_7BIT_MODE | TSM_VTE_FLAG_8BIT_MODE)))
 		tsm_utf8_mach_feed(vte->mach, u8[n - 1]);
 	return n;
@@ -426,6 +427,7 @@ size_t vte_kitty_run(struct tsm_vte *vte, const char *u8, size_t len)
 		;
 	tsm_kitty_feed_run(vte->kitty, u8, n);
 	sixel_charge(vte, sixel_work(vte) - work);
+	/* as in vte_sixel_run */
 	if (!(vte->flags & (TSM_VTE_FLAG_7BIT_MODE | TSM_VTE_FLAG_8BIT_MODE)))
 		tsm_utf8_mach_feed(vte->mach, u8[n - 1]);
 	return n;

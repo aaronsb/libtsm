@@ -3665,9 +3665,14 @@ static size_t vte_input(struct tsm_vte *vte, const char *u8, size_t len)
 		} else if (vte->flags & TSM_VTE_FLAG_8BIT_MODE) {
 			parse_data(vte, (uint8_t)u8[i++]);
 		} else {
-			state = tsm_utf8_mach_feed(vte->mach, u8[i++]);
+			state = tsm_utf8_mach_feed(vte->mach, u8[i]);
+			/* the byte that ended an ill-formed sequence is
+			 * parsed again, after its U+FFFD */
+			if (state != TSM_UTF8_RETRY)
+				++i;
 			if (state == TSM_UTF8_ACCEPT ||
-			    state == TSM_UTF8_REJECT) {
+			    state == TSM_UTF8_REJECT ||
+			    state == TSM_UTF8_RETRY) {
 				ucs4 = tsm_utf8_mach_get(vte->mach);
 				parse_data(vte, ucs4);
 			}
