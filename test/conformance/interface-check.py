@@ -16,6 +16,9 @@ DIR holds cases.list, golden/, golden-draw2/ and golden-frame/. Checks:
    that needs a feature REPLAY does not declare, which is counted.
 4. Each palette in the palettes block is the colours REPLAY's frame view
    resolves the sixteen colours and the defaults to under that palette.
+5. Malformed and edge inputs exit as the spec gives (check_refusals), and
+   the grammar rejects the outputs in BAD and accepts GOOD, with its
+   reserved keys accepted only when expanded.
 
 SPDX-License-Identifier: MIT
 """
@@ -94,11 +97,18 @@ def numbering(lines, view, cols, rows):
     The first break of the spec's numbering rules, or None. The screen view
     prints the @cols x @rows of the command line; the others the size line's.
     """
-    row = last = None
+    row = None
+    last = (-1, None)
     checkpoint = -1
     placement = image = 0
+
+    def unfinished():
+        return row is not None and row != rows - 1
+
     for n, line in enumerate(lines, 1):
         f = line.split(" ")
+        if f[0] in ("checkpoint", "size", "test") and unfinished():
+            return f"line {n}: a block ends after row {row} of {rows}"
         if f[0] == "checkpoint":
             if int(f[1]) < checkpoint:
                 return f"line {n}: checkpoint before the one above it"
@@ -111,12 +121,14 @@ def numbering(lines, view, cols, rows):
             row += 1
             if int(f[1]) != row or row >= rows:
                 return f"line {n}: row {f[1]} where row {row} of {rows} belongs"
-            last = -1
+            last = (-1, None)
         elif f[0] in ("attr", "cells"):
             a, b = map(int, f[2].split("-"))
-            if int(f[1]) != row or a <= last or b < a or b >= cols:
+            if int(f[1]) != row or a <= last[0] or b < a or b >= cols:
                 return f"line {n}: run {f[2]} out of order or off row {row} of {cols} cells"
-            last = b
+            if a == last[0] + 1 and f[3:] == last[1]:
+                return f"line {n}: run {f[2]} continues the run before it"
+            last = (b, f[3:])
         elif f[0] == "placement":
             if int(f[1]) != placement:
                 return f"line {n}: placement {f[1]} where {placement} belongs"
@@ -127,7 +139,43 @@ def numbering(lines, view, cols, rows):
             image += 1
         if f[0] in ("placement", "image") and row != rows - 1:
             return f"line {n}: {f[0]} before the last row"
+    if unfinished():
+        return f"the output ends after row {row} of {rows}"
     return None
+
+
+# Outputs the grammar must reject, with the view and size each is checked
+# at, so that a check grown too loose fails on every run; and one it must
+# accept, so that one grown too strict does.
+GOOD = "size 4x2\ncursor 0,0\nflags none\nrow 0 |ab|\nattr 0 0-1 bold\nrow 1 ||\n"
+BAD = [
+    ("cursor X Y", GOOD.replace("cursor 0,0", "cursor 0 0")),
+    ("a missing row", GOOD.replace("row 1 ||\n", "")),
+    ("a row past the size", GOOD + "row 2 ||\n"),
+    ("a split run", GOOD.replace("attr 0 0-1 bold", "attr 0 0-0 bold\nattr 0 1-1 bold")),
+    ("keys out of order", GOOD.replace("attr 0 0-1 bold", "attr 0 0-1 bold fg=1")),
+    ("a run past the columns", GOOD.replace("attr 0 0-1", "attr 0 3-4")),
+    ("a reserved key", GOOD.replace("attr 0 0-1 bold", "attr 0 0-1 strike overline")),
+    ("a frame line", GOOD.replace("flags none\n", "flags none\nchanged 8\n")),
+    ("flags out of order", GOOD.replace("flags none", "flags AUTO_WRAP|INSERT_MODE")),
+    ("a colour code past 15", GOOD.replace("attr 0 0-1 bold", "attr 0 0-1 fg=16")),
+    ("no final newline", GOOD[:-1]),
+    ("a block cut short", "checkpoint 0\n" + GOOD.replace("row 1 ||\n", "") + "checkpoint 1\n" + GOOD),
+]
+
+
+def check_controls(grammar_text):
+    faults = []
+    grammar = Grammar(grammar_text)
+    if grammar.check("screen", GOOD, 4, 2):
+        faults.append(f"control: the grammar rejects a good output: {grammar.check('screen', GOOD, 4, 2)}")
+    for what, text in BAD:
+        if not grammar.check("screen", text, 4, 2):
+            faults.append(f"control: the grammar accepts {what}")
+    reserved = GOOD.replace("attr 0 0-1 bold", "attr 0 0-1 strike overline")
+    if Grammar(grammar_text, reserved=True).check("screen", reserved, 4, 2):
+        faults.append("control: the reserved grammar rejects a reserved key")
+    return len(BAD) + 2, faults
 
 
 def unescape(s):
@@ -209,6 +257,59 @@ def check_palettes(spec, replay):
     return len(rows), faults
 
 
+def check_refusals(replay):
+    """The exit status the spec gives each malformed or edge input."""
+    intro = b"\x1b_tsm-test;"
+
+    def cmd(text):
+        return intro + text + b"\x1b\\"
+
+    cases = [
+        # (what, cols, rows, stream, cuts text, exit)
+        ("COLS 0", "0", "2", b"", None, 2),
+        ("COLS 2049", "2049", "2", b"", None, 2),
+        ("ROWS 1025", "4", "1025", b"", None, 2),
+        ("COLS with a leading zero", "04", "2", b"", None, 2),
+        ("COLS with a sign", "+4", "2", b"", None, 2),
+        ("COLS 2048", "2048", "1", b"", None, 0),
+        ("ROWS 1024", "1", "1024", b"", None, 0),
+        ("a CUTS line with a letter", "4", "2", b"ab", "1x\n", 2),
+        ("a CUTS line with a space", "4", "2", b"ab", " 1\n", 2),
+        ("a cut inside an introducer", "4", "2", b"a" + cmd(b"sb-reset"), "4\n", 2),
+        ("a cut inside a command", "4", "2", b"a" + cmd(b"sb-reset"), "13\n", 2),
+        ("a cut before a command", "4", "2", b"a" + cmd(b"sb-reset"), "1\n", 0),
+        ("a command with no ST", "4", "2", intro + b"sb-reset", None, 2),
+        ("a tab in a command", "4", "2", cmd(b"sb-up;n=1\t"), None, 2),
+        ("a leading ;", "4", "2", cmd(b";sb-reset"), None, 2),
+        ("= inside a value", "4", "2", cmd(b"sb-up;n=1=2"), None, 2),
+        ("a decimal leading zero", "4", "2", cmd(b"sb-up;n=01"), None, 2),
+        ("a decimal sign", "4", "2", cmd(b"sb-up;n=+1"), None, 2),
+        ("a decimal 0", "4", "2", cmd(b"sb-up;n=0"), None, 0),
+        ("an unknown command", "4", "2", cmd(b"no-such"), None, 2),
+        ("an unknown key", "4", "2", cmd(b"sb-up;m=1"), None, 2),
+        ("a key given twice", "4", "2", cmd(b"sb-up;n=1;n=1"), None, 2),
+        ("a missing required key", "4", "2", cmd(b"resize;c=4"), None, 2),
+        ("resize to 0 columns", "4", "2", cmd(b"resize;c=0;r=2"), None, 2),
+        ("resize to 2049 columns", "4", "2", cmd(b"resize;c=2049;r=2"), None, 2),
+        ("resize to 1025 rows", "4", "2", cmd(b"resize;c=4;r=1025"), None, 2),
+        ("resize within bounds", "4", "2", cmd(b"resize;c=6;r=3"), None, 0),
+        ("a caller past 7", "4", "2", cmd(b"frame-since;caller=8"), None, 2),
+    ]
+    faults = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for what, cols, rows, data, cuts, want in cases:
+            stream = Path(tmp) / "refusal.bin"
+            stream.write_bytes(data)
+            argv = [replay, cols, rows, str(stream)]
+            if cuts is not None:
+                (Path(tmp) / "refusal.cuts").write_text(cuts)
+                argv.append(str(Path(tmp) / "refusal.cuts"))
+            got = subprocess.run(argv, capture_output=True).returncode
+            if got != want:
+                faults.append(f"refusal: {what} exits {got}, not {want}")
+    return len(cases), faults
+
+
 def main():
     args = sys.argv[1:]
     no_images = "--no-images" in args
@@ -223,7 +324,10 @@ def main():
     if no_images:
         want = [l for l in want if not (l.split()[0] == "feature" and l.split()[1] in IMAGE_FEATURES)
                 and not (l.split()[0] == "command" and l.split()[-1] in IMAGE_FEATURES)]
-    got = subprocess.run([replay, "--describe"], capture_output=True, text=True).stdout.splitlines()
+    describe = subprocess.run([replay, "--describe"], capture_output=True, text=True)
+    if describe.returncode:
+        faults.append(f"--describe exits {describe.returncode}")
+    got = describe.stdout.splitlines()
     for line in want:
         if line not in got:
             faults.append(f"--describe lacks the spec's line {line!r}")
@@ -262,8 +366,8 @@ def main():
                 if info[:1] == ["example"] and len(info) == 2]
     declared = {l.split()[1] for l in got if l.startswith("feature ")}
     ran = skipped = 0
-    if not examples:
-        faults.append("the spec has no worked example")
+    for name in set(outputs) - {name for name, _ in examples}:
+        faults.append(f"output {name}: no example block")
     for name, body in examples:
         try:
             size, view, needs, data, cuts = example(body)
@@ -283,9 +387,18 @@ def main():
         if fault:
             faults.append(f"example {name}: {fault}")
 
+    if not ran:
+        faults.append("no worked example ran")
+
     # 4. the palettes
     palettes, palette_faults = check_palettes(spec, replay)
     faults += palette_faults
+
+    # 5. the refusals, and the grammar's own controls
+    refusals, refusal_faults = check_refusals(replay)
+    faults += refusal_faults
+    controls, control_faults = check_controls(block(spec, "grammar"))
+    faults += control_faults
 
     for fault in faults:
         print(f"replay-interface: {fault}")
@@ -294,7 +407,8 @@ def main():
     print(f"replay-interface: --describe matches the spec ({commands} commands); "
           f"{goldens} goldens parse; {ran} examples replay as shown"
           + (f", {skipped} left out for features not declared" if skipped else "")
-          + f"; {palettes} palettes match")
+          + f"; {palettes} palettes match; {refusals} refusals exit as given; "
+          f"{controls} grammar controls hold")
     return 0
 
 
