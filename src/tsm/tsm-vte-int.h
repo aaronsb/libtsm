@@ -85,6 +85,8 @@ struct tsm_vte {
 	bool bracketed_paste;
 	/* xterm's modifyOtherKeys level (XTMODKEYS 4): 0, 1 or 2 */
 	unsigned int modify_other_keys;
+	/* mode 1004: the host's focus changes are reported */
+	bool focus_events;
 
 	tsm_vte_bell_cb bell_cb;
 	void *bell_data;

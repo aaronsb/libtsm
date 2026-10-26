@@ -104,6 +104,9 @@ START_TEST(test_vte_null)
 
 	rb = tsm_vte_handle_keyboard(NULL, 0, 0, 0, 0);
 	ck_assert(!rb);
+
+	rb = tsm_vte_handle_focus(NULL, true);
+	ck_assert(!rb);
 }
 END_TEST
 
