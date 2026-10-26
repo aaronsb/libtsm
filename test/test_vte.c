@@ -930,6 +930,11 @@ START_TEST(test_vte_8bit_c1)
 }
 END_TEST
 
+static void input_str(struct tsm_vte *vte, const char *s)
+{
+	tsm_vte_input(vte, s, strlen(s));
+}
+
 /*
  * Ill-formed UTF-8 prints U+FFFD and never decodes to a control: an overlong
  * ESC (C0 9B, E0 80 9B, F0 80 80 9B) starts no escape sequence, so text with
@@ -992,6 +997,49 @@ START_TEST(test_vte_utf8_ill_formed)
 }
 END_TEST
 
+/*
+ * A sequence unfinished at the end of one input call is finished by the
+ * next. tsm_vte_reset and tsm_vte_hard_reset discard it without a U+FFFD.
+ * RIS arrives as bytes, so its ESC ends the sequence with a U+FFFD, which
+ * RIS then erases.
+ */
+START_TEST(test_vte_utf8_pending)
+{
+	struct tsm_screen *screen;
+	struct tsm_vte *vte;
+	const struct tsm_screen_cell *cells;
+	int r, i;
+
+	for (i = 0; i < 4; ++i) {
+		r = tsm_screen_new(&screen, log_cb, NULL);
+		ck_assert_int_eq(r, 0);
+		r = tsm_vte_new(&vte, screen, write_cb, NULL, log_cb, NULL);
+		ck_assert_int_eq(r, 0);
+
+		input_str(vte, "\xe2\x82");
+		if (i == 0)
+			input_str(vte, "\xac");
+		else if (i == 1)
+			tsm_vte_reset(vte);
+		else if (i == 2)
+			tsm_vte_hard_reset(vte);
+		else
+			input_str(vte, "\ec");
+		if (i)
+			input_str(vte, "A");
+
+		cells = tsm_screen_draw2(screen);
+		ck_assert_ptr_ne(cells, NULL);
+		ck_assert_msg(cells[0].ch == (i ? 'A' : 0x20ac), "%d: U+%04X", i,
+			      (unsigned)cells[0].ch);
+		ck_assert_msg(cells[1].ch == ' ', "%d: U+%04X after", i, (unsigned)cells[1].ch);
+
+		tsm_vte_unref(vte);
+		tsm_screen_unref(screen);
+	}
+}
+END_TEST
+
 /* ESC # 8 is DECALN, which libtsm does not implement; with the '#' dropped
  * it ran as ESC 8, DECRC, and moved the cursor back (aaronsb/libtsm#59) */
 START_TEST(test_vte_esc_hash_not_decrc)
@@ -1041,11 +1089,6 @@ START_TEST(test_vte_draw2_cluster_base)
 	tsm_screen_unref(screen);
 }
 END_TEST
-
-static void input_str(struct tsm_vte *vte, const char *s)
-{
-	tsm_vte_input(vte, s, strlen(s));
-}
 
 /* the cluster table holds only what the screen and scrollback hold: every
  * way a cell is overwritten, erased or dropped releases its cluster */
@@ -3354,6 +3397,7 @@ TEST_DEFINE_CASE(misc)
 	TEST(test_vte_modkeys_not_sgr)
 	TEST(test_vte_8bit_c1)
 	TEST(test_vte_utf8_ill_formed)
+	TEST(test_vte_utf8_pending)
 	TEST(test_vte_esc_hash_not_decrc)
 	TEST(test_vte_draw2_cluster_base)
 	TEST(test_vte_cluster_release)
