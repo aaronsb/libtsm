@@ -118,6 +118,12 @@ enum parser_action {
 #define CSI_HASH	0x0800		/* CSI: # */
 #define CSI_OTHER	0x1000		/* CSI: any other intermediate or marker */
 
+/* what the DCS string in progress is, picked at its start (vte->dcs) */
+enum dcs_kind {
+	DCS_IGNORED,		/* consumed with no effect */
+	DCS_IMAGE,		/* sixel, the image glue's */
+};
+
 /*
  * Modes (ADR-201 in aaronsb/kmscon): tsm-modes.def has one row per mode,
  * which these expand by kind and by status.
@@ -916,6 +922,7 @@ void tsm_vte_reset(struct tsm_vte *vte)
 	/* leaving a DCS without its end discards the picture, and a kitty
 	 * upload in progress goes */
 	vte_image_cancel(vte);
+	vte->dcs = DCS_IGNORED;
 	vte->state = STATE_GROUND;
 	vte->gl = &vte->g0;
 	vte->gr = &vte->g1;
@@ -2867,6 +2874,35 @@ static void do_osc_end(struct tsm_vte *vte, uint32_t val) {
 	vte->osc_cb(vte, vte->osc_arg, vte->osc_len, vte->osc_data);
 }
 
+/*
+ * DCS strings: the final byte and the collected prefixes and intermediates
+ * pick the string's handler when its data starts, and its bytes and its end
+ * go to that handler. DCS q with neither is sixel, which goes to the image
+ * glue (tsm-vte-int.h); every other DCS is consumed with no effect.
+ */
+static void do_dcs_start(struct tsm_vte *vte, uint32_t data)
+{
+	vte->dcs = DCS_IGNORED;
+	if (data == 'q' && !vte->csi_flags) {
+		vte->dcs = DCS_IMAGE;
+		vte_dcs_start(vte, data);
+	}
+}
+
+static void do_dcs_collect(struct tsm_vte *vte, uint32_t data)
+{
+	if (vte->dcs == DCS_IMAGE)
+		vte_dcs_collect(vte, data);
+}
+
+/* the end of the string: @data is what ended it */
+static void do_dcs_end(struct tsm_vte *vte, uint32_t data)
+{
+	if (vte->dcs == DCS_IMAGE)
+		vte_dcs_end(vte, data);
+	vte->dcs = DCS_IGNORED;
+}
+
 /* perform parser action */
 static void do_action(struct tsm_vte *vte, uint32_t data, int action)
 {
@@ -2902,13 +2938,13 @@ static void do_action(struct tsm_vte *vte, uint32_t data, int action)
 			do_csi(vte, data);
 			break;
 		case ACTION_DCS_START:
-			vte_dcs_start(vte, data);
+			do_dcs_start(vte, data);
 			break;
 		case ACTION_DCS_COLLECT:
-			vte_dcs_collect(vte, data);
+			do_dcs_collect(vte, data);
 			break;
 		case ACTION_DCS_END:
-			vte_dcs_end(vte, data);
+			do_dcs_end(vte, data);
 			break;
 		case ACTION_OSC_START:
 			do_clear(vte);

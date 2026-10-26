@@ -103,10 +103,10 @@ static void sixel_charge(struct tsm_vte *vte, uint64_t work)
 	vte->work_left = work < vte->work_left ? vte->work_left - work : 0;
 }
 
-/* DCS P1;P2;P3 q: sixel. Every other DCS stays ignored. */
+/* DCS P1;P2;P3 q: sixel. tsm-vte.c routes no other DCS here. */
 void vte_dcs_start(struct tsm_vte *vte, uint32_t data)
 {
-	if (data != 'q' || vte->csi_flags || !vte_sixel_on(vte) || !sixel_ready(vte))
+	if (!vte_sixel_on(vte) || !sixel_ready(vte))
 		return;
 
 	tsm_sixel_begin(vte->sixel, vte->csi_argv[0], vte->csi_argv[1],

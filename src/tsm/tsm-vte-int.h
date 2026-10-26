@@ -57,6 +57,8 @@ struct tsm_vte {
 	unsigned long parse_cnt;
 
 	unsigned int state;
+	/* the DCS string in progress: enum dcs_kind in tsm-vte.c */
+	unsigned int dcs;
 	unsigned int csi_argc;
 	int csi_argv[CSI_ARG_MAX];
 	/* Sub-parameters: "4:3" is csi_argv 4 with csi_subargc 1 and
@@ -162,7 +164,8 @@ void vte_modes_reset_hard(struct tsm_vte *vte);
  * vte_image_reset is RIS for the glue, and vte_image_cancel drops a string in
  * progress when the vte resets. vte_sixel_on says whether sixel is on, turned
  * on and with a budget (DA1, XTSMGRAPHICS and the HOST_SIXEL modes read it).
- * The DCS and APC actions feed sixel and kitty commands, vte_xtsmgraphics
+ * The DCS actions take a DCS q, the only DCS tsm-vte.c routes here, and
+ * feed it to sixel; the APC actions feed kitty commands. vte_xtsmgraphics
  * answers XTSMGRAPHICS, and vte_sixel_run and vte_kitty_run take a run of
  * payload bytes in DCS passthrough or an APC, returning 0 when they take
  * none. vte_image_paused is true while a kitty request waits for the host's
