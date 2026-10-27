@@ -23,7 +23,7 @@ Output goes to standard output. Standard error is free-form.
 
 ## Input
 
-FILE is fed to the terminal byte by byte, in order. CUTS, when given, holds byte offsets into FILE, one per line, each a decimal number with no sign or leading zero and nothing else on the line, at least the one before it and at most FILE's length. The implementation prints a block at each offset and at the end of FILE, each headed by a `checkpoint` line. Without CUTS, or with an empty CUTS file, it prints one block, with no `checkpoint` line.
+FILE is fed to the terminal byte by byte, in order. CUTS, when given, holds byte offsets into FILE, one per line, each a decimal number with no sign or leading zero and nothing else on the line, at least the one before it and at most FILE's length. The implementation prints a block at each offset and at the end of FILE, each headed by a `checkpoint` line, so N cuts print N + 1 blocks. A cut at FILE's length prints its own block, and the end block follows it under the same `checkpoint` line; two equal cuts likewise print two blocks at one offset. Without CUTS, or with an empty CUTS file, it prints one block, with no `checkpoint` line.
 
 The fixture directory is FILE with a final `.bin` removed and `.files` appended. It holds the files that the `termcap` command and the fixture host read.
 
@@ -171,6 +171,8 @@ Rows are numbered from 0 at the top of the view and printed in order, as many as
 
 A runner compares an implementation's output with a golden byte for byte. The N of a `changed N` line and of a `test frame-since K changed N` line, and a placement's ` changed` flag, follow the C reference's age rule, which another implementation may draw differently and still draw correctly. Unless both the implementation and the reference declare the feature `damage-exact`, the runner masks them on both sides before comparing: each such N greater than 0 becomes the letter `N`, and each placement's ` changed` flag is removed. Zero against nonzero stays comparable, so a probe can still check that each frame-since caller keeps its own changes. The reference declares `damage-exact`.
 
+In the screen view the C reference also counted printing a block as a change: with the cursor visible, the next `frame-since` of each caller counted the cursor's cell though nothing had changed, where the frame and draw2 views counted 0. Masking keeps 0 against 1 comparable, so a probe with a screen-view cut between two `frame-since` commands separates the reference from an implementation that follows the age rule. No golden records it, and an implementation may list it as a departure.
+
 ### Grammar
 
 A line's kind is its first word. `define NAME REGEX` names a fragment, and `{NAME}` in a later regex stands for `(?:REGEX)`. `reserved NAME REGEX` names keys that interface 1 reserves (below): the fragment is empty when checking an implementation's output and REGEX when checking an expectation written for a missing feature. `line KIND VIEWS REGEX` is one form of a KIND line in the views listed (`*` for all three), matched against the whole line. `structure VIEW REGEX` is matched against a whole output's kinds, each preceded by a space. The regexes use no backreference or lookaround.
@@ -241,7 +243,7 @@ base16-dark 000000 ab4642 a1b56c f7ca88 7cafc2 ba8baf 86c1b9 aaaaaa 555555 ab464
 base16-light 000000 ab4642 a1b56c f7ca88 7cafc2 ba8baf 86c1b9 aaaaaa 555555 ab4642 a1b56c f7ca88 7cafc2 ba8baf 86c1b9 ffffff 181818 d8d8d8
 ```
 
-The C reference erased the screen and reset the current attributes when a palette was chosen; `host-palette` records it, and an implementation may list it as a departure.
+The C reference erased the active screen and reset the current attributes when a palette was chosen, so with the alternate screen active it erased that screen and left the main screen as it was; `host-palette` records the erase, and an implementation may list it as a departure.
 
 ### Reserved keys
 
@@ -376,6 +378,28 @@ size 6x1
 cursor 2,0
 flags AUTO_WRAP
 row 0 |ab|
+```
+
+A cut at the end of the stream: its block and the end block share one offset, and the reply prints only in the first.
+
+```example end
+size 3 1
+send "a\e[5n"
+check
+```
+
+```output end
+checkpoint 5
+size 3x1
+cursor 1,0
+flags AUTO_WRAP
+reply 1b5b306e
+row 0 |a|
+checkpoint 5
+size 3x1
+cursor 1,0
+flags AUTO_WRAP
+row 0 |a|
 ```
 
 The frame view: a reverse-video cell, a wide character and its trailing half, and a cluster.
